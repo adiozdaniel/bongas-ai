@@ -285,6 +285,7 @@ dependencies = [
  "jsonwebtoken",
  "mockall",
  "nalgebra",
+ "ndarray",
  "ort",
  "prometheus",
  "rand 0.8.5",
