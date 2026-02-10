@@ -18,6 +18,9 @@ use crate::pipeline::context::ExecutionContext;
 use crate::pipeline::ScoredItem;
 use crate::analytics::ClickHouseClient;
 use crate::cache::redis::RedisClient;
+use crate::cache::metrics::CacheMetrics;
+use crate::cache::warming::CacheWarmer;
+use crate::cache::ttl_manager::TTLManager;
 
 use self::staging_manager::StagingManager;
 use self::staleness_engine::{StalenessEngine, UserEvent};
@@ -298,6 +301,11 @@ impl BongasEngine {
         self.staleness_engine.clone()
     }
 
+    /// Get ClickHouse client reference
+    pub fn clickhouse_client(&self) -> Arc<ClickHouseClient> {
+        self.clickhouse.clone()
+    }
+
     /// Get scenario count
     pub async fn scenario_count(&self) -> usize {
         self.scenarios.read().await.len()
@@ -306,6 +314,45 @@ impl BongasEngine {
     /// List loaded scenario slugs
     pub async fn list_scenarios(&self) -> Vec<String> {
         self.scenarios.read().await.keys().cloned().collect()
+    }
+
+    /// Start cache warming background task
+    pub fn start_cache_warming(self: Arc<Self>, warm_scenarios: Vec<String>, interval_minutes: u64) {
+        let scenarios_clone = warm_scenarios.clone();
+        let cache_warmer = Arc::new(CacheWarmer::new(
+            self.clone(),
+            scenarios_clone,
+            interval_minutes,
+        ));
+        
+        cache_warmer.start();
+        info!(
+            scenarios = ?warm_scenarios,
+            interval_minutes = interval_minutes,
+            "Cache warming started"
+        );
+    }
+
+    /// Get cache statistics
+    pub fn get_cache_stats(&self) -> crate::cache::metrics::CacheStatsSnapshot {
+        // Convert StagingStats to CacheStatsSnapshot
+        let staging_stats = self.staging_manager.get_stats();
+        crate::cache::metrics::CacheStatsSnapshot {
+            l1_hits: staging_stats.l1_hits,
+            l1_misses: staging_stats.l1_misses,
+            l2_hits: staging_stats.l2_hits,
+            l2_misses: staging_stats.l2_misses,
+            invalidations: staging_stats.invalidations,
+            warmings: 0, // StagingManager doesn't track warmings
+            overall_hit_rate: staging_stats.hit_rate,
+            l1_hit_rate: 0.0, // Calculate if needed
+            l2_hit_rate: 0.0, // Calculate if needed
+        }
+    }
+
+    /// Get cache hit rate
+    pub fn get_cache_hit_rate(&self) -> f64 {
+        self.staging_manager.get_hit_rate()
     }
 
     /// Convert ScoredItem to RecommendationItem

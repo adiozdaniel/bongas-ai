@@ -4,6 +4,7 @@ use chrono::{Utc, Duration};
 use serde_json::Value as JsonValue;
 use crate::db::models::RecommendationCacheL2;
 
+#[derive(Debug)]
 pub struct CacheRepository {
     pool: PgPool,
 }

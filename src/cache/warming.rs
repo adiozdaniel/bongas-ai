@@ -88,9 +88,38 @@ impl CacheWarmer {
     }
 
     /// Get active users to warm caches for
-    async fn get_active_users(&self, _limit: usize) -> Result<Vec<i32>> {
-        // In production: query ClickHouse or PostgreSQL for users with recent activity
-        // For now, returns empty - will be populated when analytics are connected
-        Ok(vec![])
+    async fn get_active_users(&self, limit: usize) -> Result<Vec<i32>> {
+        // Query ClickHouse for users with recent activity (last 24h)
+        let query = format!(
+            r#"
+            SELECT user_id
+            FROM user_interactions
+            WHERE created_at >= now() - INTERVAL 1 DAY
+            GROUP BY user_id
+            ORDER BY max(created_at) DESC
+            LIMIT {}
+            "#,
+            limit
+        );
+
+        #[derive(clickhouse::Row, serde::Deserialize)]
+        struct ActiveUser {
+            user_id: i32,
+        }
+
+        let rows: Vec<ActiveUser> = self.engine.clickhouse_client().inner()
+            .query(&query)
+            .fetch_all()
+            .await?;
+
+        let users: Vec<i32> = rows.into_iter().map(|row| row.user_id).collect();
+
+        info!(
+            found_users = users.len(),
+            requested_limit = limit,
+            "Retrieved active users for cache warming"
+        );
+
+        Ok(users)
     }
 }
