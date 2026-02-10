@@ -1,0 +1,50 @@
+[server]
+host = "0.0.0.0"
+port = 8080
+environment = "development"
+
+[database]
+url = "postgresql://postgres:password@localhost:5432/baze_catalog"
+max_connections = 20
+
+[redis]
+url = "redis://localhost:6379"
+pool_size = 10
+
+[clickhouse]
+url = "http://localhost:8123"
+user = "default"
+password = ""
+database = "baze_analytics"
+
+[kafka]
+brokers = "localhost:9092"
+group_id = "bongas-ai-consumers"
+profile_topic = "profile.events"
+reaction_topic = "reaction.events"
+notification_topic = "notification.events"
+playback_topic = "playback.events"
+
+[security]
+license_key = ""
+license_server_url = "https://license.example.com"
+hardware_id_salt = ""
+
+[spring_cloud]
+enabled = false
+url = "http://localhost:8888"
+app_name = "bongas-ai"
+profile = "production"
+
+[ml]
+model_path = "./models"
+batch_size = 32
+
+[onnx]
+enabled = true
+model_path = "./models"
+execution_provider = "cpu"
+graph_optimization = true
+
+[logging]
+level = "info"

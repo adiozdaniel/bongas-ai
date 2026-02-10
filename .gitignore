@@ -9,3 +9,6 @@
 
 # Temporary files
 /tmp/
+
+# Build files
+/target/
