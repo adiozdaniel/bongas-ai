@@ -8,3 +8,6 @@ pub mod model_registry;
 pub mod embeddings;
 pub mod online_learning;
 pub mod worker_queue;
+pub mod feature_worker;
+pub mod user_features;
+pub mod item_features;
