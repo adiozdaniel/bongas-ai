@@ -17,6 +17,17 @@ This repository contains comprehensive documentation for implementing a modern, 
 - [🏗️ Production Deployment](#️-production-deployment)
 - [🤝 Contributing](#-contributing)
 - [📄 License](#-license)
+- [📖 Detailed Guides](#-detailed-guides)
+
+## 📖 Detailed Guides
+
+| Guide                                        | Description                                                  |
+| -------------------------------------------- | ------------------------------------------------------------ |
+| [Architecture](guides/architecture.md)       | System diagram, core components, data flow, technology stack |
+| [Scenarios](guides/scenarios.md)             | JSONB pipeline system, stage catalog, hot-reload, CRUD       |
+| [ML Integration](guides/ml_integration.md)   | Training workflow, ONNX inference, feature store, bandits    |
+| [ONNX Deployment](guides/onnx_deployment.md) | Model lifecycle: train, export, validate, deploy, serve      |
+| [API Reference](guides/api_reference.md)     | All REST endpoints with request/response examples            |
 
 ## 🏗️ Architecture Overview
 
@@ -45,6 +56,7 @@ The recommendation system follows a modern microservices architecture with the f
 
 BONGAS 3.0 - Complete New Project Structure
 
+```text
 bongas-ai/ # ← NEW standalone project
 ├── Cargo.toml
 ├── Cargo.lock
@@ -247,11 +259,14 @@ bongas-ai/ # ← NEW standalone project
 │ └── onnx_inference_bench.rs # ✅ ONNX inference benchmarks
 │
 └── docs/ # Documentation
-├── architecture.md
-├── scenarios.md
-├── ml_integration.md
-├── onnx_deployment.md # ✅ ONNX workflow docs
-└── api_reference.md
+├── README.md # This file
+└── guides/ # Detailed reference guides
+├── architecture.md # System design & data flow
+├── scenarios.md # JSONB pipeline system
+├── ml_integration.md # ML training & inference
+├── onnx_deployment.md # ONNX model lifecycle
+└── api_reference.md # REST API endpoints
+```
 
 ---
 
