@@ -21,13 +21,13 @@ This repository contains comprehensive documentation for implementing a modern, 
 
 ## 📖 Detailed Guides
 
-| Guide                                        | Description                                                  |
-| -------------------------------------------- | ------------------------------------------------------------ |
-| [Architecture](guides/architecture.md)       | System diagram, core components, data flow, technology stack |
-| [Scenarios](guides/scenarios.md)             | JSONB pipeline system, stage catalog, hot-reload, CRUD       |
-| [ML Integration](guides/ml_integration.md)   | Training workflow, ONNX inference, feature store, bandits    |
-| [ONNX Deployment](guides/onnx_deployment.md) | Model lifecycle: train, export, validate, deploy, serve      |
-| [API Reference](guides/api_reference.md)     | All REST endpoints with request/response examples            |
+| Guide                                             | Description                                                  |
+| ------------------------------------------------- | ------------------------------------------------------------ |
+| [Architecture](docs/guides/architecture.md)       | System diagram, core components, data flow, technology stack |
+| [Scenarios](docs/guides/scenarios.md)             | JSONB pipeline system, stage catalog, hot-reload, CRUD       |
+| [ML Integration](docs/guides/ml_integration.md)   | Training workflow, ONNX inference, feature store, bandits    |
+| [ONNX Deployment](docs/guides/onnx_deployment.md) | Model lifecycle: train, export, validate, deploy, serve      |
+| [API Reference](docs/guides/api_reference.md)     | All REST endpoints with request/response examples            |
 
 ## 🏗️ Architecture Overview
 
