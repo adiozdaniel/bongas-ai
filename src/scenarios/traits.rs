@@ -1,0 +1,1 @@
+// ScenarioStrategy trait
