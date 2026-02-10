@@ -9,3 +9,4 @@ pub mod kafka;
 pub mod analytics;
 pub mod security;
 pub mod config;
+pub mod pipeline;

@@ -13,6 +13,7 @@ mod kafka;
 mod analytics;
 mod security;
 mod config;
+mod pipeline;
 
 #[tokio::main]
 async fn main() -> Result<()> {
