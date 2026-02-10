@@ -1,6 +1,8 @@
 use anyhow::Result;
 use sha2::{Sha256, Digest};
 use serde_json::Value as JsonValue;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use tracing::{info, debug};
 
 use crate::cache::redis::RedisClient;
@@ -10,6 +12,12 @@ use crate::pipeline::ScoredItem;
 pub struct StagingManager {
     redis: RedisClient,
     cache_repo: CacheRepository,
+    // Metrics counters
+    l1_hits: AtomicU64,
+    l1_misses: AtomicU64,
+    l2_hits: AtomicU64,
+    l2_misses: AtomicU64,
+    invalidations: AtomicU64,
 }
 
 impl StagingManager {
@@ -17,6 +25,11 @@ impl StagingManager {
         Ok(Self {
             redis: RedisClient::new(redis_url).await?,
             cache_repo: CacheRepository::new(db_pool),
+            l1_hits: AtomicU64::new(0),
+            l1_misses: AtomicU64::new(0),
+            l2_hits: AtomicU64::new(0),
+            l2_misses: AtomicU64::new(0),
+            invalidations: AtomicU64::new(0),
         })
     }
 
@@ -31,12 +44,15 @@ impl StagingManager {
 
         // Try L1 cache (Redis) first
         if let Some(items) = self.get_from_l1(&cache_key).await? {
+            self.l1_hits.fetch_add(1, Ordering::Relaxed);
             info!(cache_key = %cache_key, "L1 cache hit");
             return Ok(Some(items));
         }
+        self.l1_misses.fetch_add(1, Ordering::Relaxed);
 
         // Try L2 cache (PostgreSQL)
         if let Some(items) = self.get_from_l2(&cache_key).await? {
+            self.l2_hits.fetch_add(1, Ordering::Relaxed);
             info!(cache_key = %cache_key, "L2 cache hit");
 
             // Promote to L1 cache
@@ -44,6 +60,7 @@ impl StagingManager {
 
             return Ok(Some(items));
         }
+        self.l2_misses.fetch_add(1, Ordering::Relaxed);
 
         debug!(cache_key = %cache_key, "Cache miss");
         Ok(None)
@@ -97,6 +114,7 @@ impl StagingManager {
 
         // Mark L2 cache as stale
         let rows_affected = self.cache_repo.mark_stale(user_id, scenario_slug, reason).await?;
+        self.invalidations.fetch_add(1, Ordering::Relaxed);
 
         info!(
             user_id = user_id,
@@ -107,6 +125,86 @@ impl StagingManager {
         );
 
         Ok(())
+    }
+
+    /// Invalidate both L1 and L2 for a specific scenario + user
+    pub async fn invalidate(
+        &self,
+        scenario_slug: &str,
+        user_id: i32,
+    ) -> Result<()> {
+        // Invalidate L1 (Redis) - specific key pattern
+        let key = format!("rec:{}:{}:*", scenario_slug, user_id);
+        let _ = self.redis.del(&key).await;
+
+        // Also try the default context hash key
+        let default_key = format!("rec:{}:{}:default", scenario_slug, user_id);
+        let _ = self.redis.del(&default_key).await;
+
+        // Invalidate L2 (PostgreSQL)
+        let rows_affected = self.cache_repo.mark_stale(user_id, Some(scenario_slug), "invalidate").await?;
+        self.invalidations.fetch_add(1, Ordering::Relaxed);
+
+        info!(
+            scenario_slug = scenario_slug,
+            user_id = user_id,
+            rows_affected = rows_affected,
+            "Invalidated L1 and L2 caches"
+        );
+
+        Ok(())
+    }
+
+    /// Invalidate all caches for a user (all scenarios)
+    pub async fn invalidate_profile(&self, user_id: i32) -> Result<()> {
+        // Invalidate L1 (Redis) - pattern for all scenarios
+        let key = format!("rec:*:{}:*", user_id);
+        let _ = self.redis.del(&key).await;
+
+        // Invalidate L2 (PostgreSQL) - all scenarios for user
+        let rows_affected = self.cache_repo.mark_stale(user_id, None, "profile_invalidate").await?;
+        self.invalidations.fetch_add(1, Ordering::Relaxed);
+
+        info!(
+            user_id = user_id,
+            rows_affected = rows_affected,
+            "Invalidated all caches for profile"
+        );
+
+        Ok(())
+    }
+
+    /// Cleanup expired L2 cache entries
+    pub async fn cleanup_expired(&self) -> Result<u64> {
+        let deleted = self.cache_repo.cleanup_expired().await?;
+        info!(deleted = deleted, "Cleaned up expired L2 cache entries");
+        Ok(deleted)
+    }
+
+    /// Get cache hit rate
+    pub fn get_hit_rate(&self) -> f64 {
+        let total_hits = self.l1_hits.load(Ordering::Relaxed)
+            + self.l2_hits.load(Ordering::Relaxed);
+        let total_misses = self.l1_misses.load(Ordering::Relaxed)
+            + self.l2_misses.load(Ordering::Relaxed);
+
+        if total_hits + total_misses == 0 {
+            return 0.0;
+        }
+
+        total_hits as f64 / (total_hits + total_misses) as f64
+    }
+
+    /// Get cache statistics
+    pub fn get_stats(&self) -> StagingStats {
+        StagingStats {
+            l1_hits: self.l1_hits.load(Ordering::Relaxed),
+            l1_misses: self.l1_misses.load(Ordering::Relaxed),
+            l2_hits: self.l2_hits.load(Ordering::Relaxed),
+            l2_misses: self.l2_misses.load(Ordering::Relaxed),
+            invalidations: self.invalidations.load(Ordering::Relaxed),
+            hit_rate: self.get_hit_rate(),
+        }
     }
 
     /// Get from Redis L1 cache
@@ -136,12 +234,9 @@ impl StagingManager {
 
     /// Invalidate L1 cache for user
     async fn invalidate_l1_for_user(&self, user_id: i32, scenario_slug: Option<&str>) -> Result<()> {
-        // Delete specific key patterns for user
-        // In production, use SCAN instead of KEYS for large datasets
         let key = if let Some(slug) = scenario_slug {
             format!("rec:{}:{}:default", slug, user_id)
         } else {
-            // Can't easily glob-delete with our RedisClient, so delete known patterns
             format!("rec:*:{}:*", user_id)
         };
 
@@ -162,4 +257,14 @@ impl StagingManager {
         hasher.update(params.to_string().as_bytes());
         hex::encode(hasher.finalize())
     }
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct StagingStats {
+    pub l1_hits: u64,
+    pub l1_misses: u64,
+    pub l2_hits: u64,
+    pub l2_misses: u64,
+    pub invalidations: u64,
+    pub hit_rate: f64,
 }
