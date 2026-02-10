@@ -1,0 +1,11 @@
+# Data files
+/data/
+
+# Model files
+/models/
+
+# Logs
+/logs/
+
+# Temporary files
+/tmp/
