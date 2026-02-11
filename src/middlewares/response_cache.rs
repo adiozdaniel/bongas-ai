@@ -112,15 +112,61 @@ impl ResponseCacheMiddleware {
 
         // Cache successful responses
         if self.should_cache_response(&response) {
-            // We can't clone the response, so we'll skip caching for now
-            // In a real implementation, we'd need to buffer the response body
-            // before sending it to the client
-            debug!("Response caching skipped - response body buffering not implemented");
+            // Buffer the response body for caching
+            let (parts, body) = response.into_parts();
+            
+            // Buffer the response body
+            let body_bytes = match axum::body::to_bytes(body, usize::MAX).await {
+                Ok(bytes) => bytes,
+                Err(e) => {
+                    warn!(error = ?e, "Failed to buffer response body for caching");
+                    return Ok(Response::from_parts(parts, Body::empty()));
+                }
+            };
+            
+            // Check body size
+            if body_bytes.len() as u64 > self.max_body_size {
+                debug!("Response body too large to cache: {} bytes", body_bytes.len());
+                return Ok(Response::from_parts(parts, Body::from(body_bytes)));
+            }
+
+            // Create cache entry
+            let metadata = self.extract_metadata(&parts.headers, body_bytes.len() as u64);
+            let headers = self.extract_headers(&parts.headers);
+            let cache_entry = CacheEntry {
+                metadata,
+                body: body_bytes.clone(),
+                headers,
+            };
+
+            // Store in cache
+            let cache_data = match serde_json::to_string(&cache_entry) {
+                Ok(data) => data,
+                Err(e) => {
+                    warn!(error = ?e, "Failed to serialize cache entry");
+                    return Ok(Response::from_parts(parts, Body::from(body_bytes)));
+                }
+            };
+
+            match self.redis.get_multiplexed_async_connection().await {
+                Ok(mut conn) => {
+                    if let Err(e) = conn.set_ex::<&str, &str, ()>(&cache_key, &cache_data, self.ttl_seconds).await {
+                        warn!(error = ?e, "Failed to store response in cache");
+                    } else {
+                        debug!("Response cached successfully: {}", cache_key);
+                    }
+                }
+                Err(e) => {
+                    warn!(error = ?e, "Failed to get Redis connection for caching");
+                }
+            }
+
+            // Return the response
+            Ok(Response::from_parts(parts, Body::from(body_bytes)))
         } else {
             debug!(status = %status, "Response not cached (not cacheable)");
+            Ok(response)
         }
-
-        Ok(response)
     }
 
     fn generate_cache_key(&self, method: &axum::http::Method, uri: &axum::http::Uri) -> String {
@@ -210,6 +256,22 @@ impl ResponseCacheMiddleware {
         headers.insert("X-Cache", HeaderValue::from_static("HIT"));
         headers.insert("X-Cache-Key", HeaderValue::from_str(&format!("response_cache:{}", Uuid::new_v4())).unwrap());
 
+        // Add cache control headers
+        if let Some(cache_control) = &cached.metadata.cache_control {
+            headers.insert(header::CACHE_CONTROL, HeaderValue::from_str(cache_control).unwrap());
+        }
+
+        // Add ETag header
+        if let Some(etag) = &cached.metadata.etag {
+            headers.insert(header::ETAG, HeaderValue::from_str(etag).unwrap());
+        }
+
+        // Add Last-Modified header
+        if let Some(last_modified) = &cached.metadata.last_modified {
+            let http_date = httpdate::fmt_http_date(last_modified.with_timezone(&chrono::Utc).into());
+            headers.insert(header::LAST_MODIFIED, HeaderValue::from_str(&http_date).unwrap());
+        }
+
         response
     }
 
@@ -292,6 +354,12 @@ impl ResponseCacheMiddleware {
         let cache_control = headers.get(header::CACHE_CONTROL)
             .and_then(|h| h.to_str().ok())
             .map(|s| s.to_string());
+
+        // Generate ETag if not present
+        let etag = etag.or_else(|| {
+            // Create a simple ETag based on content length and timestamp
+            Some(format!("W/\"{}-{}", body_size, Utc::now().timestamp()))
+        });
 
         CacheMetadata {
             created_at: Utc::now(),
