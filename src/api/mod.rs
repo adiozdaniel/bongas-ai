@@ -125,6 +125,18 @@ pub fn create_router(
             post(v1::handlers::admin::invalidate_cache),
         )
 
+        // Kafka metrics
+        .route(
+            "/api/v1/admin/kafka/metrics",
+            get(v1::handlers::admin::get_kafka_metrics),
+        )
+
+        // Kafka health
+        .route(
+            "/api/v1/admin/kafka/health",
+            get(v1::handlers::admin::get_kafka_health),
+        )
+
         // Health check
         .route("/health", get(v1::handlers::admin::health_check))
 

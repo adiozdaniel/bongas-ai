@@ -9,6 +9,7 @@ use tracing::{info, error};
 use crate::engine::BongasEngine;
 use crate::api::models::{
     ApiResponse, CacheStatsResponse, InvalidateCacheRequest, HealthResponse,
+    KafkaMetricsResponse, KafkaHealthResponse,
 };
 use crate::api::error::ApiError;
 use crate::api::error::ApiResult;
@@ -71,6 +72,40 @@ pub async fn health_check() -> ApiResult<Json<ApiResponse<HealthResponse>>> {
     };
 
     info!("Health check requested");
+
+    Ok(Json(ApiResponse::success(response)))
+}
+
+/// GET /api/v1/admin/kafka/metrics
+pub async fn get_kafka_metrics(
+    Extension(engine): Extension<Arc<BongasEngine>>,
+) -> ApiResult<Json<ApiResponse<KafkaMetricsResponse>>> {
+    let metrics = engine.kafka_metrics().get_all_metrics().await;
+
+    info!("Kafka metrics retrieved");
+
+    Ok(Json(ApiResponse::success(KafkaMetricsResponse { metrics })))
+}
+
+/// GET /api/v1/admin/kafka/health
+pub async fn get_kafka_health(
+    Extension(engine): Extension<Arc<BongasEngine>>,
+) -> ApiResult<Json<ApiResponse<KafkaHealthResponse>>> {
+    let health = engine.kafka_health().await;
+
+    let response = KafkaHealthResponse {
+        healthy: health.healthy,
+        total_consumers: health.total_consumers,
+        unhealthy_consumers: health.unhealthy_consumers,
+        total_lag: health.total_lag,
+        global_success_rate: health.global_success_rate,
+    };
+
+    info!(
+        healthy = health.healthy,
+        consumers = health.total_consumers,
+        "Kafka health check"
+    );
 
     Ok(Json(ApiResponse::success(response)))
 }

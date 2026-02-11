@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::sync::Arc;
 use tokio::time::Duration;
-use tracing::{info, error, warn};
+use tracing::{info, error};
 use crate::engine::staleness_engine::{StalenessEngine, UserEvent};
 use crate::db::repositories::interaction_repository::InteractionRepository;
 

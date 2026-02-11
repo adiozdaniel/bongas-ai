@@ -4,20 +4,87 @@ use rdkafka::consumer::{Consumer, StreamConsumer};
 use rdkafka::message::Message;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use tracing::{info, error};
+use std::time::Instant;
+use tokio::time::Duration;
+use tracing::{info, error, warn};
+
+use crate::kafka::circuit_breaker::{CircuitBreaker, CircuitBreakerConfig};
+use crate::kafka::retry::{DeadLetterQueue, DeadLetterMessage, RetryConfig};
+use crate::kafka::metrics::{ConsumerMetrics};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NotificationEvent {
     pub user_id: i32,
-    pub notification_type: String,
+    pub notification_type: String,  // "new_content", "recommendation", "watchlist_update", "system"
     pub title: String,
     pub body: String,
     pub data: serde_json::Value,
+    pub priority: Option<String>,  // "high", "normal", "low"
+    pub channels: Option<Vec<String>>,  // "push", "email", "in_app"
     pub timestamp: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NotificationPayload {
+    pub user_id: i32,
+    pub title: String,
+    pub body: String,
+    pub data: serde_json::Value,
+    pub priority: String,
+}
+
+/// Trait for notification delivery providers
+#[async_trait::async_trait]
+pub trait NotificationProvider: Send + Sync {
+    async fn send_push(&self, payload: &NotificationPayload) -> Result<()>;
+    async fn send_email(&self, payload: &NotificationPayload) -> Result<()>;
+    async fn send_in_app(&self, payload: &NotificationPayload) -> Result<()>;
+}
+
+/// Default notification provider (stub for actual implementation)
+pub struct DefaultNotificationProvider;
+
+#[async_trait::async_trait]
+impl NotificationProvider for DefaultNotificationProvider {
+    async fn send_push(&self, payload: &NotificationPayload) -> Result<()> {
+        // TODO: Integrate with FCM/APNS
+        info!(
+            user_id = payload.user_id,
+            title = %payload.title,
+            "Would send push notification"
+        );
+        Ok(())
+    }
+
+    async fn send_email(&self, payload: &NotificationPayload) -> Result<()> {
+        // TODO: Integrate with email service (SendGrid, SES, etc.)
+        info!(
+            user_id = payload.user_id,
+            title = %payload.title,
+            "Would send email notification"
+        );
+        Ok(())
+    }
+
+    async fn send_in_app(&self, payload: &NotificationPayload) -> Result<()> {
+        // TODO: Store in database for in-app notification feed
+        info!(
+            user_id = payload.user_id,
+            title = %payload.title,
+            "Would create in-app notification"
+        );
+        Ok(())
+    }
 }
 
 pub struct NotificationConsumer {
     consumer: StreamConsumer,
+    provider: Arc<dyn NotificationProvider>,
+    circuit_breaker: Arc<CircuitBreaker>,
+    dlq: Arc<DeadLetterQueue>,
+    metrics: Arc<ConsumerMetrics>,
+    topic: String,
+    group_id: String,
 }
 
 impl NotificationConsumer {
@@ -26,37 +93,134 @@ impl NotificationConsumer {
         group_id: &str,
         topic: &str,
     ) -> Result<Self> {
+        Self::with_provider(
+            kafka_brokers,
+            group_id,
+            topic,
+            Arc::new(DefaultNotificationProvider),
+        )
+    }
+
+    pub fn with_provider(
+        kafka_brokers: &str,
+        group_id: &str,
+        topic: &str,
+        provider: Arc<dyn NotificationProvider>,
+    ) -> Result<Self> {
         let consumer: StreamConsumer = ClientConfig::new()
             .set("bootstrap.servers", kafka_brokers)
             .set("group.id", group_id)
-            .set("enable.auto.commit", "true")
+            .set("enable.auto.commit", "false")
             .set("auto.offset.reset", "earliest")
+            .set("session.timeout.ms", "30000")
+            .set("max.poll.interval.ms", "300000")
             .create()?;
 
         consumer.subscribe(&[topic])?;
 
-        Ok(Self { consumer })
+        let circuit_breaker = Arc::new(CircuitBreaker::new(CircuitBreakerConfig {
+            failure_threshold: 5,
+            success_threshold: 3,
+            reset_timeout: Duration::from_secs(30),
+            failure_window: Duration::from_secs(60),
+            name: format!("notification-consumer-{}", topic),
+        }));
+
+        let dlq = Arc::new(DeadLetterQueue::new(
+            kafka_brokers,
+            &format!("{}.dlq", topic),
+            Some(&format!("{}.retry", topic)),
+            RetryConfig::default(),
+        )?);
+
+        let metrics = Arc::new(ConsumerMetrics::new(group_id, topic));
+
+        Ok(Self {
+            consumer,
+            provider,
+            circuit_breaker,
+            dlq,
+            metrics,
+            topic: topic.to_string(),
+            group_id: group_id.to_string(),
+        })
+    }
+
+    pub fn metrics(&self) -> Arc<ConsumerMetrics> {
+        self.metrics.clone()
     }
 
     pub async fn start(self: Arc<Self>) {
-        info!("Starting notification consumer");
+        info!(topic = %self.topic, "Starting notification consumer");
 
         loop {
+            // Check circuit breaker
+            if !self.circuit_breaker.allow_request().await {
+                warn!(
+                    topic = %self.topic,
+                    "Circuit breaker open, waiting before retry"
+                );
+                tokio::time::sleep(Duration::from_secs(5)).await;
+                continue;
+            }
+
             match self.consumer.recv().await {
                 Ok(message) => {
+                    let payload_len = message.payload().map(|p| p.len()).unwrap_or(0);
+                    self.metrics.record_received(payload_len).await;
+
                     if let Some(payload) = message.payload() {
+                        let start = Instant::now();
+
                         match self.process_message(payload).await {
                             Ok(_) => {
-                                info!("Processed notification");
+                                self.metrics.record_success(start.elapsed());
+                                self.circuit_breaker.record_success().await;
+
+                                // Commit offset on success
+                                if let Err(e) = self.consumer.commit_message(&message, rdkafka::consumer::CommitMode::Async) {
+                                    warn!(error = ?e, "Failed to commit offset");
+                                }
+
+                                info!(
+                                    topic = %self.topic,
+                                    processing_time_ms = start.elapsed().as_millis(),
+                                    "Processed notification"
+                                );
                             }
                             Err(e) => {
-                                error!(error = ?e, "Failed to process notification");
+                                self.metrics.record_failure();
+                                self.circuit_breaker.record_failure().await;
+
+                                error!(error = ?e, topic = %self.topic, "Failed to process notification");
+
+                                // Send to DLQ
+                                let dlq_message = DeadLetterMessage {
+                                    original_topic: self.topic.clone(),
+                                    original_partition: message.partition(),
+                                    original_offset: message.offset(),
+                                    original_key: message.key().map(|k| String::from_utf8_lossy(k).to_string()),
+                                    payload: payload.to_vec(),
+                                    error: e.to_string(),
+                                    retry_count: 0,
+                                    first_failure: chrono::Utc::now(),
+                                    last_failure: chrono::Utc::now(),
+                                    consumer_group: self.group_id.clone(),
+                                };
+
+                                if let Err(dlq_err) = self.dlq.send_to_dlq(&dlq_message).await {
+                                    error!(error = ?dlq_err, "Failed to send to DLQ");
+                                } else {
+                                    self.metrics.record_dlq();
+                                }
                             }
                         }
                     }
                 }
                 Err(e) => {
-                    error!(error = ?e, "Kafka consumer error");
+                    error!(error = ?e, topic = %self.topic, "Kafka consumer error");
+                    self.circuit_breaker.record_failure().await;
+                    tokio::time::sleep(Duration::from_secs(5)).await;
                 }
             }
         }
@@ -67,12 +231,64 @@ impl NotificationConsumer {
 
         info!(
             user_id = event.user_id,
-            notification_type = event.notification_type,
+            notification_type = %event.notification_type,
             "Processing notification"
         );
 
-        // Send push notification via external service
-        // (Implementation depends on notification provider)
+        let notification_payload = NotificationPayload {
+            user_id: event.user_id,
+            title: event.title.clone(),
+            body: event.body.clone(),
+            data: event.data.clone(),
+            priority: event.priority.clone().unwrap_or_else(|| "normal".to_string()),
+        };
+
+        // Determine channels to use
+        let channels = event.channels.unwrap_or_else(|| {
+            // Default channels based on notification type
+            match event.notification_type.as_str() {
+                "new_content" => vec!["push".to_string(), "in_app".to_string()],
+                "recommendation" => vec!["in_app".to_string()],
+                "watchlist_update" => vec!["push".to_string()],
+                "system" => vec!["email".to_string(), "in_app".to_string()],
+                _ => vec!["in_app".to_string()],
+            }
+        });
+
+        let channels_count = channels.len();
+
+        // Send to each channel
+        let mut errors = Vec::new();
+
+        for channel in channels {
+            let result = match channel.as_str() {
+                "push" => self.provider.send_push(&notification_payload).await,
+                "email" => self.provider.send_email(&notification_payload).await,
+                "in_app" => self.provider.send_in_app(&notification_payload).await,
+                _ => {
+                    warn!(channel = %channel, "Unknown notification channel");
+                    continue;
+                }
+            };
+
+            if let Err(e) = result {
+                error!(
+                    channel = %channel,
+                    error = ?e,
+                    "Failed to send notification via channel"
+                );
+                errors.push(format!("{}: {}", channel, e));
+            }
+        }
+
+        if !errors.is_empty() {
+            // Return error only if all channels failed
+            if errors.len() == channels_count {
+                return Err(anyhow::anyhow!("All notification channels failed: {:?}", errors));
+            }
+            // Log partial failures but consider success
+            warn!(errors = ?errors, "Some notification channels failed");
+        }
 
         Ok(())
     }

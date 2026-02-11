@@ -112,3 +112,17 @@ pub struct ScenarioExecutionStatsResponse {
     pub execution_time_ms: u64,
     pub cached_result: bool,
 }
+
+#[derive(Debug, Serialize)]
+pub struct KafkaMetricsResponse {
+    pub metrics: serde_json::Value,
+}
+
+#[derive(Debug, Serialize)]
+pub struct KafkaHealthResponse {
+    pub healthy: bool,
+    pub total_consumers: usize,
+    pub unhealthy_consumers: Vec<String>,
+    pub total_lag: u64,
+    pub global_success_rate: f64,
+}

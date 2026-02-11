@@ -18,9 +18,9 @@ use crate::pipeline::context::ExecutionContext;
 use crate::pipeline::ScoredItem;
 use crate::analytics::ClickHouseClient;
 use crate::cache::redis::RedisClient;
-use crate::cache::metrics::CacheMetrics;
 use crate::cache::warming::CacheWarmer;
-use crate::cache::ttl_manager::TTLManager;
+use crate::kafka::manager::KafkaConsumerManager;
+use crate::kafka::metrics::KafkaMetricsRegistry;
 
 use self::staging_manager::StagingManager;
 use self::staleness_engine::{StalenessEngine, UserEvent};
@@ -38,6 +38,10 @@ pub struct BongasEngine {
     // Caching & staging
     staging_manager: Arc<StagingManager>,
     staleness_engine: Arc<StalenessEngine>,
+
+    // Kafka
+    kafka_manager: Arc<RwLock<Option<KafkaConsumerManager>>>,
+    kafka_metrics: Arc<KafkaMetricsRegistry>,
 
     // Dependencies
     db_pool: Arc<PgPool>,
@@ -86,12 +90,17 @@ impl BongasEngine {
             "Pipeline executor ready"
         );
 
+        // Create Kafka metrics registry
+        let kafka_metrics = Arc::new(KafkaMetricsRegistry::new());
+
         let engine = Arc::new(Self {
             scenarios: Arc::new(RwLock::new(HashMap::new())),
             scenario_factory,
             pipeline_executor,
             staging_manager,
             staleness_engine,
+            kafka_manager: Arc::new(RwLock::new(None)),
+            kafka_metrics,
             db_pool,
             clickhouse,
             redis,
@@ -100,6 +109,45 @@ impl BongasEngine {
         info!("BongasEngine initialized successfully");
 
         Ok(engine)
+    }
+
+    /// Start Kafka consumers
+    pub async fn start_kafka_consumers(
+        self: &Arc<Self>,
+        kafka_brokers: &str,
+    ) -> Result<()> {
+        info!("Starting Kafka consumers...");
+
+        let mut manager = KafkaConsumerManager::new();
+        manager.start_all(
+            kafka_brokers,
+            self.db_pool.clone(),
+            self.staleness_engine.clone(),
+        )?;
+
+        *self.kafka_manager.write().await = Some(manager);
+
+        info!("Kafka consumers started successfully");
+        Ok(())
+    }
+
+    /// Shutdown Kafka consumers gracefully
+    pub async fn shutdown_kafka_consumers(&self) {
+        if let Some(manager) = self.kafka_manager.write().await.take() {
+            info!("Shutting down Kafka consumers...");
+            manager.shutdown().await;
+            info!("Kafka consumers shut down");
+        }
+    }
+
+    /// Get Kafka metrics
+    pub fn kafka_metrics(&self) -> Arc<KafkaMetricsRegistry> {
+        self.kafka_metrics.clone()
+    }
+
+    /// Get Kafka health summary
+    pub async fn kafka_health(&self) -> crate::kafka::metrics::KafkaHealthSummary {
+        self.kafka_metrics.health_summary().await
     }
 
     /// HOT-RELOAD: Reload all scenarios from database without restart

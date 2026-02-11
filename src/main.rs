@@ -18,6 +18,11 @@ mod config;
 mod pipeline;
 mod middlewares;
 
+use engine::BongasEngine;
+use analytics::ClickHouseClient;
+use config::settings::Settings;
+use middlewares::metrics::MetricsCollector;
+
 #[tokio::main]
 async fn main() -> Result<()> {
     // Initialize logging
@@ -31,22 +36,60 @@ async fn main() -> Result<()> {
 
     info!("Starting BONGAS-AI v{}", env!("CARGO_PKG_VERSION"));
 
-    // TODO: Phase 1+ initialization will go here
-    // For now, create a basic server setup
+    // Load configuration
+    let settings = Settings::load()?;
+    info!("Configuration loaded");
 
-    // Create a basic BongasEngine instance (this will need proper initialization)
-    // let engine = Arc::new(BongasEngine::new(/* proper initialization */).await?);
+    // Initialize database pool
+    let db_pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(settings.database.max_connections)
+        .connect(&settings.database.url)
+        .await?;
+
+    info!("Database connection established");
+
+    // Initialize ClickHouse client
+    let clickhouse = ClickHouseClient::new(&settings.clickhouse);
+    info!("ClickHouse client initialized");
+
+    // Create Redis client for API layer
+    let redis_client = Arc::new(
+        redis::Client::open(settings.redis.url.as_str())?
+    );
+
+    // Create metrics collector
+    let metrics_collector = Arc::new(MetricsCollector::new());
+
+    // Create BongasEngine
+    let engine = BongasEngine::new(db_pool, clickhouse, &settings.redis.url).await?;
+
+    // Load scenarios from database
+    let scenario_count = engine.reload_scenarios().await?;
+    info!(scenarios = scenario_count, "Scenarios loaded");
+
+    // Start Kafka consumers
+    if std::env::var("KAFKA_ENABLED").unwrap_or_else(|_| "true".to_string()) == "true" {
+        engine.start_kafka_consumers(&settings.kafka.brokers).await?;
+    }
 
     // Create API router
-    // let app = api::create_router(engine);
+    let app = api::create_router(engine.clone(), redis_client, metrics_collector);
 
     // Start server
-    // let listener = TcpListener::bind("0.0.0.0:8080").await?;
-    // info!("Server listening on {}", listener.local_addr()?);
+    let addr = format!("{}:{}", settings.server.host, settings.server.port);
+    let listener: TcpListener = TcpListener::bind(&addr).await?;
+    let local_addr = listener.local_addr()?;
+    info!("Server listening on {}", local_addr);
 
-    // axum::serve(listener, app).await?;
+    // Graceful shutdown handling
+    let engine_shutdown = engine.clone();
+    tokio::spawn(async move {
+        tokio::signal::ctrl_c().await.expect("Failed to listen for ctrl+c");
+        info!("Shutdown signal received, cleaning up...");
+        engine_shutdown.shutdown_kafka_consumers().await;
+    });
 
-    info!("API server setup complete (placeholder)");
+    axum::serve(listener, app).await?;
 
     Ok(())
 }
