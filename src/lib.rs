@@ -10,3 +10,4 @@ pub mod analytics;
 pub mod security;
 pub mod config;
 pub mod pipeline;
+pub mod middlewares;

@@ -16,6 +16,7 @@ mod analytics;
 mod security;
 mod config;
 mod pipeline;
+mod middlewares;
 
 #[tokio::main]
 async fn main() -> Result<()> {

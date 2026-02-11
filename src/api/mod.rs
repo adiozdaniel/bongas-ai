@@ -1,17 +1,27 @@
 pub mod v1;
-pub mod middleware;
 pub mod error;
 pub mod models;
 
 use axum::{
     routing::{get, post, put, delete},
     Router,
+    middleware::from_fn,
 };
 use std::sync::Arc;
-use tower_http::cors::CorsLayer;
+use tower_http::{cors::CorsLayer, trace::TraceLayer, compression::CompressionLayer};
+use tower_http::compression::CompressionLevel;
 use crate::engine::BongasEngine;
+use crate::middlewares::{
+    logging::logging_middleware,
+    error_handling::error_handling_middleware,
+    metrics::MetricsCollector,
+};
 
-pub fn create_router(engine: Arc<BongasEngine>) -> Router {
+pub fn create_router(
+    engine: Arc<BongasEngine>,
+    redis: Arc<redis::Client>,
+    metrics_collector: Arc<MetricsCollector>,
+) -> Router {
     Router::new()
         // ========== EXISTING V1 ENDPOINTS (PRESERVED) ==========
 
@@ -120,5 +130,22 @@ pub fn create_router(engine: Arc<BongasEngine>) -> Router {
 
         // Inject shared state
         .layer(axum::Extension(engine))
+        .layer(axum::Extension(redis))
+        .layer(axum::Extension(metrics_collector))
+
+        // ========== MIDDLEWARE STACK (applied in reverse order) ==========
+        // 1. Error handling (outermost)
+        .layer(from_fn(error_handling_middleware))
+        
+        // 2. Request logging with correlation IDs
+        .layer(from_fn(logging_middleware))
+        
+        // 3. Response compression (Gzip)
+        .layer(CompressionLayer::new().gzip(true).quality(CompressionLevel::Fastest))
+        
+        // 4. CORS (already configured)
         .layer(CorsLayer::permissive())
+        
+        // 5. Request tracing
+        .layer(TraceLayer::new_for_http())
 }
