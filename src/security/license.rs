@@ -13,7 +13,7 @@ pub struct LicenseValidator {
 #[derive(Debug, Deserialize)]
 struct LicenseResponse {
     valid: bool,
-    #[allow(dead_code)]
+    
     expires_at: Option<DateTime<Utc>>,
     revoked: bool,
     message: Option<String>,

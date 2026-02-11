@@ -8,10 +8,10 @@ use tracing::info;
 
 #[derive(Deserialize)]
 struct Params {
-    #[allow(dead_code)]
+    
     model_name: Option<String>,
     top_k: usize,
-    #[allow(dead_code)]
+    
     use_onnx: Option<bool>,
 }
 

@@ -10,7 +10,7 @@ use tracing::info;
 struct Params {
     sequence_length: usize,
     top_k: usize,
-    #[allow(dead_code)]
+    
     use_onnx: Option<bool>,
 }
 
