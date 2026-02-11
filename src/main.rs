@@ -61,7 +61,8 @@ async fn main() -> Result<()> {
     let metrics_collector = Arc::new(MetricsCollector::new());
 
     // Create BongasEngine
-    let engine = BongasEngine::new(db_pool, clickhouse, &settings.redis.url).await?;
+    let model_dir = settings.ml.model_path.to_str().unwrap_or("models/onnx");
+    let engine = BongasEngine::new(db_pool, clickhouse, &settings.redis.url, model_dir).await?;
 
     // Load scenarios from database
     let scenario_count = engine.reload_scenarios().await?;

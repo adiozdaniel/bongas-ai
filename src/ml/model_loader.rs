@@ -86,8 +86,17 @@ impl ModelLoader {
         Ok(engine)
     }
 
-    /// Get a loaded model by name and version
+    /// Get a loaded model by name (latest deployed version)
+    /// This is the primary method used by pipeline stages
     pub async fn get_model(
+        &self,
+        model_name: &str,
+    ) -> Result<Arc<RwLock<OnnxInferenceEngine>>> {
+        self.get_latest_model(model_name).await
+    }
+
+    /// Get a loaded model by name and specific version
+    pub async fn get_model_version(
         &self,
         model_name: &str,
         version: &str,

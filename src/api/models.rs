@@ -126,3 +126,14 @@ pub struct KafkaHealthResponse {
     pub total_lag: u64,
     pub global_success_rate: f64,
 }
+
+#[derive(Debug, Serialize)]
+pub struct ModelReloadResponse {
+    pub model_count: usize,
+    pub message: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ModelStatsResponse {
+    pub loaded_models: usize,
+}

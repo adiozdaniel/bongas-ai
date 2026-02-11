@@ -9,7 +9,7 @@ use tracing::{info, error};
 use crate::engine::BongasEngine;
 use crate::api::models::{
     ApiResponse, CacheStatsResponse, InvalidateCacheRequest, HealthResponse,
-    KafkaMetricsResponse, KafkaHealthResponse,
+    KafkaMetricsResponse, KafkaHealthResponse, ModelReloadResponse, ModelStatsResponse,
 };
 use crate::api::error::ApiError;
 use crate::api::error::ApiResult;
@@ -108,4 +108,40 @@ pub async fn get_kafka_health(
     );
 
     Ok(Json(ApiResponse::success(response)))
+}
+
+/// POST /api/v1/admin/models/reload
+/// Hot-reload all ONNX models without server restart
+pub async fn reload_models(
+    Extension(engine): Extension<Arc<BongasEngine>>,
+) -> ApiResult<Json<ApiResponse<ModelReloadResponse>>> {
+    info!("ONNX model hot-reload requested");
+
+    match engine.reload_models().await {
+        Ok(count) => {
+            info!(model_count = count, "ONNX models reloaded successfully");
+            Ok(Json(ApiResponse::success(ModelReloadResponse {
+                model_count: count,
+                message: format!("Successfully reloaded {} ONNX models", count),
+            })))
+        }
+        Err(e) => {
+            error!(error = %e, "Failed to reload ONNX models");
+            Err(ApiError::Internal(format!("Failed to reload models: {}", e)))
+        }
+    }
+}
+
+/// GET /api/v1/admin/models/stats
+/// Get statistics about loaded ONNX models
+pub async fn get_model_stats(
+    Extension(engine): Extension<Arc<BongasEngine>>,
+) -> ApiResult<Json<ApiResponse<ModelStatsResponse>>> {
+    let count = engine.model_count().await;
+
+    info!(loaded_models = count, "Model stats retrieved");
+
+    Ok(Json(ApiResponse::success(ModelStatsResponse {
+        loaded_models: count,
+    })))
 }

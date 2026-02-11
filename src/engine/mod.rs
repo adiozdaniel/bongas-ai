@@ -21,6 +21,8 @@ use crate::cache::redis::RedisClient;
 use crate::cache::warming::CacheWarmer;
 use crate::kafka::manager::KafkaConsumerManager;
 use crate::kafka::metrics::KafkaMetricsRegistry;
+use crate::ml::model_loader::ModelLoader;
+use crate::db::repositories::model_repository::ModelRepository;
 
 use self::staging_manager::StagingManager;
 use self::staleness_engine::{StalenessEngine, UserEvent};
@@ -38,6 +40,9 @@ pub struct BongasEngine {
     // Caching & staging
     staging_manager: Arc<StagingManager>,
     staleness_engine: Arc<StalenessEngine>,
+
+    // ML Model Management
+    model_loader: Arc<ModelLoader>,
 
     // Kafka
     kafka_manager: Arc<RwLock<Option<KafkaConsumerManager>>>,
@@ -64,12 +69,21 @@ impl BongasEngine {
         db_pool: PgPool,
         clickhouse: ClickHouseClient,
         redis_url: &str,
+        model_dir: &str,
     ) -> Result<Arc<Self>> {
         info!("Initializing BongasEngine...");
 
         let db_pool = Arc::new(db_pool);
         let clickhouse = Arc::new(clickhouse);
         let redis = Arc::new(RedisClient::new(redis_url).await?);
+
+        // Create model repository and loader
+        let model_repo = Arc::new(ModelRepository::new(db_pool.as_ref().clone()));
+        let model_loader = Arc::new(ModelLoader::new(model_dir, model_repo.clone()));
+
+        // Load all deployed ONNX models
+        let model_count = model_loader.load_all_models().await?;
+        info!(model_count = model_count, "ONNX models loaded");
 
         // Create staging manager (owns its own Redis connection)
         let staging_manager = Arc::new(
@@ -99,6 +113,7 @@ impl BongasEngine {
             pipeline_executor,
             staging_manager,
             staleness_engine,
+            model_loader,
             kafka_manager: Arc::new(RwLock::new(None)),
             kafka_metrics,
             db_pool,
@@ -214,19 +229,26 @@ impl BongasEngine {
         }
 
         // Execute pipeline
-        let context = ExecutionContext {
+        let context = ExecutionContext::new(
             user_id,
-            device_type: context_params.get("device_type")
+            self.db_pool.clone(),
+            self.clickhouse.clone(),
+            self.redis.clone(),
+            self.model_loader.clone(),
+            request_id.clone(),
+        )
+        .with_device_type(
+            context_params.get("device_type")
                 .and_then(|v| v.as_str())
-                .map(|s| s.to_string()),
-            location: context_params.get("location")
+                .map(|s| s.to_string())
+                .unwrap_or_default()
+        )
+        .with_location(
+            context_params.get("location")
                 .and_then(|v| v.as_str())
-                .map(|s| s.to_string()),
-            db_pool: self.db_pool.clone(),
-            clickhouse: self.clickhouse.clone(),
-            redis: self.redis.clone(),
-            request_id: request_id.clone(),
-        };
+                .map(|s| s.to_string())
+                .unwrap_or_default()
+        );
 
         let scored_items = self.pipeline_executor
             .execute(&scenario.pipeline, &context)
@@ -297,19 +319,27 @@ impl BongasEngine {
         }
 
         // Execute pipeline
-        let context = ExecutionContext {
+        let request_id = uuid::Uuid::new_v4().to_string();
+        let context = ExecutionContext::new(
             user_id,
-            device_type: context_params.get("device_type")
+            self.db_pool.clone(),
+            self.clickhouse.clone(),
+            self.redis.clone(),
+            self.model_loader.clone(),
+            request_id,
+        )
+        .with_device_type(
+            context_params.get("device_type")
                 .and_then(|v| v.as_str())
-                .map(|s| s.to_string()),
-            location: context_params.get("location")
+                .map(|s| s.to_string())
+                .unwrap_or_default()
+        )
+        .with_location(
+            context_params.get("location")
                 .and_then(|v| v.as_str())
-                .map(|s| s.to_string()),
-            db_pool: self.db_pool.clone(),
-            clickhouse: self.clickhouse.clone(),
-            redis: self.redis.clone(),
-            request_id: uuid::Uuid::new_v4().to_string(),
-        };
+                .map(|s| s.to_string())
+                .unwrap_or_default()
+        );
 
         let scored_items = self.pipeline_executor
             .execute(&scenario.pipeline, &context)
@@ -352,6 +382,24 @@ impl BongasEngine {
     /// Get ClickHouse client reference
     pub fn clickhouse_client(&self) -> Arc<ClickHouseClient> {
         self.clickhouse.clone()
+    }
+
+    /// Get model loader reference
+    pub fn model_loader(&self) -> Arc<ModelLoader> {
+        self.model_loader.clone()
+    }
+
+    /// Reload all ONNX models (hot-reload)
+    pub async fn reload_models(&self) -> Result<usize> {
+        info!("Hot-reloading ONNX models...");
+        let count = self.model_loader.reload_all().await?;
+        info!(model_count = count, "ONNX models hot-reloaded");
+        Ok(count)
+    }
+
+    /// Get count of loaded ONNX models
+    pub async fn model_count(&self) -> usize {
+        self.model_loader.loaded_count().await
     }
 
     /// Get scenario count

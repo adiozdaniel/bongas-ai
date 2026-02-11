@@ -148,6 +148,18 @@ pub fn create_router(
             get(v1::handlers::admin::get_kafka_health),
         )
 
+        // ONNX model hot-reload
+        .route(
+            "/api/v1/admin/models/reload",
+            post(v1::handlers::admin::reload_models),
+        )
+
+        // ONNX model stats
+        .route(
+            "/api/v1/admin/models/stats",
+            get(v1::handlers::admin::get_model_stats),
+        )
+
         // Health check
         .route("/health", get(v1::handlers::admin::health_check))
 

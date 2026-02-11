@@ -43,7 +43,7 @@ impl InferenceService {
         );
 
         // Get model
-        let engine = self.model_loader.get_model(model_name, version).await?;
+        let engine = self.model_loader.get_model_version(model_name, version).await?;
 
         // Prepare user features (replicate for batch)
         let batch_size = candidate_items.len();
