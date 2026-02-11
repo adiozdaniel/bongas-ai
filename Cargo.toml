@@ -69,6 +69,11 @@ uuid = { version = "1", features = ["v4", "serde"] }
 # HTTP Client (for Spring Cloud Config)
 reqwest = { version = "0.12", features = ["json", "rustls-tls"] }
 
+# Additional dependencies for middleware
+bytes = "1.0"
+hyper = "1.0"
+httpdate = "1.0"
+
 [dev-dependencies]
 mockall = "0.13"
 tokio-test = "0.4"

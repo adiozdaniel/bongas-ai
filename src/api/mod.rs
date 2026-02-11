@@ -6,6 +6,10 @@ use axum::{
     routing::{get, post, put, delete},
     Router,
     middleware::from_fn,
+    extract::Request,
+    body::Body,
+    middleware::Next,
+    response::Response,
 };
 use std::sync::Arc;
 use tower_http::{cors::CorsLayer, trace::TraceLayer, compression::CompressionLayer};
@@ -15,6 +19,9 @@ use crate::middlewares::{
     logging::logging_middleware,
     error_handling::error_handling_middleware,
     metrics::MetricsCollector,
+    cors::{create_dev_cors_layer, create_prod_cors_layer},
+    compression::{CompressionConfig, ContentAwareCompression, SmartCompression, CompressionMetrics},
+    response_cache::ResponseCacheMiddleware,
 };
 
 pub fn create_router(
@@ -152,12 +159,29 @@ pub fn create_router(
         // 2. Request logging with correlation IDs
         .layer(from_fn(logging_middleware))
         
-        // 3. Response compression (Gzip)
-        .layer(CompressionLayer::new().gzip(true).quality(CompressionLevel::Fastest))
+        // 3. Response compression (Enhanced)
+        .layer(CompressionConfig::new()
+            .min_size(1024)
+            .enable_gzip(true)
+            .enable_brotli(true)
+            .enable_deflate(false)
+            .build())
         
-        // 4. CORS (already configured)
-        .layer(CorsLayer::permissive())
+        // 4. Response body caching
+        .layer(from_fn(|req: Request<Body>, next: Next| async {
+            let redis = req.extensions().get::<Arc<redis::Client>>().unwrap();
+            let cache = ResponseCacheMiddleware::new(redis.clone(), 300); // 5 minutes TTL
+            cache.layer(req, next).await.unwrap_or_else(|e| {
+                Response::builder()
+                    .status(e)
+                    .body(Body::empty())
+                    .unwrap()
+            })
+        }))
         
-        // 5. Request tracing
+        // 5. CORS (Enhanced - Development)
+        .layer(create_dev_cors_layer())
+        
+        // 6. Request tracing
         .layer(TraceLayer::new_for_http())
 }
