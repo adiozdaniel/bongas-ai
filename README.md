@@ -1,319 +1,156 @@
-# Recommendation System Implementation Documentation
+# BONGAS-AI
 
-This repository contains comprehensive documentation for implementing a modern, production-ready recommendation system. The documentation is organized into architectural decision records (ADRs), implementation phases, and a detailed implementation guide.
+High-performance recommendation system serving infrastructure built in Rust.
 
-## 📋 Table of Contents
+## 🚀 Features
 
-- [📋 Table of Contents](#-table-of-contents)
-- [🏗️ Architecture Overview](#️-architecture-overview)
-- [📚 Documentation Structure](#-documentation-structure)
-- [🚀 Quick Start](#-quick-start)
-- [📖 Implementation Phases](#-implementation-phases)
-- [🔧 Development Setup](#-development-setup)
-- [🧪 Testing](#-testing)
-- [📊 Monitoring & Observability](#-monitoring--observability)
-- [🔒 Security](#-security)
-- [📈 Performance](#-performance)
-- [🏗️ Production Deployment](#️-production-deployment)
-- [🤝 Contributing](#-contributing)
-- [📄 License](#-license)
-- [📖 Detailed Guides](#-detailed-guides)
+- **Ultra-fast serving**: Sub-100ms response times with async Rust
+- **ONNX inference**: Native ONNX Runtime integration for ML models
+- **Multi-algorithm support**: Collaborative filtering, content-based, hybrid approaches
+- **Real-time recommendations**: Dynamic scenario-based recommendation pipelines
+- **A/B testing**: Built-in experimentation framework with bandit algorithms
+- **Production ready**: Comprehensive monitoring, caching, and security
 
-## 📖 Detailed Guides
+## 📦 Installation
 
-| Guide                                             | Description                                                  |
-| ------------------------------------------------- | ------------------------------------------------------------ |
-| [Architecture](docs/guides/architecture.md)       | System diagram, core components, data flow, technology stack |
-| [Scenarios](docs/guides/scenarios.md)             | JSONB pipeline system, stage catalog, hot-reload, CRUD       |
-| [ML Integration](docs/guides/ml_integration.md)   | Training workflow, ONNX inference, feature store, bandits    |
-| [ONNX Deployment](docs/guides/onnx_deployment.md) | Model lifecycle: train, export, validate, deploy, serve      |
-| [API Reference](docs/guides/api_reference.md)     | All REST endpoints with request/response examples            |
+### Prerequisites
 
-## 🏗️ Architecture Overview
+- Rust 1.70+
+- PostgreSQL 14+
+- Redis 7+
+- Docker 20+ (for development)
 
-The recommendation system follows a modern microservices architecture with the following key components:
+### Build from Source
 
-### Core Architecture
+```bash
+# Clone the repository
+git clone <repository-url>
+cd bongas-ai
 
-- **Rust Backend**: High-performance API service with async capabilities
-- **Python ML Service**: Machine learning models and algorithms
-- **PostgreSQL**: Primary database for user data and interactions
-- **Redis**: Caching layer for performance optimization
-- **Kubernetes**: Container orchestration for scalability
-- **Frontend**: React-based user interface
+# Install dependencies
+cargo install cargo-audit cargo-deny
 
-### Key Features
+# Build the project
+cargo build --release
 
-- **Multi-algorithm Support**: Collaborative filtering, content-based, hybrid approaches
-- **Real-time Recommendations**: Sub-100ms response times
-- **A/B Testing**: Built-in experimentation framework
-- **Scalable Architecture**: Horizontal scaling capabilities
-- **Production Ready**: Comprehensive monitoring and observability
+# Run migrations
+cargo run --bin migrate
 
-## 📚 Documentation Structure
-
----
-
-BONGAS 3.0 - Complete New Project Structure
-
-```text
-bongas-ai/ # ← NEW standalone project
-├── Cargo.toml
-├── Cargo.lock
-├── README.md
-├── .env.example
-├── Dockerfile
-│
-├── migrations/ # PostgreSQL migrations
-│ ├── 001_init_schema.sql
-│ ├── 002_scenario_configs.sql
-│ ├── 003_seed_scenarios.sql
-│ ├── 004_feature_store.sql
-│ ├── 005_staging_cache.sql
-│ └── 006_experiments.sql
-│
-├── config/ # Configuration files
-│ ├── default.toml
-│ └── scenarios.example.json
-│
-├── models/ # ✅ ONNX model files (production)
-│ ├── two_tower_v1.onnx
-│ ├── bert4rec_v1.onnx
-│ ├── ncf_v1.onnx
-│ ├── din_v1.onnx
-│ └── README.md # Model versioning info
-│
-├── src/
-│ ├── main.rs # Application entry point
-│ ├── lib.rs
-│ │
-│ ├── api/ # ✅ API v1 endpoints
-│ │ ├── mod.rs
-│ │ ├── v1/
-│ │ │ ├── mod.rs
-│ │ │ ├── recommendations.rs # Dynamic recommendation endpoints
-│ │ │ ├── scenarios.rs # Scenario CRUD endpoints
-│ │ │ ├── experiments.rs # A/B testing endpoints
-│ │ │ ├── features.rs # Feature store endpoints
-│ │ │ └── analytics.rs # Real-time analytics
-│ │ ├── middleware.rs
-│ │ └── error.rs
-│ │
-│ ├── bongas/ # Core BONGAS engine
-│ │ ├── mod.rs
-│ │ ├── engine.rs # Main orchestrator
-│ │ ├── staging_manager.rs # L2 cache layer
-│ │ ├── staleness_engine.rs # Behavior-aware invalidation
-│ │ ├── context.rs # Request context types
-│ │ └── config.rs # BONGAS configuration
-│ │
-│ ├── scenarios/ # Scenario system
-│ │ ├── mod.rs
-│ │ ├── traits.rs # ScenarioStrategy trait
-│ │ ├── factory.rs # Creates scenarios from DB
-│ │ ├── loader.rs # Hot-reload from database
-│ │ │
-│ │ └── dynamic/ # Data-driven scenarios
-│ │ ├── mod.rs
-│ │ ├── pipeline_executor.rs # Executes JSONB pipelines
-│ │ ├── stages/ # Composable pipeline stages
-│ │ │ ├── mod.rs
-│ │ │ ├── collaborative_filtering.rs
-│ │ │ ├── content_based.rs
-│ │ │ ├── hybrid.rs
-│ │ │ ├── filters.rs # Genre, age, etc.
-│ │ │ ├── boosters.rs # Trending, new content
-│ │ │ ├── diversifiers.rs # Diversity, serendipity
-│ │ │ └── onnx_stages.rs # ✅ ONNX inference stages
-│ │ └── dynamic_scenario.rs # Dynamic scenario impl
-│ │
-│ ├── ml/ # ✅ ML infrastructure (ONNX-based)
-│ │ ├── mod.rs
-│ │ ├── onnx_runtime.rs # ONNX Runtime wrapper
-│ │ ├── model_loader.rs # Load .onnx files
-│ │ ├── inference.rs # Batch/online inference
-│ │ ├── preprocessing.rs # Feature preprocessing (Rust-native)
-│ │ ├── postprocessing.rs # Score normalization, ranking
-│ │ ├── feature_store.rs # Centralized features
-│ │ ├── model_registry.rs # Versioned model storage
-│ │ ├── embeddings.rs # User/item embeddings
-│ │ ├── online_learning.rs # Real-time model updates
-│ │ └── worker_queue.rs # Background ML tasks
-│ │
-│ ├── experiments/ # Experimentation framework
-│ │ ├── mod.rs
-│ │ ├── manager.rs # Experiment orchestration
-│ │ ├── bandits/ # ✅ Native Rust implementation
-│ │ │ ├── mod.rs
-│ │ │ ├── thompson_sampling.rs # Bayesian bandits
-│ │ │ ├── ucb.rs # Upper Confidence Bound
-│ │ │ ├── linucb.rs # Contextual bandits
-│ │ │ └── epsilon_greedy.rs # Simple ε-greedy
-│ │ └── ab_testing.rs # A/B/n testing
-│ │
-│ ├── db/ # Database layer
-│ │ ├── mod.rs
-│ │ ├── repositories/
-│ │ │ ├── mod.rs
-│ │ │ ├── scenario_repository.rs
-│ │ │ ├── feature_repository.rs
-│ │ │ ├── configuration_repository.rs
-│ │ │ ├── user_repository.rs # User-device tracking
-│ │ │ ├── interaction_repository.rs
-│ │ │ └── experiment_repository.rs
-│ │ └── models.rs
-│ │
-│ ├── cache/ # Caching infrastructure
-│ │ ├── mod.rs
-│ │ ├── redis.rs # L1 cache
-│ │ ├── postgres_cache.rs # L2 cache
-│ │ └── strategies.rs # Eviction policies
-│ │
-│ ├── kafka/ # Event consumers
-│ │ ├── mod.rs
-│ │ ├── profile_consumer.rs
-│ │ ├── reaction_consumer.rs
-│ │ ├── notification_consumer.rs
-│ │ ├── playback_consumer.rs
-│ │ └── metrics.rs
-│ │
-│ ├── analytics/ # Real-time analytics
-│ │ ├── mod.rs
-│ │ ├── clickhouse.rs # ClickHouse integration
-│ │ └── metrics.rs # Prometheus metrics
-│ │
-│ ├── security/ # Security layer (8-layer)
-│ │ ├── mod.rs
-│ │ ├── license.rs
-│ │ ├── binary.rs # Binary Integrity
-│ │ ├── manager.rs # Orchestrator
-│ │ ├── anti_debug.rs # Debugging Detector
-│ │ ├── validator.rs # Server-side validation
-│ │ └── hardware.rs # Hardware fingerprinting
-│ │
-│ └── config/ # Configuration management
-│ ├── mod.rs
-│ ├── settings.rs
-│ ├── kafka.rs
-│ └── spring_cloud.rs
-│
-├── python/ # ✅ Training code (NOT SHIPPED)
-│ ├── setup.py
-│ ├── pyproject.toml
-│ ├── requirements.txt
-│ ├── README.md
-│ │
-│ └── bongas_ml/ # Python ML package (dev only)
-│ ├── **init**.py
-│ ├── **main**.py
-│ │
-│ ├── models/ # ML model definitions
-│ │ ├── **init**.py
-│ │ ├── base.py # Base model interface
-│ │ ├── two_tower.py # Two-Tower model
-│ │ ├── bert4rec.py # BERT4Rec transformer
-│ │ ├── ncf.py # Neural Collaborative Filtering
-│ │ ├── din.py # Deep Interest Network
-│ │ ├── wide_and_deep.py # Wide & Deep
-│ │ └── autoint.py # AutoInt (feature interactions)
-│ │
-│ ├── training/ # Training pipeline
-│ │ ├── **init**.py
-│ │ ├── trainer.py # Training orchestration
-│ │ ├── datasets.py # PyTorch datasets
-│ │ ├── losses.py # Custom loss functions
-│ │ └── callbacks.py # Training callbacks
-│ │
-│ ├── export/ # ✅ ONNX export utilities
-│ │ ├── **init**.py
-│ │ ├── onnx_exporter.py # PyTorch → ONNX
-│ │ ├── validate.py # Validate ONNX matches PyTorch
-│ │ └── optimize.py # ONNX optimization
-│ │
-│ ├── features/ # Feature engineering
-│ │ ├── **init**.py
-│ │ ├── extractors.py # Feature extraction
-│ │ ├── transformers.py # Feature transformation
-│ │ └── embeddings.py # Embedding generation
-│ │
-│ └── utils/ # Utilities
-│ ├── **init**.py
-│ ├── metrics.py # Evaluation metrics
-│ └── logging.py # Python logging
-│
-├── scripts/ # Build & deployment scripts
-│ ├── train_and_export.sh # ✅ Train → Export ONNX
-│ ├── validate_onnx.py # ✅ Validate ONNX models
-│ └── package.sh # Package Rust binary + .onnx
-│
-├── tests/ # Integration tests
-│ ├── api/
-│ ├── scenarios/
-│ ├── ml/
-│ │ ├── onnx_inference_test.rs # ✅ Test ONNX Runtime
-│ │ └── model_accuracy_test.rs # ✅ Compare ONNX vs PyTorch
-│ └── bandits/
-│
-├── benches/ # Benchmarks
-│ ├── pipeline_bench.rs
-│ └── onnx_inference_bench.rs # ✅ ONNX inference benchmarks
-│
-└── docs/ # Documentation
-├── README.md # This file
-└── guides/ # Detailed reference guides
-├── architecture.md # System design & data flow
-├── scenarios.md # JSONB pipeline system
-├── ml_integration.md # ML training & inference
-├── onnx_deployment.md # ONNX model lifecycle
-└── api_reference.md # REST API endpoints
+# Start the server
+cargo run
 ```
 
----
+## 🏗️ Architecture
 
-Key Changes from PyO3 to ONNX
+BONGAS-AI is the Rust-based serving infrastructure that provides:
 
-| Component      | PyO3 Approach              | ONNX Approach                  |
-| -------------- | -------------------------- | ------------------------------ |
-| Python Runtime | Embedded via PyO3 (~200MB) | ❌ Not needed                  |
-| ML Inference   | Python code via FFI        | ✅ ONNX Runtime (C++)          |
-| Model Files    | .so binaries (Cython)      | ✅ .onnx binaries              |
-| Data Transfer  | Apache Arrow (zero-copy)   | ✅ Native tensors (faster)     |
-| GIL Management | Complex release strategies | ✅ No GIL (no Python)          |
-| Training       | Same Python codebase       | ✅ Same, but export step added |
-| Bandits        | Python implementation      | ✅ Native Rust (better)        |
-| Binary Size    | ~450MB (with Python)       | ✅ ~250MB (no Python)          |
-| Performance    | Good (with GIL tricks)     | ✅ Excellent (native)          |
-| IP Protection  | Cython → .so               | ✅ .onnx binary format         |
+- **High-performance API**: Async Rust backend with comprehensive middleware
+- **ONNX model serving**: Native ONNX Runtime for ML inference without Python
+- **Dynamic scenarios**: JSONB-based pipeline system for flexible recommendation logic
+- **Multi-level caching**: L1 (Redis) and L2 (PostgreSQL) caching with smart invalidation
+- **Real-time analytics**: ClickHouse integration for real-time metrics
+- **Security**: 8-layer security system with license validation and anti-debugging
 
----
+### Project Structure
 
-Production Workflow
+```text
+bongas-ai/
+├── src/
+│   ├── api/           # REST API endpoints
+│   ├── bongas/        # Core BONGAS engine
+│   ├── scenarios/     # Dynamic scenario system
+│   ├── ml/           # ONNX-based ML infrastructure
+│   ├── experiments/  # A/B testing & bandits
+│   ├── cache/        # Multi-level caching
+│   ├── kafka/        # Event consumers
+│   ├── analytics/    # Real-time metrics
+│   └── security/     # Security layer
+├── models/           # ONNX model files
+├── config/           # Configuration files
+├── migrations/       # Database migrations
+├── scripts/          # Build & deployment scripts
+└── docs/            # Documentation
+```
 
-┌─────────────────────────────────────────────────────────────────┐
-│ DEVELOPMENT (Python) │
-│ │
-│ 1. Train models in PyTorch (python/bongas_ml/training/) │
-│ 2. Validate accuracy │
-│ 3. Export to ONNX (torch.onnx.export) │
-│ 4. Validate ONNX output matches PyTorch │
-│ 5. Optimize ONNX (onnxruntime.transformers.optimizer) │
-│ │
-└────────────────────────┬─────────────────────────────────────────┘
-│
-▼
-┌─────────────────────────────────────────────────────────────────┐
-│ PRODUCTION (Rust + ONNX) │
-│ │
-│ Single binary contains: │
-│ - Rust application code │
-│ - ONNX Runtime (statically linked) │
-│ │
-│ Shipped separately: │
-│ - models/\*.onnx files │
-│ │
-│ NO Python runtime needed! │
-│ │
-└─────────────────────────────────────────────────────────────────┘
+## 📖 Documentation
+
+- [Architecture](docs/guides/architecture.md) - System design and data flow
+- [Scenarios](docs/guides/scenarios.md) - Dynamic pipeline configuration
+- [ML Integration](docs/guides/ml_integration.md) - ONNX model serving
+- [ONNX Deployment](docs/guides/onnx_deployment.md) - Model lifecycle management
+- [API Reference](docs/guides/api_reference.md) - REST endpoints documentation
+
+## 🧪 Testing
+
+```bash
+# Run all tests
+cargo test
+
+# Run specific test suites
+cargo test --test integration
+
+# Run performance tests
+cargo test --release --features=performance
+```
+
+## 📊 Monitoring
+
+The system includes comprehensive monitoring:
+
+- **Prometheus metrics**: Application and business metrics
+- **Grafana dashboards**: Visualization and alerting
+- **Real-time analytics**: ClickHouse integration
+- **Performance benchmarks**: Built-in benchmarking suite
+
+## 🔒 Security
+
+- JWT-based authentication
+- Role-based access control
+- Input validation and sanitization
+- Rate limiting and DDoS protection
+- 8-layer security system with license validation
+
+## 🚀 Deployment
+
+### Development
+
+```bash
+# Start with Docker Compose
+docker-compose up -d
+
+# Run in development mode
+cargo run
+```
+
+### Production
+
+```bash
+# Build release binary
+cargo build --release
+
+# Package for deployment
+./scripts/package.sh
+
+# Deploy with Kubernetes
+kubectl apply -f k8s/
+```
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature/your-feature`
+3. Make changes and commit: `git commit -m 'Add your feature'`
+4. Push to the branch: `git push origin feature/your-feature`
+5. Create a Pull Request
+
+## 📄 License
+
+MIT License - see [LICENSE](LICENSE) file for details.
+
+## 📞 Support
+
+- [Issues](https://gitlab.com/Bongas_Squad/bongas-ai/issues)
+- [Discussions](https://gitlab.com/Bongas_Squad/bongas-ai/discussions)
 
 ## 🚀 Quick Start
 

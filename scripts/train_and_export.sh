@@ -6,7 +6,7 @@ echo ""
 
 # Step 1: Install dependencies
 echo "[1/6] Installing Python dependencies..."
-cd "$(dirname "$0")/../python"
+cd "$(dirname "$0")/../bongas-ml"
 pip install -r requirements.txt
 pip install onnx onnxruntime
 
