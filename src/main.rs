@@ -73,6 +73,18 @@ async fn main() -> Result<()> {
         engine.start_kafka_consumers(&settings.kafka.brokers).await?;
     }
 
+    // Start cache warming for popular scenarios
+    if std::env::var("CACHE_WARMING_ENABLED").unwrap_or_else(|_| "true".to_string()) == "true" {
+        let warm_scenarios = settings.cache.warm_scenarios.clone().unwrap_or_else(|| vec![
+            "personalized_home".to_string(),
+            "continue_watching".to_string(),
+            "trending_now".to_string(),
+        ]);
+        let warm_interval = settings.cache.warming_interval_minutes.unwrap_or(30);
+        engine.clone().start_cache_warming(warm_scenarios, warm_interval);
+        info!("Cache warming started");
+    }
+
     // Create API router
     let app = api::create_router(engine.clone(), redis_client, metrics_collector);
 

@@ -13,19 +13,17 @@ use axum::{
     http::StatusCode,
 };
 use std::sync::Arc;
-use std::time::Duration;
-use tower_http::{cors::CorsLayer, trace::TraceLayer, compression::CompressionLayer};
-use tower_http::compression::CompressionLevel;
+use tower_http::trace::TraceLayer;
 use serde_json::json;
 use crate::engine::BongasEngine;
 use crate::middlewares::{
     logging::logging_middleware,
     error_handling::error_handling_middleware,
     metrics::MetricsCollector,
-    cors::{create_dev_cors_layer, create_prod_cors_layer},
-    compression::{CompressionConfig, ContentAwareCompression, SmartCompression, CompressionMetrics},
+    cors::create_dev_cors_layer,
+    compression::CompressionConfig,
+    rate_limit::RateLimiter,
     response_cache::ResponseCacheMiddleware,
-    rate_limit::{RateLimiter, RateLimitStatus},
 };
 
 pub fn create_router(
@@ -213,15 +211,20 @@ pub fn create_router(
         .layer(from_fn(logging_middleware))
         
         // 4. Response body caching
-        .layer(from_fn(|req: Request<Body>, next: Next| async {
-            let redis = req.extensions().get::<Arc<redis::Client>>().unwrap();
-            let cache = ResponseCacheMiddleware::new(redis.clone(), 300); // 5 minutes TTL
-            cache.layer(req, next).await.unwrap_or_else(|e| {
-                Response::builder()
-                    .status(e)
-                    .body(Body::empty())
-                    .unwrap()
-            })
+        .layer(from_fn(|req: Request<Body>, next: Next| async move {
+            let redis = req.extensions().get::<Arc<redis::Client>>().cloned();
+            match redis {
+                Some(redis) => {
+                    let cache = ResponseCacheMiddleware::new(redis, 300); // 5 minutes TTL
+                    cache.layer(req, next).await.unwrap_or_else(|e| {
+                        Response::builder()
+                            .status(e)
+                            .body(Body::empty())
+                            .unwrap()
+                    })
+                }
+                None => next.run(req).await
+            }
         }))
         
         // 5. Response compression (Enhanced)

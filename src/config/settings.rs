@@ -11,6 +11,7 @@ pub struct Settings {
     pub kafka: KafkaSettings,
     pub security: SecuritySettings,
     pub ml: MlSettings,
+    pub cache: CacheSettings,
     pub spring_cloud: Option<SpringCloudSettings>,
 }
 
@@ -66,6 +67,14 @@ pub struct MlSettings {
     pub model_path: PathBuf,
     pub batch_size: usize,
     pub device: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct CacheSettings {
+    pub l1_ttl_seconds: u64,
+    pub l2_ttl_seconds: u64,
+    pub warming_interval_minutes: Option<u64>,
+    pub warm_scenarios: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

@@ -4,31 +4,6 @@ use chrono::Utc;
 // ========== REQUEST MODELS ==========
 
 #[derive(Debug, Deserialize)]
-pub struct CreateScenarioRequest {
-    pub slug: String,
-    pub name: String,
-    pub description: String,
-    pub pipeline: serde_json::Value,  // JSONB pipeline definition
-    pub priority: i32,
-    pub enabled: bool,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct UpdateScenarioRequest {
-    pub name: Option<String>,
-    pub description: Option<String>,
-    pub pipeline: Option<serde_json::Value>,
-    pub priority: Option<i32>,
-    pub enabled: Option<bool>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct InvalidateCacheRequest {
-    pub scenario_slug: Option<String>,
-    pub profile_id: Option<i32>,
-}
-
-#[derive(Debug, Deserialize)]
 pub struct PaginationParams {
     pub limit: Option<usize>,
     pub offset: Option<usize>,
@@ -53,15 +28,6 @@ impl<T> ApiResponse<T> {
             timestamp: Utc::now(),
         }
     }
-
-    pub fn error(message: String) -> Self {
-        Self {
-            success: false,
-            data: None,
-            error: Some(message),
-            timestamp: Utc::now(),
-        }
-    }
 }
 
 #[derive(Debug, Serialize)]
@@ -72,18 +38,6 @@ pub struct RecommendationItem {
     pub score: f32,
     pub rank: i32,
     pub metadata: serde_json::Value,
-}
-
-#[derive(Debug, Serialize)]
-pub struct ScenarioResponse {
-    pub slug: String,
-    pub name: String,
-    pub description: String,
-    pub pipeline: serde_json::Value,
-    pub priority: i32,
-    pub enabled: bool,
-    pub created_at: chrono::DateTime<chrono::Utc>,
-    pub updated_at: chrono::DateTime<chrono::Utc>,
 }
 
 #[derive(Debug, Serialize)]
@@ -101,16 +55,6 @@ pub struct HealthResponse {
     pub version: String,
     pub timestamp: chrono::DateTime<chrono::Utc>,
     pub uptime_seconds: u64,
-}
-
-#[derive(Debug, Serialize)]
-pub struct ScenarioExecutionStatsResponse {
-    pub scenario_slug: String,
-    pub uses_onnx_inference: bool,
-    pub pipeline_stage_count: usize,
-    pub onnx_stage_count: usize,
-    pub execution_time_ms: u64,
-    pub cached_result: bool,
 }
 
 #[derive(Debug, Serialize)]

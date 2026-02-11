@@ -18,29 +18,11 @@ pub enum ApiError {
     #[error("ClickHouse error: {0}")]
     ClickHouse(#[from] clickhouse::error::Error),
 
-    #[error("ONNX runtime error: {0}")]
-    Onnx(String),
-
     #[error("Scenario not found: {slug}")]
     ScenarioNotFound { slug: String },
 
-    #[error("Invalid pipeline configuration")]
-    InvalidPipeline,
-
-    #[error("Cache error: {0}")]
-    Cache(String),
-
     #[error("Internal server error: {0}")]
     Internal(String),
-
-    #[error("Bad request: {0}")]
-    BadRequest(String),
-
-    #[error("Unauthorized")]
-    Unauthorized,
-
-    #[error("Forbidden")]
-    Forbidden,
 }
 
 impl IntoResponse for ApiError {
@@ -48,18 +30,6 @@ impl IntoResponse for ApiError {
         let (status, error_message) = match self {
             ApiError::ScenarioNotFound { slug } => {
                 (StatusCode::NOT_FOUND, format!("Scenario '{}' not found", slug))
-            }
-            ApiError::InvalidPipeline => {
-                (StatusCode::BAD_REQUEST, "Invalid pipeline configuration".to_string())
-            }
-            ApiError::BadRequest(msg) => {
-                (StatusCode::BAD_REQUEST, msg)
-            }
-            ApiError::Unauthorized => {
-                (StatusCode::UNAUTHORIZED, "Unauthorized".to_string())
-            }
-            ApiError::Forbidden => {
-                (StatusCode::FORBIDDEN, "Forbidden".to_string())
             }
             ApiError::Database(e) => {
                 error!(error = ?e, "Database error");
@@ -72,14 +42,6 @@ impl IntoResponse for ApiError {
             ApiError::ClickHouse(e) => {
                 error!(error = ?e, "ClickHouse error");
                 (StatusCode::INTERNAL_SERVER_ERROR, "Analytics error".to_string())
-            }
-            ApiError::Onnx(e) => {
-                error!(error = ?e, "ONNX error");
-                (StatusCode::INTERNAL_SERVER_ERROR, "Model inference error".to_string())
-            }
-            ApiError::Cache(msg) => {
-                error!(error = %msg, "Cache error");
-                (StatusCode::INTERNAL_SERVER_ERROR, msg)
             }
             ApiError::Internal(msg) => {
                 error!(error = %msg, "Internal error");
@@ -97,5 +59,4 @@ impl IntoResponse for ApiError {
     }
 }
 
-// Type alias for Result with ApiError
 pub type ApiResult<T> = Result<T, ApiError>;

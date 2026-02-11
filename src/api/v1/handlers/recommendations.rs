@@ -1,11 +1,9 @@
 use axum::{
     extract::{Path, Query, Extension},
-    http::StatusCode,
     Json,
 };
 use std::sync::Arc;
-use serde::Deserialize;
-use tracing::{info, error};
+use tracing::info;
 
 use crate::engine::BongasEngine;
 use crate::api::models::{ApiResponse, RecommendationItem, PaginationParams};

@@ -1,6 +1,5 @@
 use axum::{
     extract::Extension,
-    http::StatusCode,
     Json,
 };
 use std::sync::Arc;
@@ -8,7 +7,7 @@ use tracing::{info, error};
 
 use crate::engine::BongasEngine;
 use crate::api::models::{
-    ApiResponse, CacheStatsResponse, InvalidateCacheRequest, HealthResponse,
+    ApiResponse, CacheStatsResponse, HealthResponse,
     KafkaMetricsResponse, KafkaHealthResponse, ModelReloadResponse, ModelStatsResponse,
 };
 use crate::api::error::ApiError;
@@ -40,26 +39,9 @@ pub async fn get_cache_stats(
     Ok(Json(ApiResponse::success(response)))
 }
 
-/// POST /api/v1/admin/cache/invalidate
-pub async fn invalidate_cache(
-    Extension(engine): Extension<Arc<BongasEngine>>,
-    Json(req): Json<InvalidateCacheRequest>,
-) -> ApiResult<Json<ApiResponse<bool>>> {
-    match (req.scenario_slug, req.profile_id) {
-        (Some(slug), Some(profile_id)) => {
-            // TODO: Implement specific scenario + profile invalidation
-            // For now, return a placeholder error
-            Err(ApiError::Internal("Specific cache invalidation not yet implemented".to_string()))
-        }
-        (None, Some(profile_id)) => {
-            // TODO: Implement all scenarios for profile invalidation
-            // For now, return a placeholder error
-            Err(ApiError::Internal("Profile cache invalidation not yet implemented".to_string()))
-        }
-        _ => {
-            Err(ApiError::BadRequest("Invalid invalidation request".to_string()))
-        }
-    }
+/// POST /api/v1/admin/cache/invalidate - Not implemented yet
+pub async fn invalidate_cache() -> ApiResult<Json<ApiResponse<()>>> {
+    Err(ApiError::Internal("Cache invalidation not yet implemented".to_string()))
 }
 
 /// GET /health
