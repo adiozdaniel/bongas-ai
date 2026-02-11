@@ -1,19 +1,33 @@
 use std::sync::Arc;
+use std::time::Duration;
 use anyhow::Result;
-use sqlx::PgPool;
 use serde_json::Value as JsonValue;
+use sqlx::PgPool;
 
-use crate::cache::redis::RedisClient;
-use crate::db::repositories::cache_repository::CacheRepository;
-use crate::engine::staging_manager::{StagingManager, StagingStats};
-use crate::pipeline::ScoredItem;
+use bongas_ai::cache::redis::RedisClient as BongasRedisClient;
+use bongas_ai::cache::postgres_cache::PostgresCache;
+use bongas_ai::db::repositories::cache_repository::CacheRepository;
+use bongas_ai::engine::staging_manager::{StagingManager, StagingStats};
+use bongas_ai::pipeline::ScoredItem;
+use bongas_ai::common::{
+    TestConfig, setup_test_db, setup_test_redis, setup_test_staging_manager,
+    fixtures::create_test_items, db_helpers::seed_test_data,
+    redis_helpers::clear_redis,
+};
 
 #[tokio::test]
 async fn test_l1_cache_hit() -> Result<()> {
-    let (staging_manager, _db_pool) = setup_staging_manager().await;
+    let config = TestConfig::new();
+    let db_pool = setup_test_db(&config).await?;
+    let redis_client = setup_test_redis(&config).await?;
+    
+    seed_test_data(&db_pool).await?;
+    clear_redis(&redis_client).await?;
+
+    let staging_manager = setup_test_staging_manager(db_pool.clone(), redis_client.clone()).await?;
     let items = create_test_items();
 
-    // Save to L1
+    // Save to L1 (Redis)
     staging_manager.save_cached("test_scenario", Some(123), "test_context", &items, 300).await?;
 
     // Retrieve from L1
@@ -33,13 +47,20 @@ async fn test_l1_cache_hit() -> Result<()> {
 
 #[tokio::test]
 async fn test_l2_cache_fallback() -> Result<()> {
-    let (staging_manager, _db_pool) = setup_staging_manager().await;
+    let config = TestConfig::new();
+    let db_pool = setup_test_db(&config).await?;
+    let redis_client = setup_test_redis(&config).await?;
+    
+    seed_test_data(&db_pool).await?;
+    clear_redis(&redis_client).await?;
+
+    let staging_manager = setup_test_staging_manager(db_pool.clone(), redis_client.clone()).await?;
     let items = create_test_items();
 
-    // Save to L2 only (simulate L1 miss)
+    // Save to L2 (Postgres) only
     staging_manager.save_cached("test_scenario", Some(123), "test_context", &items, 300).await?;
 
-    // L1 miss (should promote to L1)
+    // L1 miss (should promote to L1 from L2)
     let cached = staging_manager.get_cached("test_scenario", Some(123), "test_context").await?;
     assert!(cached.is_some());
     let cached_items = cached.unwrap();
@@ -50,7 +71,14 @@ async fn test_l2_cache_fallback() -> Result<()> {
 
 #[tokio::test]
 async fn test_cache_invalidation() -> Result<()> {
-    let (staging_manager, _db_pool) = setup_staging_manager().await;
+    let config = TestConfig::new();
+    let db_pool = setup_test_db(&config).await?;
+    let redis_client = setup_test_redis(&config).await?;
+    
+    seed_test_data(&db_pool).await?;
+    clear_redis(&redis_client).await?;
+
+    let staging_manager = setup_test_staging_manager(db_pool.clone(), redis_client.clone()).await?;
     let items = create_test_items();
 
     // Save to cache
@@ -72,7 +100,14 @@ async fn test_cache_invalidation() -> Result<()> {
 
 #[tokio::test]
 async fn test_profile_invalidation() -> Result<()> {
-    let (staging_manager, _db_pool) = setup_staging_manager().await;
+    let config = TestConfig::new();
+    let db_pool = setup_test_db(&config).await?;
+    let redis_client = setup_test_redis(&config).await?;
+    
+    seed_test_data(&db_pool).await?;
+    clear_redis(&redis_client).await?;
+
+    let staging_manager = setup_test_staging_manager(db_pool.clone(), redis_client.clone()).await?;
     let items = create_test_items();
 
     // Save to cache for user 123
@@ -99,7 +134,14 @@ async fn test_profile_invalidation() -> Result<()> {
 
 #[tokio::test]
 async fn test_cache_metrics() -> Result<()> {
-    let (staging_manager, _db_pool) = setup_staging_manager().await;
+    let config = TestConfig::new();
+    let db_pool = setup_test_db(&config).await?;
+    let redis_client = setup_test_redis(&config).await?;
+    
+    seed_test_data(&db_pool).await?;
+    clear_redis(&redis_client).await?;
+
+    let staging_manager = setup_test_staging_manager(db_pool.clone(), redis_client.clone()).await?;
     let items = create_test_items();
 
     // Initial stats
@@ -149,7 +191,14 @@ async fn test_context_hashing() -> Result<()> {
 
 #[tokio::test]
 async fn test_anonymous_user_caching() -> Result<()> {
-    let (staging_manager, _db_pool) = setup_staging_manager().await;
+    let config = TestConfig::new();
+    let db_pool = setup_test_db(&config).await?;
+    let redis_client = setup_test_redis(&config).await?;
+    
+    seed_test_data(&db_pool).await?;
+    clear_redis(&redis_client).await?;
+
+    let staging_manager = setup_test_staging_manager(db_pool.clone(), redis_client.clone()).await?;
     let items = create_test_items();
 
     // Save to cache for anonymous user (None)
@@ -166,29 +215,95 @@ async fn test_anonymous_user_caching() -> Result<()> {
     Ok(())
 }
 
-// Helper functions
-async fn setup_staging_manager() -> (StagingManager, PgPool) {
-    // This would need to be implemented with actual test database setup
-    // For now, this is a placeholder
-    unimplemented!("Test database setup not implemented")
+#[tokio::test]
+async fn test_cache_ttl_expiration() -> Result<()> {
+    let config = TestConfig::new();
+    let db_pool = setup_test_db(&config).await?;
+    let redis_client = setup_test_redis(&config).await?;
+    
+    seed_test_data(&db_pool).await?;
+    clear_redis(&redis_client).await?;
+
+    let staging_manager = setup_test_staging_manager(db_pool.clone(), redis_client.clone()).await?;
+    let items = create_test_items();
+
+    // Save with short TTL
+    staging_manager.save_cached("test_scenario", Some(123), "test_context", &items, 1).await?;
+
+    // Should be cached initially
+    let cached = staging_manager.get_cached("test_scenario", Some(123), "test_context").await?;
+    assert!(cached.is_some());
+
+    // Wait for TTL to expire
+    tokio::time::sleep(Duration::from_secs(2)).await;
+
+    // Should be expired
+    let cached = staging_manager.get_cached("test_scenario", Some(123), "test_context").await?;
+    assert!(cached.is_none());
+
+    Ok(())
 }
 
-fn create_test_items() -> Vec<ScoredItem> {
-    vec![
-        ScoredItem {
-            item_id: 1,
-            score: 0.9,
-            metadata: JsonValue::Object(serde_json::Map::new()),
-        },
-        ScoredItem {
-            item_id: 2,
-            score: 0.8,
-            metadata: JsonValue::Object(serde_json::Map::new()),
-        },
-        ScoredItem {
-            item_id: 3,
-            score: 0.7,
-            metadata: JsonValue::Object(serde_json::Map::new()),
-        },
-    ]
+#[tokio::test]
+async fn test_cache_promotion_from_l2_to_l1() -> Result<()> {
+    let config = TestConfig::new();
+    let db_pool = setup_test_db(&config).await?;
+    let redis_client = setup_test_redis(&config).await?;
+    
+    seed_test_data(&db_pool).await?;
+    clear_redis(&redis_client).await?;
+
+    let staging_manager = setup_test_staging_manager(db_pool.clone(), redis_client.clone()).await?;
+    let items = create_test_items();
+
+    // Save only to L2 (Postgres)
+    staging_manager.save_cached("test_scenario", Some(123), "test_context", &items, 300).await?;
+
+    // Clear L1 to simulate miss
+    staging_manager.invalidate("test_scenario", 123).await?;
+
+    // This should promote from L2 to L1
+    let cached = staging_manager.get_cached("test_scenario", Some(123), "test_context").await?;
+    assert!(cached.is_some());
+
+    // Verify it's now in L1
+    let cached = staging_manager.get_cached("test_scenario", Some(123), "test_context").await?;
+    assert!(cached.is_some());
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_cache_scenario_specific() -> Result<()> {
+    let config = TestConfig::new();
+    let db_pool = setup_test_db(&config).await?;
+    let redis_client = setup_test_redis(&config).await?;
+    
+    seed_test_data(&db_pool).await?;
+    clear_redis(&redis_client).await?;
+
+    let staging_manager = setup_test_staging_manager(db_pool.clone(), redis_client.clone()).await?;
+    let items = create_test_items();
+
+    // Save different items for different scenarios
+    let items1 = create_test_items();
+    let items2 = create_test_items().into_iter().map(|mut item| { item.item_id += 100; item }).collect();
+
+    staging_manager.save_cached("scenario1", Some(123), "test_context", &items1, 300).await?;
+    staging_manager.save_cached("scenario2", Some(123), "test_context", &items2, 300).await?;
+
+    // Should retrieve correct items for each scenario
+    let cached1 = staging_manager.get_cached("scenario1", Some(123), "test_context").await?;
+    let cached2 = staging_manager.get_cached("scenario2", Some(123), "test_context").await?;
+
+    assert!(cached1.is_some());
+    assert!(cached2.is_some());
+
+    let cached1_items = cached1.unwrap();
+    let cached2_items = cached2.unwrap();
+
+    assert_eq!(cached1_items[0].item_id, 1); // Original items
+    assert_eq!(cached2_items[0].item_id, 101); // Modified items
+
+    Ok(())
 }
