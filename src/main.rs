@@ -1,4 +1,6 @@
 use anyhow::Result;
+use std::sync::Arc;
+use tokio::net::TcpListener;
 use tracing::info;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -29,6 +31,21 @@ async fn main() -> Result<()> {
     info!("Starting BONGAS-AI v{}", env!("CARGO_PKG_VERSION"));
 
     // TODO: Phase 1+ initialization will go here
+    // For now, create a basic server setup
+
+    // Create a basic BongasEngine instance (this will need proper initialization)
+    // let engine = Arc::new(BongasEngine::new(/* proper initialization */).await?);
+
+    // Create API router
+    // let app = api::create_router(engine);
+
+    // Start server
+    // let listener = TcpListener::bind("0.0.0.0:8080").await?;
+    // info!("Server listening on {}", listener.local_addr()?);
+
+    // axum::serve(listener, app).await?;
+
+    info!("API server setup complete (placeholder)");
 
     Ok(())
 }
