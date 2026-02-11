@@ -10,10 +10,13 @@ use axum::{
     body::Body,
     middleware::Next,
     response::Response,
+    http::StatusCode,
 };
 use std::sync::Arc;
+use std::time::Duration;
 use tower_http::{cors::CorsLayer, trace::TraceLayer, compression::CompressionLayer};
 use tower_http::compression::CompressionLevel;
+use serde_json::json;
 use crate::engine::BongasEngine;
 use crate::middlewares::{
     logging::logging_middleware,
@@ -22,6 +25,7 @@ use crate::middlewares::{
     cors::{create_dev_cors_layer, create_prod_cors_layer},
     compression::{CompressionConfig, ContentAwareCompression, SmartCompression, CompressionMetrics},
     response_cache::ResponseCacheMiddleware,
+    rate_limit::{RateLimiter, RateLimitStatus},
 };
 
 pub fn create_router(
@@ -156,16 +160,45 @@ pub fn create_router(
         // 1. Error handling (outermost)
         .layer(from_fn(error_handling_middleware))
         
-        // 2. Request logging with correlation IDs
-        .layer(from_fn(logging_middleware))
+        // 2. Rate limiting
+        .layer(from_fn(|req: Request<Body>, next: Next| async move {
+            let redis = req.extensions().get::<Arc<redis::Client>>().unwrap();
+            let rate_limiter = RateLimiter::new(redis.clone(), 100, 60);
+            
+            // Extract IP from request
+            let ip = req.headers()
+                .get("X-Forwarded-For")
+                .and_then(|h| h.to_str().ok())
+                .unwrap_or("127.0.0.1");
+            
+            // Check rate limit status
+            match rate_limiter.get_status(ip).await {
+                Ok(status) if status.is_limited => {
+                    Response::builder()
+                        .status(StatusCode::TOO_MANY_REQUESTS)
+                        .header("X-RateLimit-Limit", status.limit.to_string())
+                        .header("X-RateLimit-Remaining", "0")
+                        .header("X-RateLimit-Reset", status.window_seconds.to_string())
+                        .header("Retry-After", status.reset_in_seconds.to_string())
+                        .header("Content-Type", "application/json")
+                        .body(Body::from(json!({
+                            "success": false,
+                            "error": "Rate limit exceeded",
+                            "message": format!("Too many requests. Limit: {} requests per {} seconds", status.limit, status.window_seconds),
+                            "limit": status.limit,
+                            "remaining": 0,
+                            "reset_time": status.reset_in_seconds,
+                            "timestamp": chrono::Utc::now().to_rfc3339(),
+                        }).to_string()))
+                        .unwrap()
+                }
+                Ok(_) => next.run(req).await,
+                Err(_) => next.run(req).await,
+            }
+        }))
         
-        // 3. Response compression (Enhanced)
-        .layer(CompressionConfig::new()
-            .min_size(1024)
-            .enable_gzip(true)
-            .enable_brotli(true)
-            .enable_deflate(false)
-            .build())
+        // 3. Request logging with correlation IDs
+        .layer(from_fn(logging_middleware))
         
         // 4. Response body caching
         .layer(from_fn(|req: Request<Body>, next: Next| async {
@@ -179,9 +212,17 @@ pub fn create_router(
             })
         }))
         
-        // 5. CORS (Enhanced - Development)
+        // 5. Response compression (Enhanced)
+        .layer(CompressionConfig::new()
+            .min_size(1024)
+            .enable_gzip(true)
+            .enable_brotli(true)
+            .enable_deflate(false)
+            .build())
+        
+        // 6. CORS (Enhanced - Development)
         .layer(create_dev_cors_layer())
         
-        // 6. Request tracing
+        // 7. Request tracing
         .layer(TraceLayer::new_for_http())
 }
