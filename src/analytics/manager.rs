@@ -34,6 +34,11 @@ pub struct AnalyticsManager {
     /// ClickHouse query metrics
     clickhouse_queries: CounterVec,
     clickhouse_query_latency: HistogramVec,
+    
+    /// Scenario loading metrics
+    scenario_loads: CounterVec,
+    scenario_load_failures: CounterVec,
+    scenarios_loaded: GaugeVec,
 }
 
 impl AnalyticsManager {
@@ -122,6 +127,21 @@ impl AnalyticsManager {
                 "Time taken for ClickHouse queries",
                 &["query_type"],
                 vec![0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0, 2.0, 5.0, 10.0]
+            )?,
+            scenario_loads: register_counter_vec!(
+                "bongas_scenario_loads_total",
+                "Total number of successful scenario loads",
+                &["scenario_slug", "uses_onnx"]
+            )?,
+            scenario_load_failures: register_counter_vec!(
+                "bongas_scenario_load_failures_total",
+                "Total number of failed scenario loads",
+                &["scenario_slug", "error_type"]
+            )?,
+            scenarios_loaded: register_gauge_vec!(
+                "bongas_scenarios_loaded",
+                "Current number of loaded scenarios",
+                &["uses_onnx"]
             )?,
         })
     }
@@ -223,19 +243,19 @@ impl AnalyticsManager {
     }
 
     // Convenience methods for timing
-    pub fn start_recommendation_timer(&self, scenario: &str) -> RecommendationTimer {
+    pub fn start_recommendation_timer(&self, scenario: &str) -> RecommendationTimer<'_> {
         RecommendationTimer::new(self, scenario)
     }
 
-    pub fn start_model_inference_timer(&self, model_name: &str) -> ModelInferenceTimer {
+    pub fn start_model_inference_timer(&self, model_name: &str) -> ModelInferenceTimer<'_> {
         ModelInferenceTimer::new(self, model_name)
     }
 
-    pub fn start_cache_lookup_timer(&self, cache_type: &str) -> CacheLookupTimer {
+    pub fn start_cache_lookup_timer(&self, cache_type: &str) -> CacheLookupTimer<'_> {
         CacheLookupTimer::new(self, cache_type)
     }
 
-    pub fn start_clickhouse_query_timer(&self, query_type: &str) -> ClickHouseQueryTimer {
+    pub fn start_clickhouse_query_timer(&self, query_type: &str) -> ClickHouseQueryTimer<'_> {
         ClickHouseQueryTimer::new(self, query_type)
     }
 
@@ -355,31 +375,106 @@ pub struct AnalyticsMetricsSummary {
 
 impl AnalyticsManager {
     pub async fn get_summary(&self) -> AnalyticsMetricsSummary {
-        // This would need to be implemented based on actual metric values
-        // For now, returning placeholder values
+        // Get all metrics from Prometheus registry
+        let metric_families = prometheus::gather();
+        
+        let mut total_recommendations = 0u64;
+        let mut successful_recommendations = 0u64;
+        let mut total_latency_sum = 0.0;
+        let mut latency_count = 0u64;
+        let mut cache_hits = 0u64;
+        let mut cache_misses = 0u64;
+        let mut active_models = std::collections::HashSet::new();
+        let mut bandit_algorithms = std::collections::HashSet::new();
+
+        for family in metric_families {
+            for metric in family.get_metric() {
+                match family.get_name() {
+                    "bongas_recommendation_requests_total" => {
+                        total_recommendations += metric.get_counter().get_value() as u64;
+                    }
+                    "bongas_recommendation_successes_total" => {
+                        successful_recommendations += metric.get_counter().get_value() as u64;
+                    }
+                    "bongas_recommendation_latency_seconds_sum" => {
+                        total_latency_sum += metric.get_histogram().get_sample_sum();
+                    }
+                    "bongas_recommendation_latency_seconds_count" => {
+                        latency_count += metric.get_histogram().get_sample_count();
+                    }
+                    "bongas_cache_hits_total" => {
+                        cache_hits += metric.get_counter().get_value() as u64;
+                    }
+                    "bongas_cache_misses_total" => {
+                        cache_misses += metric.get_counter().get_value() as u64;
+                    }
+                    "bongas_model_accuracy" => {
+                        if let Some(model_name) = metric.get_label().iter()
+                            .find(|label| label.get_name() == "model_name") {
+                            active_models.insert(model_name.get_value().to_string());
+                        }
+                    }
+                    "bongas_bandit_selections_total" => {
+                        if let Some(algorithm) = metric.get_label().iter()
+                            .find(|label| label.get_name() == "algorithm") {
+                            bandit_algorithms.insert(algorithm.get_value().to_string());
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        let success_rate = if total_recommendations > 0 {
+            successful_recommendations as f64 / total_recommendations as f64
+        } else {
+            0.0
+        };
+
+        let avg_recommendation_latency = if latency_count > 0 {
+            total_latency_sum / latency_count as f64
+        } else {
+            0.0
+        };
+
+        let cache_hit_rate = if cache_hits + cache_misses > 0 {
+            cache_hits as f64 / (cache_hits + cache_misses) as f64
+        } else {
+            0.0
+        };
+
         AnalyticsMetricsSummary {
-            total_recommendations: 0,
-            success_rate: 0.0,
-            avg_recommendation_latency: 0.0,
-            cache_hit_rate: 0.0,
-            active_models: vec![],
-            bandit_algorithms: vec![],
+            total_recommendations,
+            success_rate,
+            avg_recommendation_latency,
+            cache_hit_rate,
+            active_models: active_models.into_iter().collect(),
+            bandit_algorithms: bandit_algorithms.into_iter().collect(),
         }
     }
 
     /// Track successful scenario loading
     pub async fn track_load_success(&self, scenario_slug: &str, uses_onnx: bool) {
-        // Implementation would track scenario loading metrics
+        self.scenario_loads
+            .with_label_values(&[scenario_slug, if uses_onnx { "true" } else { "false" }])
+            .inc();
     }
 
     /// Track failed scenario loading
     pub async fn track_load_failure(&self, scenario_slug: &str, error: &str) {
-        // Implementation would track scenario loading failures
+        self.scenario_load_failures
+            .with_label_values(&[scenario_slug, error])
+            .inc();
     }
 
     /// Track factory summary metrics
     pub async fn track_factory_summary(&self, total_scenarios: usize, onnx_count: usize) {
-        // Implementation would track aggregate factory metrics
+        self.scenarios_loaded
+            .with_label_values(&["false"])
+            .set((total_scenarios - onnx_count) as f64);
+        self.scenarios_loaded
+            .with_label_values(&["true"])
+            .set(onnx_count as f64);
     }
 }
 
@@ -388,33 +483,4 @@ lazy_static::lazy_static! {
     pub static ref ANALYTICS_MANAGER: Arc<AnalyticsManager> = {
         Arc::new(AnalyticsManager::new().expect("Failed to create analytics manager"))
     };
-}
-
-// Convenience functions for common operations
-pub fn record_recommendation_request(scenario: &str, user_type: &str) {
-    ANALYTICS_MANAGER.record_recommendation_request(scenario, user_type);
-}
-
-pub fn record_recommendation_success(scenario: &str, user_type: &str) {
-    ANALYTICS_MANAGER.record_recommendation_success(scenario, user_type);
-}
-
-pub fn record_recommendation_failure(scenario: &str, error_type: &str) {
-    ANALYTICS_MANAGER.record_recommendation_failure(scenario, error_type);
-}
-
-pub fn start_recommendation_timer(scenario: &str) -> RecommendationTimer<'static> {
-    ANALYTICS_MANAGER.start_recommendation_timer(scenario)
-}
-
-pub fn start_model_inference_timer(model_name: &str) -> ModelInferenceTimer<'static> {
-    ANALYTICS_MANAGER.start_model_inference_timer(model_name)
-}
-
-pub fn start_cache_lookup_timer(cache_type: &str) -> CacheLookupTimer<'static> {
-    ANALYTICS_MANAGER.start_cache_lookup_timer(cache_type)
-}
-
-pub fn start_clickhouse_query_timer(query_type: &str) -> ClickHouseQueryTimer<'static> {
-    ANALYTICS_MANAGER.start_clickhouse_query_timer(query_type)
 }

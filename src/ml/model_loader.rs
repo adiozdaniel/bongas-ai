@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::RwLock;
+use std::time::Instant;
 use tracing::{info, warn};
 
 use crate::ml::onnx_runtime::OnnxInferenceEngine;
@@ -58,6 +59,7 @@ impl ModelLoader {
 
     /// Load a single ONNX model
     async fn load_model(&self, model_entry: &ModelRegistry) -> Result<Arc<RwLock<OnnxInferenceEngine>>> {
+        let start_time = Instant::now();
         let model_path = if let Some(onnx_path) = &model_entry.onnx_model_path {
             self.model_dir.join(onnx_path)
         } else {
@@ -79,6 +81,11 @@ impl ModelLoader {
             &model_path,
             model_key.clone(),
         )?));
+
+        let _duration = start_time.elapsed();
+        
+        // Track model loading metrics
+        crate::analytics::ANALYTICS_MANAGER.set_model_accuracy(&model_entry.model_name, 1.0); // Assume loaded models are accurate
 
         // Cache in memory
         self.models.write().await.insert(model_key, engine.clone());

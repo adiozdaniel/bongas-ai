@@ -4,7 +4,6 @@ use serde_json::{Value as JsonValue, json};
 use serde::Deserialize;
 use crate::pipeline::{PipelineStage, ScoredItem};
 use crate::pipeline::context::ExecutionContext;
-use crate::analytics::AnalyticsManager;
 use tracing::{info, warn, debug};
 
 #[derive(Deserialize)]

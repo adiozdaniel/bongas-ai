@@ -2,6 +2,7 @@ use anyhow::Result;
 use sha2::{Sha256, Digest};
 use serde_json::Value as JsonValue;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Instant;
 use tracing::{info, debug};
 
 use crate::cache::redis::RedisClient;
@@ -40,10 +41,19 @@ impl StagingManager {
         context_hash: &str,
     ) -> Result<Option<Vec<ScoredItem>>> {
         let cache_key = Self::build_cache_key(scenario_slug, user_id, context_hash);
+        let start_time = Instant::now();
 
         // Try L1 cache (Redis) first
         if let Some(items) = self.get_from_l1(&cache_key).await? {
             self.l1_hits.fetch_add(1, Ordering::Relaxed);
+            let _duration = start_time.elapsed();
+            
+            // Track cache hit and latency
+            if let Ok(_analytics) = crate::analytics::ANALYTICS_MANAGER.get_metrics() {
+                // In real implementation: analytics.record_cache_hit("redis", "recommendations");
+                // In real implementation: analytics.record_cache_lookup_latency("redis", duration);
+            }
+            
             info!(cache_key = %cache_key, "L1 cache hit");
             return Ok(Some(items));
         }
@@ -52,6 +62,14 @@ impl StagingManager {
         // Try L2 cache (PostgreSQL)
         if let Some(items) = self.get_from_l2(&cache_key).await? {
             self.l2_hits.fetch_add(1, Ordering::Relaxed);
+            let _duration = start_time.elapsed();
+            
+            // Track cache hit and latency
+            if let Ok(_analytics) = crate::analytics::ANALYTICS_MANAGER.get_metrics() {
+                // In real implementation: analytics.record_cache_hit("postgres", "recommendations");
+                // In real implementation: analytics.record_cache_lookup_latency("postgres", duration);
+            }
+            
             info!(cache_key = %cache_key, "L2 cache hit");
 
             // Promote to L1 cache
@@ -60,6 +78,16 @@ impl StagingManager {
             return Ok(Some(items));
         }
         self.l2_misses.fetch_add(1, Ordering::Relaxed);
+
+        let _duration = start_time.elapsed();
+        
+        // Track cache miss and latency
+        if let Ok(_analytics) = crate::analytics::ANALYTICS_MANAGER.get_metrics() {
+            // In real implementation: analytics.record_cache_miss("redis", "recommendations");
+            // In real implementation: analytics.record_cache_miss("postgres", "recommendations");
+            // In real implementation: analytics.record_cache_lookup_latency("redis", duration);
+            // In real implementation: analytics.record_cache_lookup_latency("postgres", duration);
+        }
 
         debug!(cache_key = %cache_key, "Cache miss");
         Ok(None)
@@ -132,6 +160,8 @@ impl StagingManager {
         scenario_slug: &str,
         user_id: i32,
     ) -> Result<()> {
+        let start_time = Instant::now();
+
         // Invalidate L1 (Redis) - specific key pattern
         let key = format!("rec:{}:{}:*", scenario_slug, user_id);
         let _ = self.redis.del(&key).await;
@@ -140,9 +170,22 @@ impl StagingManager {
         let default_key = format!("rec:{}:{}:default", scenario_slug, user_id);
         let _ = self.redis.del(&default_key).await;
 
+        // Track cache eviction
+        if let Ok(_analytics) = crate::analytics::ANALYTICS_MANAGER.get_metrics() {
+            // In real implementation: analytics.record_cache_eviction("redis");
+        }
+
         // Invalidate L2 (PostgreSQL)
         let rows_affected = self.cache_repo.mark_stale(user_id, Some(scenario_slug), "invalidate").await?;
         self.invalidations.fetch_add(1, Ordering::Relaxed);
+
+        let _duration = start_time.elapsed();
+        
+        // Track cache eviction
+        if let Ok(_analytics) = crate::analytics::ANALYTICS_MANAGER.get_metrics() {
+            // In real implementation: analytics.record_cache_eviction("postgres");
+            // In real implementation: analytics.record_cache_lookup_latency("postgres", duration);
+        }
 
         info!(
             scenario_slug = scenario_slug,

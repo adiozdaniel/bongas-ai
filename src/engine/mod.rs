@@ -242,6 +242,9 @@ impl BongasEngine {
             "Executing scenario"
         );
 
+        // Start recommendation timer
+        let _timer = self.analytics.start_recommendation_timer(scenario_slug);
+
         // Load scenario definition
         let scenario = {
             let scenarios = self.scenarios.read().await;
