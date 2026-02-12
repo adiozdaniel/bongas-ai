@@ -286,6 +286,7 @@ dependencies = [
  "httpdate",
  "hyper",
  "jsonwebtoken",
+ "lazy_static",
  "mockall",
  "nalgebra",
  "ndarray",

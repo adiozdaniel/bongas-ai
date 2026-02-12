@@ -6,16 +6,19 @@ use tracing::{info, warn};
 
 use crate::db::repositories::scenario_repository::ScenarioRepository;
 use crate::db::models::PipelineDefinition;
+use crate::analytics::AnalyticsManager;
 use super::ScenarioDefinition;
 
 pub struct ScenarioFactory {
     repo: ScenarioRepository,
+    analytics: Arc<AnalyticsManager>,
 }
 
 impl ScenarioFactory {
-    pub fn new(db_pool: Arc<PgPool>) -> Self {
+    pub fn new(db_pool: Arc<PgPool>, analytics: Arc<AnalyticsManager>) -> Self {
         Self {
             repo: ScenarioRepository::new(db_pool.as_ref().clone()),
+            analytics,
         }
     }
 
@@ -38,14 +41,23 @@ impl ScenarioFactory {
                         onnx_count += 1;
                     }
 
+                    // Track the successful load in analytics
+                    self.analytics.track_load_success(&scenario.slug, uses_onnx).await;
+
                     info!(slug = %scenario.slug, uses_onnx = uses_onnx, "Loaded scenario");
                     scenarios.insert(scenario.slug.clone(), scenario);
                 }
                 Err(e) => {
+                    // Track the failure in analytics
+                    self.analytics.track_load_failure(&config.slug, &e.to_string()).await;
+                    
                     warn!(slug = %config.slug, error = %e, "Failed to parse scenario");
                 }
             }
         }
+
+        // Track aggregate metrics
+        self.analytics.track_factory_summary(scenarios.len(), onnx_count).await;
 
         info!(
             total = scenarios.len(),

@@ -4,6 +4,7 @@ use serde_json::{Value as JsonValue, json};
 use serde::Deserialize;
 use crate::pipeline::{PipelineStage, ScoredItem};
 use crate::pipeline::context::ExecutionContext;
+use crate::analytics::AnalyticsManager;
 use tracing::{info, warn, debug};
 
 #[derive(Deserialize)]
@@ -74,6 +75,13 @@ impl PipelineStage for ONNXInferenceStage {
             user_id = user_id,
             "Starting ONNX inference stage"
         );
+
+        // Record model inference start
+        let _timer = if let Some(analytics) = context.analytics() {
+            Some(analytics.start_model_inference_timer(&params.model_name))
+        } else {
+            None
+        };
 
         let start = std::time::Instant::now();
 

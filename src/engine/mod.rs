@@ -16,7 +16,7 @@ use crate::db::models::PipelineDefinition;
 use crate::pipeline::executor::PipelineExecutor;
 use crate::pipeline::context::ExecutionContext;
 use crate::pipeline::ScoredItem;
-use crate::analytics::ClickHouseClient;
+use crate::analytics::{ClickHouseClient, AnalyticsManager};
 use crate::cache::redis::RedisClient;
 use crate::cache::warming::CacheWarmer;
 use crate::kafka::manager::KafkaConsumerManager;
@@ -64,6 +64,9 @@ pub struct BongasEngine {
     // Security
     security_manager: Option<Arc<SecurityManager>>,
 
+    // Analytics
+    analytics: Arc<AnalyticsManager>,
+
     // Dependencies
     db_pool: Arc<PgPool>,
     clickhouse: Arc<ClickHouseClient>,
@@ -109,8 +112,11 @@ impl BongasEngine {
         // Create staleness engine
         let staleness_engine = Arc::new(StalenessEngine::new(staging_manager.clone()));
 
+        // Create analytics manager
+        let analytics = Arc::new(AnalyticsManager::new()?);
+
         // Create scenario factory
-        let scenario_factory = Arc::new(ScenarioFactory::new(db_pool.clone()));
+        let scenario_factory = Arc::new(ScenarioFactory::new(db_pool.clone(), analytics.clone()));
 
         // Create pipeline executor
         let pipeline_executor = Arc::new(PipelineExecutor::new());
@@ -145,6 +151,7 @@ impl BongasEngine {
             kafka_manager: Arc::new(RwLock::new(None)),
             kafka_metrics,
             security_manager,
+            analytics,
             db_pool,
             clickhouse,
             redis,
@@ -277,7 +284,8 @@ impl BongasEngine {
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string())
                 .unwrap_or_default()
-        );
+        )
+        .with_analytics(self.analytics.clone());
 
         let scored_items = self.pipeline_executor
             .execute(&scenario.pipeline, &context)
@@ -368,7 +376,8 @@ impl BongasEngine {
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string())
                 .unwrap_or_default()
-        );
+        )
+        .with_analytics(self.analytics.clone());
 
         let scored_items = self.pipeline_executor
             .execute(&scenario.pipeline, &context)
@@ -601,6 +610,11 @@ impl BongasEngine {
                 layers_configured: 0,
             }
         }
+    }
+
+    /// Get analytics manager reference
+    pub fn analytics(&self) -> Arc<AnalyticsManager> {
+        self.analytics.clone()
     }
 
     /// Convert ScoredItem to RecommendationItem

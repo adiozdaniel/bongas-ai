@@ -19,7 +19,7 @@ use crate::engine::BongasEngine;
 use crate::middlewares::{
     logging::{logging_middleware},
     error_handling::{error_handling_middleware, EnhancedErrorMiddleware, validation_error_middleware},
-    metrics::{MetricsCollector, DurationTracker, EndpointMetrics},
+    metrics::{MetricsCollector, DurationTracker, EndpointMetrics, HttpMetricsMiddleware},
     cors::create_dev_cors_layer,
     compression::CompressionConfig,
     rate_limit::RateLimiter,
@@ -143,98 +143,22 @@ pub fn create_router(
             get(v1::features::get_trending_items),
         )
 
-        // ========== ADMIN ENDPOINTS ==========
-
-        // Cache stats
+        // Analytics metrics
         .route(
-            "/api/v1/admin/cache-stats",
-            get(v1::handlers::admin::get_cache_stats),
+            "/api/v1/analytics/metrics",
+            get(v1::analytics::get_analytics_metrics),
         )
-
-        // Invalidate cache
         .route(
-            "/api/v1/admin/cache/invalidate",
-            post(v1::handlers::admin::invalidate_cache),
+            "/api/v1/analytics/metrics/summary",
+            get(v1::analytics::get_analytics_metrics_summary),
         )
-
-        // Kafka metrics
         .route(
-            "/api/v1/admin/kafka/metrics",
-            get(v1::handlers::admin::get_kafka_metrics),
-        )
-
-        // Kafka health
-        .route(
-            "/api/v1/admin/kafka/health",
-            get(v1::handlers::admin::get_kafka_health),
-        )
-
-        // ONNX model hot-reload
-        .route(
-            "/api/v1/admin/models/reload",
-            post(v1::handlers::admin::reload_models),
-        )
-
-        // ONNX model stats
-        .route(
-            "/api/v1/admin/models/stats",
-            get(v1::handlers::admin::get_model_stats),
-        )
-
-        // Scenario count
-        .route(
-            "/api/v1/admin/scenarios/count",
-            get(v1::handlers::admin::get_scenario_count),
-        )
-
-        // Cache hit rate
-        .route(
-            "/api/v1/admin/cache/hit-rate",
-            get(v1::handlers::admin::get_cache_hit_rate),
-        )
-
-        // Staleness check
-        .route(
-            "/api/v1/admin/staleness/check",
-            post(v1::handlers::admin::check_staleness),
-        )
-
-        // Invalidate profile
-        .route(
-            "/api/v1/admin/staleness/invalidate-profile",
-            post(v1::handlers::admin::invalidate_profile),
-        )
-
-        // ONNX scenarios
-        .route(
-            "/api/v1/admin/models/onnx-scenarios",
-            get(v1::handlers::admin::get_onnx_scenarios),
-        )
-
-        // Repository status endpoints - wire up repo fields
-        .route(
-            "/api/v1/admin/repositories/feature",
-            get(v1::handlers::admin::get_feature_repo_status),
-        )
-
-        .route(
-            "/api/v1/admin/repositories/experiment",
-            get(v1::handlers::admin::get_experiment_repo_status),
-        )
-
-        .route(
-            "/api/v1/admin/repositories/cache",
-            get(v1::handlers::admin::get_cache_repo_status),
-        )
-
-        // Security status
-        .route(
-            "/api/v1/admin/security/status",
-            get(v1::handlers::admin::get_security_status),
+            "/api/v1/analytics/metrics/health",
+            get(v1::analytics::get_analytics_health),
         )
 
         // Health check
-        .route("/health", get(v1::handlers::admin::health_check))
+        .route("/health", get(|| async { "OK" }))
 
         // ========== EXPERIMENTS ENDPOINTS ==========
 
@@ -395,7 +319,10 @@ pub fn create_router(
         // 6. Duration tracking middleware
         .layer(from_fn(DurationTracker::layer))
         
-        // 7. CORS (Enhanced - Development)
+        // 7. HTTP metrics middleware (integrates with AnalyticsManager)
+        .layer(from_fn(HttpMetricsMiddleware::layer))
+        
+        // 8. CORS (Enhanced - Development)
         .layer(create_dev_cors_layer())
         
         // 8. Endpoint metrics tracking

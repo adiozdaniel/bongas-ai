@@ -4,6 +4,7 @@ use serde_json::{Value as JsonValue, json};
 use serde::Deserialize;
 use crate::pipeline::{PipelineStage, ScoredItem};
 use crate::pipeline::context::ExecutionContext;
+use crate::analytics::AnalyticsManager;
 
 #[derive(Deserialize)]
 struct Params {
@@ -27,6 +28,18 @@ impl PipelineStage for FetchClickHouseTrendingStage {
         _input: Vec<ScoredItem>,
     ) -> Result<Vec<ScoredItem>> {
         let params: Params = serde_json::from_value(params.clone())?;
+
+        // Record ClickHouse query
+        if let Some(analytics) = _context.analytics() {
+            analytics.record_clickhouse_query("fetch_clickhouse_trending", "playback_sessions");
+        }
+
+        // Start timing the query
+        let _timer = if let Some(analytics) = _context.analytics() {
+            Some(analytics.start_clickhouse_query_timer("fetch_clickhouse_trending"))
+        } else {
+            None
+        };
 
         let query = format!(
             r#"

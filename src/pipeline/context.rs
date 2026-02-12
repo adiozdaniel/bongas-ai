@@ -1,6 +1,6 @@
 use std::sync::Arc;
 use sqlx::PgPool;
-use crate::analytics::ClickHouseClient;
+use crate::analytics::{ClickHouseClient, AnalyticsManager};
 use crate::cache::redis::RedisClient;
 use crate::ml::model_loader::ModelLoader;
 
@@ -16,6 +16,7 @@ pub struct ExecutionContext {
     pub clickhouse: Arc<ClickHouseClient>,
     pub redis: Arc<RedisClient>,
     pub model_loader: Arc<ModelLoader>,  // ◄── NEW: ONNX model access
+    pub analytics: Option<Arc<AnalyticsManager>>,
 
     // Request metadata
     pub request_id: String,
@@ -49,6 +50,7 @@ impl ExecutionContext {
             clickhouse,
             redis,
             model_loader,
+            analytics: None,
             request_id,
         }
     }
@@ -64,4 +66,14 @@ impl ExecutionContext {
         self
     }
 
+    /// Add analytics manager to context
+    pub fn with_analytics(mut self, analytics: Arc<AnalyticsManager>) -> Self {
+        self.analytics = Some(analytics);
+        self
+    }
+
+    /// Get analytics manager reference
+    pub fn analytics(&self) -> Option<&Arc<AnalyticsManager>> {
+        self.analytics.as_ref()
+    }
 }

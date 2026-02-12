@@ -4,6 +4,7 @@ use serde_json::{Value as JsonValue, json};
 use serde::Deserialize;
 use crate::pipeline::{PipelineStage, ScoredItem};
 use crate::pipeline::context::ExecutionContext;
+use crate::analytics::AnalyticsManager;
 
 #[derive(Deserialize)]
 struct Params {
@@ -27,6 +28,18 @@ impl PipelineStage for FetchPopularContentStage {
     ) -> Result<Vec<ScoredItem>> {
         let params: Params = serde_json::from_value(params.clone())?;
         let min_views = params.min_views.unwrap_or(0);
+
+        // Record ClickHouse query
+        if let Some(analytics) = context.analytics() {
+            analytics.record_clickhouse_query("fetch_popular_content", "item_features");
+        }
+
+        // Start timing the query
+        let _timer = if let Some(analytics) = context.analytics() {
+            Some(analytics.start_clickhouse_query_timer("fetch_popular_content"))
+        } else {
+            None
+        };
 
         #[derive(sqlx::FromRow)]
         struct Row {
