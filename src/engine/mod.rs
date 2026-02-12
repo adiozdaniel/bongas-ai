@@ -23,6 +23,9 @@ use crate::kafka::manager::KafkaConsumerManager;
 use crate::kafka::metrics::KafkaMetricsRegistry;
 use crate::ml::model_loader::ModelLoader;
 use crate::db::repositories::model_repository::ModelRepository;
+use crate::db::repositories::feature_repository::FeatureRepository;
+use crate::db::repositories::experiment_repository::ExperimentRepository;
+use crate::db::repositories::cache_repository::CacheRepository;
 use crate::experiments::manager::ExperimentManager;
 use crate::security::manager::SecurityManager;
 
@@ -45,6 +48,11 @@ pub struct BongasEngine {
 
     // ML Model Management
     model_loader: Arc<ModelLoader>,
+
+    // Repositories
+    feature_repo: Arc<FeatureRepository>,
+    experiment_repo: Arc<ExperimentRepository>,
+    cache_repo: Arc<CacheRepository>,
 
     // Experiments & Bandits
     experiment_manager: Arc<ExperimentManager>,
@@ -119,6 +127,11 @@ impl BongasEngine {
         // Create experiment manager
         let experiment_manager = Arc::new(ExperimentManager::new(db_pool.clone()));
 
+        // Create repositories
+        let feature_repo = Arc::new(FeatureRepository::new(db_pool.as_ref().clone()));
+        let experiment_repo = Arc::new(ExperimentRepository::new(db_pool.as_ref().clone()));
+        let cache_repo = Arc::new(CacheRepository::new(db_pool.as_ref().clone()));
+
         let engine = Arc::new(Self {
             scenarios: Arc::new(RwLock::new(HashMap::new())),
             scenario_factory,
@@ -126,6 +139,9 @@ impl BongasEngine {
             staging_manager,
             staleness_engine,
             model_loader,
+            feature_repo,
+            experiment_repo,
+            cache_repo,
             experiment_manager,
             kafka_manager: Arc::new(RwLock::new(None)),
             kafka_metrics,
@@ -463,6 +479,21 @@ impl BongasEngine {
     /// Get cache hit rate
     pub fn get_cache_hit_rate(&self) -> f64 {
         self.staging_manager.get_hit_rate()
+    }
+
+    /// Get feature repository
+    pub fn feature_repo(&self) -> Arc<FeatureRepository> {
+        self.feature_repo.clone()
+    }
+
+    /// Get experiment repository
+    pub fn experiment_repo(&self) -> Arc<ExperimentRepository> {
+        self.experiment_repo.clone()
+    }
+
+    /// Get cache repository
+    pub fn cache_repo(&self) -> Arc<CacheRepository> {
+        self.cache_repo.clone()
     }
 
     /// ========== EXPERIMENTS & BANDITS ==========

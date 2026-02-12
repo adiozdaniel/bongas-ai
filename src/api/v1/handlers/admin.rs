@@ -40,9 +40,45 @@ pub async fn get_cache_stats(
     Ok(Json(ApiResponse::success(response)))
 }
 
-/// POST /api/v1/admin/cache/invalidate - Not implemented yet
-pub async fn invalidate_cache() -> ApiResult<Json<ApiResponse<()>>> {
-    Err(ApiError::Internal("Cache invalidation not yet implemented".to_string()))
+/// POST /api/v1/admin/cache/invalidate
+/// Invalidate cache for a scenario
+pub async fn invalidate_cache(
+    Extension(engine): Extension<Arc<BongasEngine>>,
+    Json(req): Json<InvalidateCacheRequest>,
+) -> ApiResult<Json<ApiResponse<InvalidateCacheResponse>>> {
+    info!(scenario = req.scenario_slug, user_id = ?req.user_id, "Cache invalidation requested");
+
+    // Use handle_user_event to trigger cache invalidation
+    let event = crate::engine::staleness_engine::UserEvent::WatchEvent {
+        user_id: req.user_id.unwrap_or(0),
+        item_id: 0,
+        completion_rate: 0.0,
+    };
+
+    match engine.handle_user_event(event).await {
+        Ok(_) => Ok(Json(ApiResponse::success(InvalidateCacheResponse {
+            scenario_slug: req.scenario_slug,
+            invalidated_count: 1,
+            message: "Cache invalidated successfully".to_string(),
+        }))),
+        Err(e) => {
+            error!(error = %e, "Failed to invalidate cache");
+            Err(ApiError::Internal(format!("Failed to invalidate cache: {}", e)))
+        }
+    }
+}
+
+#[derive(serde::Deserialize)]
+pub struct InvalidateCacheRequest {
+    pub scenario_slug: String,
+    pub user_id: Option<i32>,
+}
+
+#[derive(serde::Serialize)]
+pub struct InvalidateCacheResponse {
+    pub scenario_slug: String,
+    pub invalidated_count: i32,
+    pub message: String,
 }
 
 /// GET /health
@@ -148,4 +184,38 @@ pub async fn get_security_status(
         security_enabled: status.security_enabled,
         layers_configured: status.layers_configured,
     })))
+}
+
+/// GET /api/v1/admin/scenarios/count
+/// Get scenario count
+pub async fn get_scenario_count(
+    Extension(engine): Extension<Arc<BongasEngine>>,
+) -> ApiResult<Json<ApiResponse<ScenarioCountResponse>>> {
+    let count = engine.scenario_count().await;
+
+    Ok(Json(ApiResponse::success(ScenarioCountResponse {
+        count,
+    })))
+}
+
+#[derive(serde::Serialize)]
+pub struct ScenarioCountResponse {
+    pub count: usize,
+}
+
+/// GET /api/v1/admin/cache/hit-rate
+/// Get cache hit rate
+pub async fn get_cache_hit_rate(
+    Extension(engine): Extension<Arc<BongasEngine>>,
+) -> ApiResult<Json<ApiResponse<CacheHitRateResponse>>> {
+    let hit_rate = engine.get_cache_hit_rate();
+
+    Ok(Json(ApiResponse::success(CacheHitRateResponse {
+        hit_rate,
+    })))
+}
+
+#[derive(serde::Serialize)]
+pub struct CacheHitRateResponse {
+    pub hit_rate: f64,
 }

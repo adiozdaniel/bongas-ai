@@ -7,7 +7,7 @@ pub mod cors;
 pub mod compression;
 pub mod response_cache;
 
-// Only export what is actually used in the codebase
+// Export what's actually used in the codebase
 pub use logging::logging_middleware;
 pub use error_handling::error_handling_middleware;
 pub use metrics::MetricsCollector;

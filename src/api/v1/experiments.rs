@@ -1,7 +1,6 @@
 use axum::{
     extract::{Extension, Json, Path},
     routing::{get, post},
-    Router,
 };
 use std::sync::Arc;
 use tracing::{info, error};
@@ -10,18 +9,6 @@ use anyhow::Context;
 
 use crate::engine::{BongasEngine, RecommendationItem};
 use crate::api::models::ApiResponse;
-
-/// Create experiment router
-pub fn create_experiment_router() -> Router {
-    Router::new()
-        .route("/api/v1/experiments", post(create_experiment))
-        .route("/api/v1/experiments", get(list_experiments))
-        .route("/api/v1/experiments/:id", get(get_experiment))
-        .route("/api/v1/experiments/:id/status", get(get_experiment_status))
-        .route("/api/v1/experiments/:id/execute/:user_id", post(execute_experiment))
-        .route("/api/v1/experiments/:id/reward", post(record_reward))
-        .route("/api/v1/experiments/load", post(load_experiments))
-}
 
 /// Request/Response models
 #[derive(Debug, Deserialize)]

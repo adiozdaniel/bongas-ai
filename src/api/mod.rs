@@ -17,7 +17,7 @@ use tower_http::trace::TraceLayer;
 use serde_json::json;
 use crate::engine::BongasEngine;
 use crate::middlewares::{
-    logging::{logging_middleware, StructuredLogger, performance_monitoring_middleware},
+    logging::{logging_middleware},
     error_handling::{error_handling_middleware, EnhancedErrorMiddleware, validation_error_middleware},
     metrics::{MetricsCollector, DurationTracker, EndpointMetrics},
     cors::create_dev_cors_layer,
@@ -123,6 +123,26 @@ pub fn create_router(
             post(v1::handlers::scenarios::reload_all_scenarios),
         )
 
+        // ========== FEATURES ENDPOINTS ==========
+
+        // User features
+        .route(
+            "/api/v1/features/user/:user_id",
+            get(v1::features::get_user_features),
+        )
+
+        // Item features
+        .route(
+            "/api/v1/features/item/:item_id",
+            get(v1::features::get_item_features),
+        )
+
+        // Trending items
+        .route(
+            "/api/v1/features/trending",
+            get(v1::features::get_trending_items),
+        )
+
         // ========== ADMIN ENDPOINTS ==========
 
         // Cache stats
@@ -159,6 +179,18 @@ pub fn create_router(
         .route(
             "/api/v1/admin/models/stats",
             get(v1::handlers::admin::get_model_stats),
+        )
+
+        // Scenario count
+        .route(
+            "/api/v1/admin/scenarios/count",
+            get(v1::handlers::admin::get_scenario_count),
+        )
+
+        // Cache hit rate
+        .route(
+            "/api/v1/admin/cache/hit-rate",
+            get(v1::handlers::admin::get_cache_hit_rate),
         )
 
         // Security status

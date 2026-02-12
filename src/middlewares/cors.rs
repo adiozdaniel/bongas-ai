@@ -121,31 +121,6 @@ pub fn create_dev_cors_layer() -> CorsLayer {
         .build()
 }
 
-/// Create production CORS layer
-pub fn create_prod_cors_layer(allowed_origins: Vec<String>) -> CorsLayer {
-    CorsConfig::new()
-        .with_origins(allowed_origins)
-        .allow_credentials(true)
-        .build()
-}
-
-/// Create permissive CORS layer (for testing only)
-pub fn create_permissive_cors_layer() -> CorsLayer {
-    CorsLayer::new()
-        .allow_origin(Any)
-        .allow_methods(vec![
-            Method::GET,
-            Method::POST,
-            Method::PUT,
-            Method::DELETE,
-            Method::OPTIONS,
-            Method::PATCH,
-        ])
-        .allow_headers(Any)
-        .allow_credentials(true)
-        .max_age(std::time::Duration::from_secs(3600))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -174,14 +149,6 @@ mod tests {
     #[test]
     fn test_create_dev_cors_layer() {
         let cors = create_dev_cors_layer();
-        // Basic test to ensure the layer can be created
-        // CorsLayer doesn't have is_none method, so we just check it's created
-        assert!(true);
-    }
-
-    #[test]
-    fn test_create_prod_cors_layer() {
-        let cors = create_prod_cors_layer(vec!["https://example.com".to_string()]);
         // Basic test to ensure the layer can be created
         // CorsLayer doesn't have is_none method, so we just check it's created
         assert!(true);
