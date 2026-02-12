@@ -98,7 +98,7 @@ impl PipelineStage for FetchSeasonalContentStage {
             title: Option<String>,
             seasonal_tags: Option<JsonValue>,
             holiday_tags: Option<JsonValue>,
-            themes: Option<JsonValue>,
+            _themes: Option<JsonValue>,
             popularity_score: Option<f32>,
         }
 

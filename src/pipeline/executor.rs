@@ -33,11 +33,6 @@ impl PipelineExecutor {
         self.stage_registry.len()
     }
 
-    /// Check if a stage type is registered
-    pub fn has_stage(&self, stage_type: &str) -> bool {
-        self.stage_registry.contains_key(stage_type)
-    }
-
     /// Execute a pipeline definition
     pub async fn execute(
         &self,
@@ -105,6 +100,7 @@ impl PipelineExecutor {
                 request_id = %context.request_id,
                 stage_idx = idx,
                 stage_type = %stage_config.r#type,
+                stage_name = stage_impl.name(),
                 input_count = items.len(),
                 "Executing stage"
             );

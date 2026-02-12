@@ -34,8 +34,6 @@ pub struct CircuitBreakerConfig {
     pub success_threshold: u64,
     /// Duration to wait before transitioning from open to half-open
     pub reset_timeout: Duration,
-    /// Duration window to count failures
-    pub failure_window: Duration,
     /// Name for logging/metrics
     pub name: String,
 }
@@ -46,7 +44,6 @@ impl Default for CircuitBreakerConfig {
             failure_threshold: 5,
             success_threshold: 3,
             reset_timeout: Duration::from_secs(30),
-            failure_window: Duration::from_secs(60),
             name: "default".to_string(),
         }
     }
@@ -183,69 +180,4 @@ impl CircuitBreaker {
         }
     }
 
-    /// Get circuit breaker stats
-    pub fn stats(&self) -> CircuitBreakerStats {
-        CircuitBreakerStats {
-            name: self.config.name.clone(),
-            state: self.state(),
-            failure_count: self.failure_count.load(Ordering::SeqCst),
-            success_count: self.success_count.load(Ordering::SeqCst),
-            failure_threshold: self.config.failure_threshold,
-            success_threshold: self.config.success_threshold,
-        }
-    }
 }
-
-#[derive(Debug, Clone)]
-pub struct CircuitBreakerStats {
-    pub name: String,
-    pub state: CircuitState,
-    pub failure_count: u64,
-    pub success_count: u64,
-    pub failure_threshold: u64,
-    pub success_threshold: u64,
-}
-
-impl CircuitBreakerStats {
-    pub fn to_json(&self) -> serde_json::Value {
-        serde_json::json!({
-            "name": self.name,
-            "state": format!("{:?}", self.state),
-            "failure_count": self.failure_count,
-            "success_count": self.success_count,
-            "failure_threshold": self.failure_threshold,
-            "success_threshold": self.success_threshold,
-        })
-    }
-}
-
-/// Helper trait for executing operations with circuit breaker protection
-#[async_trait::async_trait]
-pub trait CircuitBreakerExecutor {
-    type Output;
-    type Error;
-
-    async fn execute_with_circuit_breaker(
-        &self,
-        circuit_breaker: &CircuitBreaker,
-    ) -> Result<Self::Output, CircuitBreakerError<Self::Error>>;
-}
-
-#[derive(Debug)]
-pub enum CircuitBreakerError<E> {
-    /// Circuit is open, request was rejected
-    CircuitOpen,
-    /// Operation failed
-    OperationFailed(E),
-}
-
-impl<E: std::fmt::Display> std::fmt::Display for CircuitBreakerError<E> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            CircuitBreakerError::CircuitOpen => write!(f, "Circuit breaker is open"),
-            CircuitBreakerError::OperationFailed(e) => write!(f, "Operation failed: {}", e),
-        }
-    }
-}
-
-impl<E: std::error::Error> std::error::Error for CircuitBreakerError<E> {}

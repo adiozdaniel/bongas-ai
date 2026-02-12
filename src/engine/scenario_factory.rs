@@ -56,32 +56,12 @@ impl ScenarioFactory {
         Ok(scenarios)
     }
 
-    /// Find scenarios that use ONNX inference
-    pub async fn find_onnx_scenarios(&self) -> Result<Vec<String>> {
-        let configs = self.repo.find_all_enabled().await?;
-
-        let mut onnx_scenarios = Vec::new();
-
-        for config in configs {
-            if let Ok(scenario) = self.parse_scenario(&config) {
-                if scenario.pipeline.stages.iter()
-                    .any(|stage| stage.r#type.starts_with("onnx_"))
-                {
-                    onnx_scenarios.push(scenario.slug.clone());
-                }
-            }
-        }
-
-        Ok(onnx_scenarios)
-    }
-
     /// Parse scenario config into scenario definition
     fn parse_scenario(&self, config: &crate::db::models::ScenarioConfig) -> Result<ScenarioDefinition> {
         let pipeline: PipelineDefinition = serde_json::from_value(config.pipeline.clone())?;
 
         Ok(ScenarioDefinition {
             slug: config.slug.clone(),
-            name: config.name.clone(),
             pipeline,
             cache_ttl_seconds: config.cache_ttl_seconds.unwrap_or(300),
             use_l2_cache: config.use_l2_cache,

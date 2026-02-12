@@ -90,26 +90,7 @@ pub struct ItemFeatures {
 }
 
 // ============================================================================
-// 4. UserInteraction (Event Log)
-// ============================================================================
-
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
-pub struct UserInteraction {
-    pub id: i64,
-    pub user_id: i32,
-    pub item_id: i32,
-    pub interaction_type: String,
-    pub watch_duration_seconds: Option<i32>,
-    pub completion_percentage: Option<f32>,
-    pub implicit_rating: Option<f32>,
-    pub explicit_rating: Option<i32>,
-    pub scenario_slug: Option<String>,
-    pub device_type: Option<String>,
-    pub created_at: DateTime<Utc>,
-}
-
-// ============================================================================
-// 5. RecommendationCacheL2 (Staging Manager - L2 Cache)
+// 4. RecommendationCacheL2 (Staging Manager - L2 Cache)
 // ============================================================================
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
@@ -152,45 +133,3 @@ pub struct ModelRegistry {
     pub created_at: DateTime<Utc>,
 }
 
-// ============================================================================
-// 7. ONNXSession (ONNX Runtime Session Management)
-// ============================================================================
-
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
-pub struct OnnxSession {
-    pub id: i32,
-    pub session_id: String,
-    pub model_path: String,
-    pub provider: String,
-    pub memory_pool_size_mb: i32,
-    pub optimization_level: String,
-    pub load_time_ms: Option<i32>,
-    pub inference_latency_p50_ms: Option<i32>,
-    pub inference_latency_p95_ms: Option<i32>,
-    pub memory_usage_mb: Option<i32>,
-    pub is_loaded: bool,
-    pub last_used_at: DateTime<Utc>,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-}
-
-// ============================================================================
-// 8. Experiment (A/B Testing)
-// ============================================================================
-
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
-pub struct Experiment {
-    pub id: i32,
-    pub name: String,
-    pub description: Option<String>,
-    pub hypothesis: Option<String>,
-    pub variants: JsonValue,
-    pub assignment_method: String,
-    pub status: String,
-    pub started_at: Option<DateTime<Utc>>,
-    pub ended_at: Option<DateTime<Utc>>,
-    pub results: Option<JsonValue>,
-    pub winner_variant_id: Option<String>,
-    pub created_at: DateTime<Utc>,
-    pub created_by: Option<String>,
-}

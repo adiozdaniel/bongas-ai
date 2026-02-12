@@ -10,7 +10,7 @@ pub struct OnnxInferenceEngine {
     session: Session,
     model_name: String,
     input_names: Vec<String>,
-    output_names: Vec<String>,
+    _output_names: Vec<String>,
 }
 
 // Session is Send but not Sync by default in ort v2;
@@ -54,7 +54,7 @@ impl OnnxInferenceEngine {
             session,
             model_name,
             input_names,
-            output_names,
+            _output_names: output_names,
         })
     }
 
@@ -137,20 +137,6 @@ impl OnnxInferenceEngine {
         self.predict_two_tower(user_array, item_array)
     }
 
-    /// Get model name
-    pub fn model_name(&self) -> &str {
-        &self.model_name
-    }
-
-    /// Get input names
-    pub fn input_names(&self) -> &[String] {
-        &self.input_names
-    }
-
-    /// Get output names
-    pub fn output_names(&self) -> &[String] {
-        &self.output_names
-    }
 }
 
 #[cfg(test)]

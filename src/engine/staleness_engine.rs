@@ -277,8 +277,4 @@ impl StalenessEngine {
         false
     }
 
-    /// Get staging manager reference
-    pub fn staging_manager(&self) -> &Arc<StagingManager> {
-        &self.staging_manager
-    }
 }

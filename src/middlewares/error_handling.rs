@@ -114,7 +114,7 @@ impl EnhancedErrorMiddleware {
         method: &axum::http::Method,
         uri: &axum::http::Uri,
         status: StatusCode,
-        duration: std::time::Duration,
+        _duration: std::time::Duration,
     ) -> ErrorDetails {
         let (message, code, details) = match status {
             StatusCode::NOT_FOUND => (
@@ -168,7 +168,6 @@ impl EnhancedErrorMiddleware {
             message,
             code,
             details,
-            duration_ms: duration.as_millis() as u64,
         }
     }
 }
@@ -178,7 +177,6 @@ struct ErrorDetails {
     message: String,
     code: String,
     details: String,
-    duration_ms: u64,
 }
 
 /// Validation error middleware for API validation errors

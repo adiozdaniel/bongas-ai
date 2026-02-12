@@ -7,6 +7,7 @@ use crate::pipeline::context::ExecutionContext;
 use tracing::{info, warn, debug};
 
 #[derive(Deserialize)]
+#[allow(dead_code)]
 struct Params {
     /// Model name to use (e.g., "two_tower", "bert4rec")
     model_name: String,

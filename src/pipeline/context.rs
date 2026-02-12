@@ -9,7 +9,7 @@ pub struct ExecutionContext {
     pub user_id: Option<i32>,
     pub device_type: Option<String>,
     pub location: Option<String>,
-    pub profile_context: Option<ProfileContext>,
+    pub _profile_context: Option<ProfileContext>,
 
     // Dependencies
     pub db_pool: Arc<PgPool>,
@@ -24,10 +24,10 @@ pub struct ExecutionContext {
 /// Additional profile context for personalization
 #[derive(Debug, Clone, Default)]
 pub struct ProfileContext {
-    pub age_group: Option<String>,
-    pub subscription_tier: Option<String>,
-    pub preferred_languages: Vec<String>,
-    pub content_preferences: serde_json::Value,
+    pub _age_group: Option<String>,
+    pub _subscription_tier: Option<String>,
+    pub _preferred_languages: Vec<String>,
+    pub _content_preferences: serde_json::Value,
 }
 
 impl ExecutionContext {
@@ -44,7 +44,7 @@ impl ExecutionContext {
             user_id,
             device_type: None,
             location: None,
-            profile_context: None,
+            _profile_context: None,
             db_pool,
             clickhouse,
             redis,
@@ -64,8 +64,4 @@ impl ExecutionContext {
         self
     }
 
-    pub fn with_profile_context(mut self, profile_context: ProfileContext) -> Self {
-        self.profile_context = Some(profile_context);
-        self
-    }
 }

@@ -5,8 +5,6 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{info, warn};
 use super::bandits::{thompson_sampling::ThompsonSampling, ucb::UCB1, linucb::LinUCB};
-use super::ab_testing::ABTestManager;
-
 pub enum BanditAlgorithm {
     ThompsonSampling(ThompsonSampling),
     UCB1(UCB1),
@@ -16,7 +14,6 @@ pub enum BanditAlgorithm {
 pub struct ExperimentManager {
     _db_pool: Arc<PgPool>,
     bandits: Arc<RwLock<HashMap<String, BanditAlgorithm>>>,
-    _ab_tests: Arc<RwLock<ABTestManager>>,
 }
 
 impl ExperimentManager {
@@ -24,7 +21,6 @@ impl ExperimentManager {
         Self {
             _db_pool: db_pool,
             bandits: Arc::new(RwLock::new(HashMap::new())),
-            _ab_tests: Arc::new(RwLock::new(ABTestManager::new())),
         }
     }
 

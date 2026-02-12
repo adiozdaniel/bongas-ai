@@ -62,7 +62,7 @@ impl PipelineStage for BoostPersonalizationStage {
         struct PersonalizationRow {
             item_id: i32,
             personalization_score: f32,
-            model_type: String,
+            _model_type: String,
         }
 
         let scores: Vec<PersonalizationRow> = sqlx::query_as(

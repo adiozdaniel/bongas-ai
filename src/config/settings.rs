@@ -100,16 +100,4 @@ impl Settings {
         Ok(settings)
     }
 
-    /// Load settings, then override from Spring Cloud Config if enabled
-    pub async fn load_with_spring_cloud() -> Result<Self> {
-        let mut settings = Self::load()?;
-
-        if let Some(spring_cloud) = settings.spring_cloud.clone() {
-            if spring_cloud.enabled {
-                settings = crate::config::spring_cloud::fetch_config(&spring_cloud, settings).await?;
-            }
-        }
-
-        Ok(settings)
-    }
 }

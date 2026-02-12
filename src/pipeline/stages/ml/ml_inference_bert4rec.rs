@@ -7,10 +7,11 @@ use crate::pipeline::context::ExecutionContext;
 use tracing::info;
 
 #[derive(Deserialize)]
+#[allow(dead_code)]
 struct Params {
     sequence_length: usize,
     top_k: usize,
-    
+
     use_onnx: Option<bool>,
 }
 

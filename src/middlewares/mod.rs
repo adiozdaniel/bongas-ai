@@ -7,11 +7,3 @@ pub mod cors;
 pub mod compression;
 pub mod response_cache;
 
-// Export what's actually used in the codebase
-pub use logging::logging_middleware;
-pub use error_handling::error_handling_middleware;
-pub use metrics::MetricsCollector;
-pub use cors::create_dev_cors_layer;
-pub use compression::CompressionConfig;
-pub use rate_limit::RateLimiter;
-pub use response_cache::ResponseCacheMiddleware;

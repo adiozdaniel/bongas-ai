@@ -51,23 +51,8 @@ impl CorsConfig {
         self
     }
 
-    pub fn with_methods(mut self, methods: Vec<Method>) -> Self {
-        self.allowed_methods = methods;
-        self
-    }
-
-    pub fn with_headers(mut self, headers: Vec<HeaderName>) -> Self {
-        self.allowed_headers = headers;
-        self
-    }
-
     pub fn allow_credentials(mut self, allow: bool) -> Self {
         self.allow_credentials = allow;
-        self
-    }
-
-    pub fn max_age(mut self, seconds: Option<u64>) -> Self {
-        self.max_age = seconds;
         self
     }
 

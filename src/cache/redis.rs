@@ -35,24 +35,4 @@ impl RedisClient {
         Ok(())
     }
 
-    /// Check if key exists
-    pub async fn exists(&self, key: &str) -> Result<bool> {
-        let mut conn = self.manager.clone();
-        let exists: bool = conn.exists(key).await?;
-        Ok(exists)
-    }
-
-    /// Set key with expiration only if it doesn't exist
-    pub async fn set_nx_ex(&self, key: &str, value: &str, ttl_seconds: u64) -> Result<bool> {
-        let mut conn = self.manager.clone();
-        let set: bool = redis::cmd("SET")
-            .arg(key)
-            .arg(value)
-            .arg("NX")
-            .arg("EX")
-            .arg(ttl_seconds)
-            .query_async(&mut conn)
-            .await?;
-        Ok(set)
-    }
 }

@@ -154,25 +154,6 @@ impl StagingManager {
         Ok(())
     }
 
-    /// Invalidate all caches for a user (all scenarios)
-    pub async fn invalidate_profile(&self, user_id: i32) -> Result<()> {
-        // Invalidate L1 (Redis) - pattern for all scenarios
-        let key = format!("rec:*:{}:*", user_id);
-        let _ = self.redis.del(&key).await;
-
-        // Invalidate L2 (PostgreSQL) - all scenarios for user
-        let rows_affected = self.cache_repo.mark_stale(user_id, None, "profile_invalidate").await?;
-        self.invalidations.fetch_add(1, Ordering::Relaxed);
-
-        info!(
-            user_id = user_id,
-            rows_affected = rows_affected,
-            "Invalidated all caches for profile"
-        );
-
-        Ok(())
-    }
-
     /// Cleanup expired L2 cache entries
     pub async fn cleanup_expired(&self) -> Result<u64> {
         let deleted = self.cache_repo.cleanup_expired().await?;

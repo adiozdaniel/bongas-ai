@@ -1,12 +1,8 @@
-use axum::{
-    extract::{Extension, Json, Path},
-    routing::{get, post},
-};
+use axum::extract::{Extension, Json, Path};
 use std::sync::Arc;
 use tracing::{info, error};
 use serde::{Deserialize, Serialize};
 use anyhow::Context;
-
 use crate::engine::{BongasEngine, RecommendationItem};
 use crate::api::models::ApiResponse;
 

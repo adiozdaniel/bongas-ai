@@ -57,8 +57,8 @@ impl PipelineStage for BoostPromotedStage {
         struct Row {
             item_id: i32,
             promotion_priority: Option<i32>,
-            promotion_start: Option<chrono::DateTime<Utc>>,
-            promotion_end: Option<chrono::DateTime<Utc>>,
+            _promotion_start: Option<chrono::DateTime<Utc>>,
+            _promotion_end: Option<chrono::DateTime<Utc>>,
             target_segments: Option<JsonValue>,
             promotion_label: Option<String>,
         }

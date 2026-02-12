@@ -1,8 +1,4 @@
-use axum::{
-    extract::{Extension, Path, Json, Query},
-    routing::get,
-    Router,
-};
+use axum::extract::{Extension, Path, Json, Query};
 use std::sync::Arc;
 use tracing::{info, error};
 use serde::Deserialize;
@@ -94,10 +90,3 @@ pub struct TrendingQuery {
     pub limit: Option<i64>,
 }
 
-/// Create features router with all feature endpoints
-pub fn create_features_router() -> Router {
-    Router::new()
-        .route("/api/v1/features/user/:user_id", get(get_user_features))
-        .route("/api/v1/features/item/:item_id", get(get_item_features))
-        .route("/api/v1/features/trending", get(get_trending_items))
-}

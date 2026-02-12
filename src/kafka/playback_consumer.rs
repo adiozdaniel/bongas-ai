@@ -24,7 +24,7 @@ pub struct ProcessedPlaybackSession {
 
 pub struct PlaybackConsumer {
     consumer: StreamConsumer,
-    db_pool: Arc<PgPool>,
+    _db_pool: Arc<PgPool>,
     interaction_repo: Arc<InteractionRepository>,
     staleness_engine: Arc<StalenessEngine>,
 }
@@ -51,7 +51,7 @@ impl PlaybackConsumer {
 
         Ok(Self {
             consumer,
-            db_pool,
+            _db_pool: db_pool,
             interaction_repo,
             staleness_engine,
         })

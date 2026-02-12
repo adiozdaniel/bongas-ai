@@ -11,7 +11,7 @@ use tracing::{info, error, warn};
 
 use crate::kafka::circuit_breaker::{CircuitBreaker, CircuitBreakerConfig};
 use crate::kafka::retry::{DeadLetterQueue, DeadLetterMessage, RetryConfig};
-use crate::kafka::metrics::{ConsumerMetrics, KafkaMetricsRegistry};
+use crate::kafka::metrics::ConsumerMetrics;
 use crate::engine::staleness_engine::{StalenessEngine, UserEvent};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -56,7 +56,7 @@ impl ProfileConsumer {
             failure_threshold: 5,
             success_threshold: 3,
             reset_timeout: Duration::from_secs(30),
-            failure_window: Duration::from_secs(60),
+
             name: format!("profile-consumer-{}", topic),
         }));
 
@@ -79,20 +79,6 @@ impl ProfileConsumer {
             topic: topic.to_string(),
             group_id: group_id.to_string(),
         })
-    }
-
-    pub fn with_metrics_registry(
-        mut self,
-        _registry: Arc<KafkaMetricsRegistry>,
-    ) -> Self {
-        // Register with global registry (unused parameter for future implementation)
-        let metrics = Arc::new(ConsumerMetrics::new(&self.group_id, &self.topic));
-        self.metrics = metrics;
-        self
-    }
-
-    pub fn metrics(&self) -> Arc<ConsumerMetrics> {
-        self.metrics.clone()
     }
 
     pub async fn start(self: Arc<Self>) {
@@ -155,8 +141,6 @@ impl ProfileConsumer {
 
                                 if let Err(dlq_err) = self.dlq.send_to_dlq(&dlq_message).await {
                                     error!(error = ?dlq_err, "Failed to send to DLQ");
-                                } else {
-                                    self.metrics.record_dlq();
                                 }
                             }
                         }

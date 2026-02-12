@@ -14,7 +14,7 @@ pub struct LicenseValidator {
 struct LicenseResponse {
     valid: bool,
     
-    expires_at: Option<DateTime<Utc>>,
+    _expires_at: Option<DateTime<Utc>>,
     revoked: bool,
     message: Option<String>,
 }

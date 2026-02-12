@@ -127,7 +127,7 @@ impl NotificationConsumer {
             failure_threshold: 5,
             success_threshold: 3,
             reset_timeout: Duration::from_secs(30),
-            failure_window: Duration::from_secs(60),
+
             name: format!("notification-consumer-{}", topic),
         }));
 
@@ -150,10 +150,6 @@ impl NotificationConsumer {
             topic: topic.to_string(),
             group_id: group_id.to_string(),
         })
-    }
-
-    pub fn metrics(&self) -> Arc<ConsumerMetrics> {
-        self.metrics.clone()
     }
 
     pub async fn start(self: Arc<Self>) {
@@ -216,8 +212,6 @@ impl NotificationConsumer {
 
                                 if let Err(dlq_err) = self.dlq.send_to_dlq(&dlq_message).await {
                                     error!(error = ?dlq_err, "Failed to send to DLQ");
-                                } else {
-                                    self.metrics.record_dlq();
                                 }
                             }
                         }

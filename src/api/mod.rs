@@ -87,7 +87,7 @@ pub fn create_router(
             post(v1::handlers::scenarios::create_scenario),
         )
 
-        // List all scenarios
+        // List  scenarios
         .route(
             "/api/v1/scenarios",
             get(v1::handlers::scenarios::list_scenarios),
@@ -193,6 +193,40 @@ pub fn create_router(
             get(v1::handlers::admin::get_cache_hit_rate),
         )
 
+        // Staleness check
+        .route(
+            "/api/v1/admin/staleness/check",
+            post(v1::handlers::admin::check_staleness),
+        )
+
+        // Invalidate profile
+        .route(
+            "/api/v1/admin/staleness/invalidate-profile",
+            post(v1::handlers::admin::invalidate_profile),
+        )
+
+        // ONNX scenarios
+        .route(
+            "/api/v1/admin/models/onnx-scenarios",
+            get(v1::handlers::admin::get_onnx_scenarios),
+        )
+
+        // Repository status endpoints - wire up repo fields
+        .route(
+            "/api/v1/admin/repositories/feature",
+            get(v1::handlers::admin::get_feature_repo_status),
+        )
+
+        .route(
+            "/api/v1/admin/repositories/experiment",
+            get(v1::handlers::admin::get_experiment_repo_status),
+        )
+
+        .route(
+            "/api/v1/admin/repositories/cache",
+            get(v1::handlers::admin::get_cache_repo_status),
+        )
+
         // Security status
         .route(
             "/api/v1/admin/security/status",
@@ -244,6 +278,38 @@ pub fn create_router(
         .route(
             "/api/v1/experiments/load",
             post(v1::experiments::load_experiments),
+        )
+
+        // ========== BANDITS ENDPOINTS ==========
+
+        // Bandit stats
+        .route(
+            "/api/v1/bandits/:id/stats",
+            get(v1::handlers::bandits::get_bandit_stats),
+        )
+
+        // Select arm
+        .route(
+            "/api/v1/bandits/:id/select",
+            post(v1::handlers::bandits::select_arm),
+        )
+
+        // Update arm with reward
+        .route(
+            "/api/v1/bandits/:id/update",
+            post(v1::handlers::bandits::update_arm),
+        )
+
+        // Contextual bandit
+        .route(
+            "/api/v1/bandits/:id/context",
+            post(v1::handlers::bandits::select_arm_with_context),
+        )
+
+        // List arms
+        .route(
+            "/api/v1/bandits/:id/arms",
+            get(v1::handlers::bandits::list_arms),
         )
 
         // Inject shared state

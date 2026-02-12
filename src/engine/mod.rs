@@ -73,7 +73,6 @@ pub struct BongasEngine {
 #[derive(Debug, Clone)]
 pub struct ScenarioDefinition {
     pub slug: String,
-    pub name: String,
     pub pipeline: PipelineDefinition,
     pub cache_ttl_seconds: i32,
     pub use_l2_cache: bool,
@@ -414,11 +413,6 @@ impl BongasEngine {
         self.clickhouse.clone()
     }
 
-    /// Get model loader reference
-    pub fn model_loader(&self) -> Arc<ModelLoader> {
-        self.model_loader.clone()
-    }
-
     /// Reload all ONNX models (hot-reload)
     pub async fn reload_models(&self) -> Result<usize> {
         info!("Hot-reloading ONNX models...");
@@ -643,18 +637,3 @@ pub struct SecurityStatus {
     pub layers_configured: u32,
 }
 
-#[derive(Debug, Clone, serde::Serialize)]
-pub struct ExperimentStatus {
-    pub experiment_id: String,
-    pub algorithm: String,
-    pub arms: Vec<ArmStatus>,
-    pub total_selections: u64,
-}
-
-#[derive(Debug, Clone, serde::Serialize)]
-pub struct ArmStatus {
-    pub name: String,
-    pub selection_count: u64,
-    pub average_reward: f64,
-    pub win_rate: f64,
-}

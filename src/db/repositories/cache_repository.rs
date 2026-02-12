@@ -122,31 +122,4 @@ impl CacheRepository {
         Ok(result.rows_affected())
     }
 
-    /// Get cache stats for a scenario
-    pub async fn get_cache_stats(&self, scenario_slug: &str) -> Result<CacheStats> {
-        let row = sqlx::query_as::<_, CacheStats>(
-            r#"
-            SELECT
-                COUNT(*) as total_entries,
-                COUNT(*) FILTER (WHERE is_stale = false AND expires_at > NOW()) as active_entries,
-                COUNT(*) FILTER (WHERE is_stale = true) as stale_entries,
-                COALESCE(SUM(hit_count), 0) as total_hits
-            FROM recommendation_cache_l2
-            WHERE scenario_slug = $1
-            "#
-        )
-        .bind(scenario_slug)
-        .fetch_one(&self.pool)
-        .await?;
-
-        Ok(row)
-    }
-}
-
-#[derive(Debug, Clone, sqlx::FromRow, serde::Serialize)]
-pub struct CacheStats {
-    pub total_entries: i64,
-    pub active_entries: i64,
-    pub stale_entries: i64,
-    pub total_hits: i64,
 }

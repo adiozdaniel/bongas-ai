@@ -55,7 +55,7 @@ impl PipelineStage for FetchSimilarContentStage {
             genres: Option<JsonValue>,
             creators: Option<JsonValue>,
             embedding: Option<JsonValue>,
-            content_type: Option<String>,
+            _content_type: Option<String>,
         }
 
         let source: Option<SourceItem> = sqlx::query_as(

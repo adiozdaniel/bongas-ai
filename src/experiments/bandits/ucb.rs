@@ -35,12 +35,6 @@ impl ArmStatistics {
         }
     }
 
-    pub fn std_dev(&self) -> f64 {
-        if self.pulls < 2 {
-            return 0.0;
-        }
-        (self.variance / (self.pulls - 1) as f64).sqrt()
-    }
 }
 
 pub struct UCB1 {
@@ -105,60 +99,3 @@ impl UCB1 {
     }
 }
 
-/// UCB-Tuned: Adaptive exploration based on variance
-pub struct UCBTuned {
-    arms: HashMap<String, ArmStatistics>,
-    total_pulls: u64,
-}
-
-impl UCBTuned {
-    pub fn new(arm_names: Vec<String>) -> Self {
-        let mut arms = HashMap::new();
-        for name in arm_names {
-            arms.insert(name, ArmStatistics::new());
-        }
-
-        Self {
-            arms,
-            total_pulls: 0,
-        }
-    }
-
-    pub fn select_arm(&self) -> Result<String> {
-        // Pull each arm once initially
-        for (name, stats) in &self.arms {
-            if stats.pulls == 0 {
-                return Ok(name.clone());
-            }
-        }
-
-        let mut best_arm = String::new();
-        let mut best_ucb = f64::NEG_INFINITY;
-
-        for (name, stats) in &self.arms {
-            let variance_term = stats.variance / stats.pulls as f64;
-            let exploration_term = (2.0 * (self.total_pulls as f64).ln()) / stats.pulls as f64;
-            let v = variance_term + exploration_term.sqrt();
-
-            let ucb = stats.mean_reward + (exploration_term * v.min(0.25)).sqrt();
-
-            if ucb > best_ucb {
-                best_ucb = ucb;
-                best_arm = name.clone();
-            }
-        }
-
-        Ok(best_arm)
-    }
-
-    pub fn update(&mut self, arm_name: &str, reward: f64) -> Result<()> {
-        let stats = self.arms
-            .get_mut(arm_name)
-            .ok_or_else(|| anyhow::anyhow!("Unknown arm: {}", arm_name))?;
-
-        stats.update(reward);
-        self.total_pulls += 1;
-
-        Ok(())
-    }
-}
