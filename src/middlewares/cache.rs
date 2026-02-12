@@ -9,7 +9,6 @@ use redis::AsyncCommands;
 use std::sync::Arc;
 use tracing::{info, warn, error};
 use serde_json::Value;
-use std::time::Duration;
 
 pub struct RedisCacheMiddleware {
     redis: Arc<redis::Client>,

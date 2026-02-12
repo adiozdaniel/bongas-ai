@@ -213,7 +213,7 @@ impl EndpointMetrics {
         next: Next,
     ) -> Response<Body> {
         let path = req.uri().path().to_string();
-        let method = req.method().clone();
+        let _method = req.method().clone();
 
         let start = Instant::now();
         let response = next.run(req).await;

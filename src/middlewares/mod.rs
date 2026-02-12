@@ -7,11 +7,11 @@ pub mod cors;
 pub mod compression;
 pub mod response_cache;
 
-pub use cache::{RedisCacheMiddleware, RedisCacheMiddlewareWithBody};
-pub use rate_limit::{RateLimiter, RateLimitStatus};
-pub use logging::{logging_middleware, StructuredLogger, performance_monitoring_middleware};
-pub use error_handling::{error_handling_middleware, EnhancedErrorMiddleware, validation_error_middleware};
-pub use metrics::{MetricsCollector, MetricsStats, DurationTracker, EndpointMetrics};
-pub use cors::{CorsConfig, create_dev_cors_layer, create_prod_cors_layer, create_permissive_cors_layer};
-pub use compression::{CompressionConfig, ContentAwareCompression, SmartCompression, CompressionMetrics};
-pub use response_cache::{ResponseCacheMiddleware, CacheWarmingMiddleware, CacheInvalidationMiddleware, CacheStats};
+// Only export what is actually used in the codebase
+pub use logging::logging_middleware;
+pub use error_handling::error_handling_middleware;
+pub use metrics::MetricsCollector;
+pub use cors::create_dev_cors_layer;
+pub use compression::CompressionConfig;
+pub use rate_limit::RateLimiter;
+pub use response_cache::ResponseCacheMiddleware;

@@ -75,7 +75,7 @@ impl PipelineStage for FilterByRatingStage {
                     _ => {
                         // Combined: weighted average if both exist
                         let combined_rating = match (row.user_rating, row.critic_rating) {
-                            (Some(u), Some(c)) => Some((u * 0.7 + c * 0.3)),
+                            (Some(u), Some(c)) => Some(u * 0.7 + c * 0.3 ),
                             (Some(u), None) => Some(u),
                             (None, Some(c)) => Some(c),
                             (None, None) => None,

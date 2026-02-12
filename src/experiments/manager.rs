@@ -14,17 +14,17 @@ pub enum BanditAlgorithm {
 }
 
 pub struct ExperimentManager {
-    db_pool: Arc<PgPool>,
+    _db_pool: Arc<PgPool>,
     bandits: Arc<RwLock<HashMap<String, BanditAlgorithm>>>,
-    ab_tests: Arc<RwLock<ABTestManager>>,
+    _ab_tests: Arc<RwLock<ABTestManager>>,
 }
 
 impl ExperimentManager {
     pub fn new(db_pool: Arc<PgPool>) -> Self {
         Self {
-            db_pool,
+            _db_pool: db_pool,
             bandits: Arc::new(RwLock::new(HashMap::new())),
-            ab_tests: Arc::new(RwLock::new(ABTestManager::new())),
+            _ab_tests: Arc::new(RwLock::new(ABTestManager::new())),
         }
     }
 
@@ -35,7 +35,7 @@ impl ExperimentManager {
         algorithm: &str,
         arm_names: Vec<String>,
     ) -> Result<()> {
-        use serde_json::json;
+        
         
         let mut bandits = self.bandits.write().await;
         
@@ -167,7 +167,7 @@ impl ExperimentManager {
             WHERE enabled = true
             "#
         )
-        .fetch_all(self.db_pool.as_ref())
+        .fetch_all(self._db_pool.as_ref())
         .await?;
 
         let mut loaded = 0;
@@ -223,7 +223,7 @@ impl ExperimentManager {
         )
         .bind(experiment_id)
         .bind(status)
-        .execute(self.db_pool.as_ref())
+        .execute(self._db_pool.as_ref())
         .await?;
 
         Ok(())

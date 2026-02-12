@@ -398,7 +398,7 @@ impl CacheWarmingMiddleware {
             info!("Warming cache for endpoint: {}", endpoint);
             
             // Create a mock request for warming
-            let request = Request::builder()
+            let _request = Request::builder()
                 .uri(&endpoint)
                 .method("GET")
                 .body(Body::empty())?;

@@ -6,5 +6,5 @@ pub mod embeddings;
 pub mod online_learning;
 pub mod worker_queue;
 
-pub use onnx_runtime::OnnxInferenceEngine;
+// Export only what's actually used
 pub use model_loader::ModelLoader;

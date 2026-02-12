@@ -83,9 +83,9 @@ impl ProfileConsumer {
 
     pub fn with_metrics_registry(
         mut self,
-        registry: Arc<KafkaMetricsRegistry>,
+        _registry: Arc<KafkaMetricsRegistry>,
     ) -> Self {
-        // Register with global registry
+        // Register with global registry (unused parameter for future implementation)
         let metrics = Arc::new(ConsumerMetrics::new(&self.group_id, &self.topic));
         self.metrics = metrics;
         self

@@ -132,7 +132,6 @@ impl PipelineStage for SerendipityStage {
 
         // Identify serendipitous candidates
         let mut candidates: Vec<&ScoredItem> = Vec::new();
-        let mut regular: Vec<ScoredItem> = Vec::new();
 
         for item in &input {
             if let Some((genres, rating, is_acclaimed)) = item_map.get(&item.item_id) {
