@@ -106,6 +106,10 @@ async fn main() -> Result<()> {
     let scenario_count = engine.reload_scenarios().await?;
     info!(scenarios = scenario_count, "Scenarios loaded");
 
+    // Load experiments from database configuration
+    let experiment_count = engine.load_experiments_from_db().await?;
+    info!(experiments = experiment_count, "Experiments loaded from database");
+
     // Start Kafka consumers
     if std::env::var("KAFKA_ENABLED").unwrap_or_else(|_| "true".to_string()) == "true" {
         engine.start_kafka_consumers(&settings.kafka.brokers).await?;

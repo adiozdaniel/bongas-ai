@@ -465,6 +465,102 @@ impl BongasEngine {
         self.staging_manager.get_hit_rate()
     }
 
+    /// ========== EXPERIMENTS & BANDITS ==========
+
+    /// Get experiment manager reference
+    pub fn experiment_manager(&self) -> Arc<ExperimentManager> {
+        self.experiment_manager.clone()
+    }
+
+    /// Execute scenario with bandit-based scenario selection
+    pub async fn execute_scenario_with_experiment(
+        &self,
+        experiment_id: &str,
+        user_id: Option<i32>,
+        context_params: serde_json::Value,
+    ) -> Result<Vec<RecommendationItem>> {
+        // Use bandit to select arm (scenario variant)
+        let selected_scenario = self.experiment_manager
+            .select_arm(experiment_id)
+            .await
+            .unwrap_or_else(|_| "default".to_string());
+
+        info!(
+            experiment_id = experiment_id,
+            selected_scenario = %selected_scenario,
+            "Bandit selected scenario"
+        );
+
+        // Execute selected scenario
+        self.execute_scenario(&selected_scenario, user_id, context_params).await
+    }
+
+    /// Record a reward for experiment tracking (supports all reward types)
+    pub async fn record_experiment_reward(
+        &self,
+        experiment_id: &str,
+        scenario_slug: &str,
+        reward_type: &str,
+        reward_value: f64,
+    ) -> Result<()> {
+        // Calculate combined reward based on type
+        let combined_reward = match reward_type {
+            "completion" => reward_value, // Watch completion rate (0.0 - 1.0)
+            "click" => reward_value * 0.3, // Click-through contribution
+            "like" => 1.0, // Explicit like
+            "dislike" => 0.0, // Explicit dislike
+            _ => reward_value,
+        };
+
+        self.experiment_manager
+            .update_arm(experiment_id, scenario_slug, combined_reward)
+            .await?;
+
+        // Persist to database
+        self.experiment_manager.save_results(experiment_id).await?;
+
+        info!(
+            experiment_id = experiment_id,
+            scenario = %scenario_slug,
+            reward_type = reward_type,
+            reward_value = reward_value,
+            combined_reward = combined_reward,
+            "Experiment reward recorded"
+        );
+
+        Ok(())
+    }
+
+    /// Create a new experiment with arms (scenario variants)
+    pub async fn create_experiment(
+        &self,
+        experiment_id: &str,
+        algorithm: &str,
+        arm_names: Vec<String>,
+    ) -> Result<()> {
+        self.experiment_manager
+            .create_experiment(experiment_id, algorithm, arm_names)
+            .await
+    }
+
+    /// Get experiment status for monitoring (returns serde_json::Value)
+    pub async fn get_experiment_status(&self, experiment_id: &str) -> Result<serde_json::Value> {
+        self.experiment_manager.get_status(experiment_id).await
+    }
+
+    /// List all running experiments
+    pub async fn list_experiments(&self) -> Vec<String> {
+        self.experiment_manager.list_experiments().await
+    }
+
+    /// Load experiments from database configuration
+    pub async fn load_experiments_from_db(&self) -> Result<usize> {
+        info!("Loading experiments from database...");
+        let count = self.experiment_manager.load_from_database().await?;
+        info!(experiment_count = count, "Experiments loaded from database");
+        Ok(count)
+    }
+
     /// Get security status for API endpoint
     pub async fn get_security_status(&self) -> SecurityStatus {
         if let Some(ref manager) = self.security_manager {
@@ -514,4 +610,20 @@ pub struct SecurityStatus {
     pub validated: bool,
     pub security_enabled: bool,
     pub layers_configured: u32,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ExperimentStatus {
+    pub experiment_id: String,
+    pub algorithm: String,
+    pub arms: Vec<ArmStatus>,
+    pub total_selections: u64,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ArmStatus {
+    pub name: String,
+    pub selection_count: u64,
+    pub average_reward: f64,
+    pub win_rate: f64,
 }

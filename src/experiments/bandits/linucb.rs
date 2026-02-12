@@ -45,9 +45,9 @@ impl LinUCBArm {
 }
 
 pub struct LinUCB {
-    arms: HashMap<String, LinUCBArm>,
-    alpha: f64,  // Exploration parameter
-    feature_dim: usize,
+    pub arms: HashMap<String, LinUCBArm>,
+    pub alpha: f64,  // Exploration parameter
+    pub feature_dim: usize,
 }
 
 impl LinUCB {
@@ -64,9 +64,10 @@ impl LinUCB {
         }
     }
 
-    /// Select arm based on context features
-    pub fn select_arm(&self, context: &ContextFeatures) -> Result<String> {
-        let context_vector = context.to_vector(self.feature_dim)?;
+    /// Select arm using default context (no features required)
+    pub fn select_arm(&self) -> Result<String> {
+        // Use uniform context vector for selection
+        let context_vector = DVector::from_vec(vec![1.0; self.feature_dim]);
 
         let mut best_arm = String::new();
         let mut best_ucb = f64::NEG_INFINITY;
@@ -83,8 +84,22 @@ impl LinUCB {
         Ok(best_arm)
     }
 
-    /// Update arm with context and reward
-    pub fn update(
+    /// Update arm with reward (simplified, no context)
+    pub fn update(&mut self, arm_name: &str, reward: f64) -> Result<()> {
+        // For simple usage, use a default context vector
+        let context_vector = DVector::from_vec(vec![1.0; self.feature_dim]);
+
+        let arm = self.arms
+            .get_mut(arm_name)
+            .ok_or_else(|| anyhow::anyhow!("Unknown arm: {}", arm_name))?;
+
+        arm.update(&context_vector, reward);
+
+        Ok(())
+    }
+
+    /// Update arm with context and reward (full version)
+    pub fn update_with_context(
         &mut self,
         arm_name: &str,
         context: &ContextFeatures,
@@ -99,6 +114,27 @@ impl LinUCB {
         arm.update(&context_vector, reward);
 
         Ok(())
+    }
+
+    /// Get statistics for all arms
+    pub fn get_stats(&self) -> serde_json::Value {
+        use serde_json::json;
+        
+        let arms_stats: serde_json::Map<String, serde_json::Value> = self.arms
+            .iter()
+            .map(|(name, arm)| {
+                (name.clone(), json!({
+                    "A_determinant": arm.A.determinant(),
+                    "d": arm.d
+                }))
+            })
+            .collect();
+        
+        json!({
+            "arms": arms_stats,
+            "alpha": self.alpha,
+            "feature_dim": self.feature_dim
+        })
     }
 }
 
