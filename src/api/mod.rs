@@ -17,8 +17,8 @@ use tower_http::trace::TraceLayer;
 use serde_json::json;
 use crate::engine::BongasEngine;
 use crate::middlewares::{
-    logging::logging_middleware,
-    error_handling::error_handling_middleware,
+    logging::{logging_middleware, StructuredLogger, performance_monitoring_middleware},
+    error_handling::{error_handling_middleware, EnhancedErrorMiddleware, validation_error_middleware},
     metrics::{MetricsCollector, DurationTracker, EndpointMetrics},
     cors::create_dev_cors_layer,
     compression::CompressionConfig,
@@ -220,7 +220,13 @@ pub fn create_router(
         .layer(axum::Extension(metrics_collector))
 
         // ========== MIDDLEWARE STACK (applied in reverse order) ==========
-        // 1. Error handling (outermost)
+        // 1. Validation error handling (outermost)
+        .layer(from_fn(validation_error_middleware))
+        
+        // 2. Enhanced error handling
+        .layer(from_fn(EnhancedErrorMiddleware::layer))
+        
+        // 3. Error handling
         .layer(from_fn(error_handling_middleware))
         
         // 2. Rate limiting
