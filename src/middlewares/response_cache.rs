@@ -7,7 +7,6 @@ use axum::{
 };
 use redis::AsyncCommands;
 use std::sync::Arc;
-use std::time::{Duration, UNIX_EPOCH};
 use std::collections::HashMap;
 use serde::{Serialize, Deserialize};
 use tracing::{info, warn, error, debug};
@@ -65,20 +64,6 @@ impl ResponseCacheMiddleware {
         }
     }
 
-    pub fn max_body_size(mut self, size: u64) -> Self {
-        self.max_body_size = size;
-        self
-    }
-
-    pub fn cacheable_content_types(mut self, types: Vec<&'static str>) -> Self {
-        self.cacheable_content_types = types;
-        self
-    }
-
-    pub fn cacheable_status_codes(mut self, codes: Vec<StatusCode>) -> Self {
-        self.cacheable_status_codes = codes;
-        self
-    }
 
     pub async fn layer(
         &self,
@@ -217,7 +202,7 @@ impl ResponseCacheMiddleware {
             if let Some(last_modified) = &cached.metadata.last_modified {
                 if let Ok(modified_time) = httpdate::parse_http_date(if_modified_since.to_str().unwrap_or("")) {
                     let cached_time = last_modified.timestamp();
-                    if let Ok(duration) = modified_time.duration_since(UNIX_EPOCH) {
+                    if let Ok(duration) = modified_time.duration_since(std::time::UNIX_EPOCH) {
                         if duration.as_secs() as i64 >= cached_time {
                             return true;
                         }

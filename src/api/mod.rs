@@ -158,6 +158,12 @@ pub fn create_router(
             get(v1::handlers::admin::get_model_stats),
         )
 
+        // Security status
+        .route(
+            "/api/v1/admin/security/status",
+            get(v1::handlers::admin::get_security_status),
+        )
+
         // Health check
         .route("/health", get(v1::handlers::admin::health_check))
 

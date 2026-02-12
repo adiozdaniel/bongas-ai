@@ -113,13 +113,14 @@ impl SecurityManager {
     async fn start_heartbeat(&self) -> Result<()> {
         let validator = self.license_validator.clone();
         let hardware = self.hardware_fingerprinter.clone();
+        let anti_debug = self.anti_debug.clone();
         let interval = self.config.heartbeat_interval_seconds;
 
         tokio::spawn(async move {
             let mut tick = tokio::time::interval(std::time::Duration::from_secs(interval));
             loop {
                 tick.tick().await;
-                match Self::heartbeat_check(&validator, &hardware).await {
+                match Self::heartbeat_check(&validator, &hardware, &anti_debug).await {
                     Ok(_) => info!("License heartbeat: OK"),
                     Err(e) => {
                         error!("License heartbeat failed: {}", e);
@@ -135,8 +136,22 @@ impl SecurityManager {
     async fn heartbeat_check(
         validator: &LicenseValidator,
         hardware: &HardwareFingerprinter,
+        anti_debug: &AntiDebugDetector,
     ) -> Result<()> {
         let hardware_id = hardware.generate()?;
+        
+        // Runtime anti-debug check
+        if anti_debug.is_debugger_attached()? {
+            error!("🚨 Debugger detected during runtime heartbeat!");
+            return Err(anyhow!("Debugger detected during runtime"));
+        }
+        
+        // Check for analysis tools
+        if anti_debug.detect_analysis_tools()? {
+            error!("🚨 Analysis tool detected during runtime heartbeat!");
+            return Err(anyhow!("Analysis tool detected during runtime"));
+        }
+        
         validator.validate_with_server(&hardware_id).await?;
         validator.check_revocation_list().await?;
         Ok(())

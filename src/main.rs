@@ -1,7 +1,7 @@
 use anyhow::Result;
 use std::sync::Arc;
 use tokio::net::TcpListener;
-use tracing::info;
+use tracing::{info, warn, error};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 mod api;
@@ -21,6 +21,7 @@ mod middlewares;
 use engine::BongasEngine;
 use analytics::ClickHouseClient;
 use config::settings::Settings;
+use security::manager::SecurityManager;
 use middlewares::metrics::MetricsCollector;
 
 #[tokio::main]
@@ -39,6 +40,37 @@ async fn main() -> Result<()> {
     // Load configuration
     let settings = Settings::load()?;
     info!("Configuration loaded");
+
+    // Initialize security validation (8-layer security)
+    let security_manager = if !settings.security.license_key.is_empty() {
+        info!("🔒 Initializing security validation...");
+        let manager = SecurityManager::new(&settings.security).await?;
+        
+        match manager.validate_license().await {
+            Ok(()) => {
+                info!("✅ All 8 security layers passed");
+                Some(Arc::new(manager))
+            }
+            Err(e) => {
+                error!("❌ Security validation failed: {}", e);
+                return Err(e);
+            }
+        }
+    } else {
+        // In production, license key is mandatory
+        #[cfg(not(debug_assertions))]
+        {
+            error!("❌ License key required in production mode");
+            return Err(anyhow::anyhow!("License key required in production"));
+        }
+        
+        // In development, allow running without license
+        #[cfg(debug_assertions)]
+        {
+            warn!("⚠️ Security validation skipped (development mode - no license key)");
+            None
+        }
+    };
 
     // Initialize database pool
     let db_pool = sqlx::postgres::PgPoolOptions::new()
@@ -60,9 +92,15 @@ async fn main() -> Result<()> {
     // Create metrics collector
     let metrics_collector = Arc::new(MetricsCollector::new());
 
-    // Create BongasEngine
+    // Create BongasEngine with security manager
     let model_dir = settings.ml.model_path.to_str().unwrap_or("models/onnx");
-    let engine = BongasEngine::new(db_pool, clickhouse, &settings.redis.url, model_dir).await?;
+    let engine = BongasEngine::new(
+        db_pool,
+        clickhouse,
+        &settings.redis.url,
+        model_dir,
+        security_manager,
+    ).await?;
 
     // Load scenarios from database
     let scenario_count = engine.reload_scenarios().await?;
@@ -79,10 +117,34 @@ async fn main() -> Result<()> {
             "personalized_home".to_string(),
             "continue_watching".to_string(),
             "trending_now".to_string(),
+            "live_tv".to_string(),
         ]);
-        let warm_interval = settings.cache.warming_interval_minutes.unwrap_or(30);
-        engine.clone().start_cache_warming(warm_scenarios, warm_interval);
-        info!("Cache warming started");
+        
+        // Validate scenarios exist before starting cache warming
+        let available_scenarios = engine.list_scenarios().await;
+        let mut valid_scenarios = Vec::new();
+        
+        for scenario in &warm_scenarios {
+            if available_scenarios.contains(scenario) {
+                valid_scenarios.push(scenario.clone());
+            } else {
+                warn!("Scenario '{}' not found, skipping cache warming", scenario);
+            }
+        }
+
+        if !valid_scenarios.is_empty() {
+            let warm_interval = settings.cache.warming_interval_minutes.unwrap_or(30);
+            let scenario_count = valid_scenarios.len();
+            engine.clone().start_cache_warming(valid_scenarios, warm_interval);
+            info!(
+                scenarios = scenario_count,
+                interval_minutes = warm_interval,
+                "Cache warming started for {} scenarios",
+                scenario_count
+            );
+        } else {
+            warn!("No valid scenarios found for cache warming, skipping");
+        }
     }
 
     // Create API router

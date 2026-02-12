@@ -7,8 +7,9 @@ use tracing::{info, error};
 
 use crate::engine::BongasEngine;
 use crate::api::models::{
-    ApiResponse, CacheStatsResponse, HealthResponse,
-    KafkaMetricsResponse, KafkaHealthResponse, ModelReloadResponse, ModelStatsResponse,
+    ApiResponse, HealthResponse,
+    KafkaMetricsResponse, KafkaHealthResponse, CacheStatsResponse, ModelReloadResponse, ModelStatsResponse,
+    SecurityStatusResponse,
 };
 use crate::api::error::ApiError;
 use crate::api::error::ApiResult;
@@ -125,5 +126,26 @@ pub async fn get_model_stats(
 
     Ok(Json(ApiResponse::success(ModelStatsResponse {
         loaded_models: count,
+    })))
+}
+
+/// GET /api/v1/admin/security/status
+/// Get current security validation status
+pub async fn get_security_status(
+    Extension(engine): Extension<Arc<BongasEngine>>,
+) -> ApiResult<Json<ApiResponse<SecurityStatusResponse>>> {
+    let status = engine.get_security_status().await;
+
+    info!(
+        validated = status.validated,
+        security_enabled = status.security_enabled,
+        layers = status.layers_configured,
+        "Security status retrieved"
+    );
+
+    Ok(Json(ApiResponse::success(SecurityStatusResponse {
+        validated: status.validated,
+        security_enabled: status.security_enabled,
+        layers_configured: status.layers_configured,
     })))
 }

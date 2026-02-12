@@ -46,5 +46,16 @@ model_path = "./models"
 execution_provider = "cpu"
 graph_optimization = true
 
+[cache]
+l1_ttl_seconds = 300
+l2_ttl_seconds = 3600
+warming_interval_minutes = 30
+warm_scenarios = [
+    "personalized_home",
+    "continue_watching",
+    "trending_now",
+    "live_tv"
+]
+
 [logging]
 level = "info"

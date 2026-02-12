@@ -23,6 +23,8 @@ use crate::kafka::manager::KafkaConsumerManager;
 use crate::kafka::metrics::KafkaMetricsRegistry;
 use crate::ml::model_loader::ModelLoader;
 use crate::db::repositories::model_repository::ModelRepository;
+use crate::experiments::manager::ExperimentManager;
+use crate::security::manager::SecurityManager;
 
 use self::staging_manager::StagingManager;
 use self::staleness_engine::{StalenessEngine, UserEvent};
@@ -44,9 +46,15 @@ pub struct BongasEngine {
     // ML Model Management
     model_loader: Arc<ModelLoader>,
 
+    // Experiments & Bandits
+    experiment_manager: Arc<ExperimentManager>,
+
     // Kafka
     kafka_manager: Arc<RwLock<Option<KafkaConsumerManager>>>,
     kafka_metrics: Arc<KafkaMetricsRegistry>,
+
+    // Security
+    security_manager: Option<Arc<SecurityManager>>,
 
     // Dependencies
     db_pool: Arc<PgPool>,
@@ -70,6 +78,7 @@ impl BongasEngine {
         clickhouse: ClickHouseClient,
         redis_url: &str,
         model_dir: &str,
+        security_manager: Option<Arc<SecurityManager>>,
     ) -> Result<Arc<Self>> {
         info!("Initializing BongasEngine...");
 
@@ -107,6 +116,9 @@ impl BongasEngine {
         // Create Kafka metrics registry
         let kafka_metrics = Arc::new(KafkaMetricsRegistry::new());
 
+        // Create experiment manager
+        let experiment_manager = Arc::new(ExperimentManager::new(db_pool.clone()));
+
         let engine = Arc::new(Self {
             scenarios: Arc::new(RwLock::new(HashMap::new())),
             scenario_factory,
@@ -114,8 +126,10 @@ impl BongasEngine {
             staging_manager,
             staleness_engine,
             model_loader,
+            experiment_manager,
             kafka_manager: Arc::new(RwLock::new(None)),
             kafka_metrics,
+            security_manager,
             db_pool,
             clickhouse,
             redis,
@@ -451,6 +465,23 @@ impl BongasEngine {
         self.staging_manager.get_hit_rate()
     }
 
+    /// Get security status for API endpoint
+    pub async fn get_security_status(&self) -> SecurityStatus {
+        if let Some(ref manager) = self.security_manager {
+            SecurityStatus {
+                validated: manager.is_validated().await,
+                security_enabled: true,
+                layers_configured: 8,
+            }
+        } else {
+            SecurityStatus {
+                validated: false,
+                security_enabled: false,
+                layers_configured: 0,
+            }
+        }
+    }
+
     /// Convert ScoredItem to RecommendationItem
     fn convert_to_recommendation_items(scored_items: Vec<ScoredItem>) -> Vec<RecommendationItem> {
         scored_items.into_iter().map(|item| RecommendationItem {
@@ -476,4 +507,11 @@ pub struct ScenarioExecutionStats {
     pub onnx_stage_count: usize,
     pub execution_time_ms: u64,
     pub cached_result: bool,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct SecurityStatus {
+    pub validated: bool,
+    pub security_enabled: bool,
+    pub layers_configured: u32,
 }

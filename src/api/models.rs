@@ -81,3 +81,10 @@ pub struct ModelReloadResponse {
 pub struct ModelStatsResponse {
     pub loaded_models: usize,
 }
+
+#[derive(Debug, Serialize)]
+pub struct SecurityStatusResponse {
+    pub validated: bool,
+    pub security_enabled: bool,
+    pub layers_configured: u32,
+}

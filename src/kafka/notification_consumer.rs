@@ -11,6 +11,7 @@ use tracing::{info, error, warn};
 use crate::kafka::circuit_breaker::{CircuitBreaker, CircuitBreakerConfig};
 use crate::kafka::retry::{DeadLetterQueue, DeadLetterMessage, RetryConfig};
 use crate::kafka::metrics::{ConsumerMetrics};
+use crate::engine::staleness_engine::{StalenessEngine, UserEvent};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NotificationEvent {
@@ -83,6 +84,7 @@ pub struct NotificationConsumer {
     circuit_breaker: Arc<CircuitBreaker>,
     dlq: Arc<DeadLetterQueue>,
     metrics: Arc<ConsumerMetrics>,
+    staleness_engine: Arc<StalenessEngine>,
     topic: String,
     group_id: String,
 }
@@ -92,12 +94,14 @@ impl NotificationConsumer {
         kafka_brokers: &str,
         group_id: &str,
         topic: &str,
+        staleness_engine: Arc<StalenessEngine>,
     ) -> Result<Self> {
         Self::with_provider(
             kafka_brokers,
             group_id,
             topic,
             Arc::new(DefaultNotificationProvider),
+            staleness_engine,
         )
     }
 
@@ -106,6 +110,7 @@ impl NotificationConsumer {
         group_id: &str,
         topic: &str,
         provider: Arc<dyn NotificationProvider>,
+        staleness_engine: Arc<StalenessEngine>,
     ) -> Result<Self> {
         let consumer: StreamConsumer = ClientConfig::new()
             .set("bootstrap.servers", kafka_brokers)
@@ -141,6 +146,7 @@ impl NotificationConsumer {
             circuit_breaker,
             dlq,
             metrics,
+            staleness_engine,
             topic: topic.to_string(),
             group_id: group_id.to_string(),
         })
@@ -288,6 +294,26 @@ impl NotificationConsumer {
             }
             // Log partial failures but consider success
             warn!(errors = ?errors, "Some notification channels failed");
+        }
+
+        // For certain notification types, invalidate relevant caches
+        match event.notification_type.as_str() {
+            "new_content" => {
+                // New content might affect trending and genre-based recommendations
+                self.staleness_engine.process_event(&UserEvent::NewContentInGenre {
+                    genre: "all".to_string(), // Could be extracted from event data
+                }).await?;
+            }
+            "recommendation" => {
+                // Recommendation notifications might indicate user engagement
+                // Could trigger cache refresh for personalized scenarios
+                self.staleness_engine.process_event(&UserEvent::ExplicitFeedback {
+                    user_id: event.user_id,
+                    item_id: 0, // Not applicable for notifications
+                    rating: 0.0, // Not applicable for notifications
+                }).await?;
+            }
+            _ => {}
         }
 
         Ok(())

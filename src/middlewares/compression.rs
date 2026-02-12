@@ -6,8 +6,7 @@ use axum::{
     http::{HeaderValue, header},
 };
 use tower_http::compression::CompressionLayer;
-use std::sync::Arc;
-use tracing::{info, debug, warn};
+use tracing::{debug, info};
 
 /// Enhanced compression middleware with multiple algorithms and smart content filtering
 pub struct CompressionConfig {

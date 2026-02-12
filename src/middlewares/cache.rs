@@ -1,9 +1,9 @@
 use axum::{
     body::Body,
     extract::Request,
-    http::{StatusCode, HeaderMap, HeaderValue},
+    http::StatusCode,
     middleware::Next,
-    response::{Response, IntoResponse},
+    response::Response,
 };
 use redis::AsyncCommands;
 use std::sync::Arc;

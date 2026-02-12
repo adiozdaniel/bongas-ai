@@ -4,7 +4,7 @@ use serde_json::Value as JsonValue;
 use serde::Deserialize;
 use crate::pipeline::{PipelineStage, ScoredItem};
 use crate::pipeline::context::ExecutionContext;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 #[derive(Deserialize)]
 struct Params {

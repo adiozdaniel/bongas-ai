@@ -58,6 +58,7 @@ impl KafkaConsumerManager {
             "bongas-profile-consumer",
             "user.profiles",
             db_pool.clone(),
+            staleness_engine.clone(),
         )?);
         self.handles.push(tokio::spawn(async move {
             profile.start().await;
@@ -68,6 +69,7 @@ impl KafkaConsumerManager {
             kafka_brokers,
             "bongas-notification-consumer",
             "notifications",
+            staleness_engine.clone(),
         )?);
         self.handles.push(tokio::spawn(async move {
             notification.start().await;

@@ -2,7 +2,7 @@ use axum::{
     extract::{Request, ConnectInfo},
     http::StatusCode,
     middleware::Next,
-    response::{Response, IntoResponse},
+    response::Response,
     body::Body,
 };
 use redis::AsyncCommands;

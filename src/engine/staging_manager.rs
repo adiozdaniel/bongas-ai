@@ -1,7 +1,6 @@
 use anyhow::Result;
 use sha2::{Sha256, Digest};
 use serde_json::Value as JsonValue;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use tracing::{info, debug};
 

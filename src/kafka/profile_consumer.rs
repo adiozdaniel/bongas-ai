@@ -12,6 +12,7 @@ use tracing::{info, error, warn};
 use crate::kafka::circuit_breaker::{CircuitBreaker, CircuitBreakerConfig};
 use crate::kafka::retry::{DeadLetterQueue, DeadLetterMessage, RetryConfig};
 use crate::kafka::metrics::{ConsumerMetrics, KafkaMetricsRegistry};
+use crate::engine::staleness_engine::{StalenessEngine, UserEvent};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProfileUpdateEvent {
@@ -27,6 +28,7 @@ pub struct ProfileConsumer {
     circuit_breaker: Arc<CircuitBreaker>,
     dlq: Arc<DeadLetterQueue>,
     metrics: Arc<ConsumerMetrics>,
+    staleness_engine: Arc<StalenessEngine>,
     topic: String,
     group_id: String,
 }
@@ -37,6 +39,7 @@ impl ProfileConsumer {
         group_id: &str,
         topic: &str,
         db_pool: Arc<PgPool>,
+        staleness_engine: Arc<StalenessEngine>,
     ) -> Result<Self> {
         let consumer: StreamConsumer = ClientConfig::new()
             .set("bootstrap.servers", kafka_brokers)
@@ -72,6 +75,7 @@ impl ProfileConsumer {
             circuit_breaker,
             dlq,
             metrics,
+            staleness_engine,
             topic: topic.to_string(),
             group_id: group_id.to_string(),
         })
@@ -177,10 +181,42 @@ impl ProfileConsumer {
         );
 
         match event.update_type.as_str() {
-            "preferences" => self.update_preferences(&event).await?,
-            "settings" => self.update_settings(&event).await?,
-            "demographics" => self.update_demographics(&event).await?,
-            "subscription" => self.update_subscription(&event).await?,
+            "preferences" => {
+                self.update_preferences(&event).await?;
+                // Invalidate personalized scenarios when preferences change
+                self.staleness_engine.process_event(&UserEvent::ExplicitFeedback {
+                    user_id: event.user_id,
+                    item_id: 0, // Not applicable for preferences
+                    rating: 0.0, // Not applicable for preferences
+                }).await?;
+            }
+            "settings" => {
+                self.update_settings(&event).await?;
+                // Settings changes might affect recommendations
+                self.staleness_engine.process_event(&UserEvent::ExplicitFeedback {
+                    user_id: event.user_id,
+                    item_id: 0,
+                    rating: 0.0,
+                }).await?;
+            }
+            "demographics" => {
+                self.update_demographics(&event).await?;
+                // Demographic changes affect personalized recommendations
+                self.staleness_engine.process_event(&UserEvent::ExplicitFeedback {
+                    user_id: event.user_id,
+                    item_id: 0,
+                    rating: 0.0,
+                }).await?;
+            }
+            "subscription" => {
+                self.update_subscription(&event).await?;
+                // Subscription changes affect content access
+                self.staleness_engine.process_event(&UserEvent::ExplicitFeedback {
+                    user_id: event.user_id,
+                    item_id: 0,
+                    rating: 0.0,
+                }).await?;
+            }
             _ => {
                 warn!(
                     user_id = event.user_id,
