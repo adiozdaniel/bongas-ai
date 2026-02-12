@@ -5,40 +5,40 @@ use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
 pub struct LinUCBArm {
-    pub A: DMatrix<f64>,  // d×d design matrix
-    pub b: DVector<f64>,  // d×1 reward vector
-    pub d: usize,         // Feature dimension
+    pub a: DMatrix<f64>,  // d×d design matrix
+    pub b_vec: DVector<f64>,  // d×1 reward vector
+    pub dim: usize,         // Feature dimension
 }
 
 impl LinUCBArm {
-    pub fn new(d: usize) -> Self {
+    pub fn new(dim: usize) -> Self {
         Self {
-            A: DMatrix::identity(d, d),
-            b: DVector::zeros(d),
-            d,
+            a: DMatrix::identity(dim, dim),
+            b_vec: DVector::zeros(dim),
+            dim,
         }
     }
 
     pub fn update(&mut self, context: &DVector<f64>, reward: f64) {
         // A = A + x·x^T
-        self.A += context * context.transpose();
+        self.a += context * context.transpose();
 
         // b = b + r·x
-        self.b += reward * context;
+        self.b_vec += reward * context;
     }
 
     pub fn predict(&self, context: &DVector<f64>, alpha: f64) -> f64 {
         // θ = A^(-1)·b
-        let A_inv = self.A.clone().try_inverse().unwrap_or_else(|| {
+        let a_inv = self.a.clone().try_inverse().unwrap_or_else(|| {
             // Fallback: use pseudo-inverse
-            DMatrix::identity(self.d, self.d)
+            DMatrix::identity(self.dim, self.dim)
         });
 
-        let theta = &A_inv * &self.b;
+        let theta = &a_inv * &self.b_vec;
 
         // Upper confidence bound: θ^T·x + α·sqrt(x^T·A^(-1)·x)
         let prediction = theta.dot(context);
-        let uncertainty = alpha * (context.transpose() * &A_inv * context)[(0, 0)].sqrt();
+        let uncertainty = alpha * (context.transpose() * &a_inv * context)[(0, 0)].sqrt();
 
         prediction + uncertainty
     }
@@ -124,8 +124,8 @@ impl LinUCB {
             .iter()
             .map(|(name, arm)| {
                 (name.clone(), json!({
-                    "A_determinant": arm.A.determinant(),
-                    "d": arm.d
+                    "A_determinant": arm.a.determinant(),
+                    "dim": arm.dim
                 }))
             })
             .collect();

@@ -19,7 +19,7 @@ use crate::engine::BongasEngine;
 use crate::middlewares::{
     logging::logging_middleware,
     error_handling::error_handling_middleware,
-    metrics::MetricsCollector,
+    metrics::{MetricsCollector, DurationTracker, EndpointMetrics},
     cors::create_dev_cors_layer,
     compression::CompressionConfig,
     rate_limit::RateLimiter,
@@ -31,6 +31,9 @@ pub fn create_router(
     redis: Arc<redis::Client>,
     metrics_collector: Arc<MetricsCollector>,
 ) -> Router {
+    // Create endpoint metrics tracker
+    let endpoint_metrics = Arc::new(EndpointMetrics::new());
+    
     Router::new()
         // ========== EXISTING V1 ENDPOINTS (PRESERVED) ==========
 
@@ -167,6 +170,50 @@ pub fn create_router(
         // Health check
         .route("/health", get(v1::handlers::admin::health_check))
 
+        // ========== EXPERIMENTS ENDPOINTS ==========
+
+        // Create experiment
+        .route(
+            "/api/v1/experiments",
+            post(v1::experiments::create_experiment),
+        )
+
+        // List experiments
+        .route(
+            "/api/v1/experiments",
+            get(v1::experiments::list_experiments),
+        )
+
+        // Get experiment details
+        .route(
+            "/api/v1/experiments/:id",
+            get(v1::experiments::get_experiment),
+        )
+
+        // Get experiment status
+        .route(
+            "/api/v1/experiments/:id/status",
+            get(v1::experiments::get_experiment_status),
+        )
+
+        // Execute experiment (select arm)
+        .route(
+            "/api/v1/experiments/:id/execute",
+            post(v1::experiments::execute_experiment),
+        )
+
+        // Record reward
+        .route(
+            "/api/v1/experiments/:id/reward",
+            post(v1::experiments::record_reward),
+        )
+
+        // Load experiments from database
+        .route(
+            "/api/v1/experiments/load",
+            post(v1::experiments::load_experiments),
+        )
+
         // Inject shared state
         .layer(axum::Extension(engine))
         .layer(axum::Extension(redis))
@@ -241,9 +288,17 @@ pub fn create_router(
             .enable_deflate(false)
             .build())
         
-        // 6. CORS (Enhanced - Development)
+        // 6. Duration tracking middleware
+        .layer(from_fn(DurationTracker::layer))
+        
+        // 7. CORS (Enhanced - Development)
         .layer(create_dev_cors_layer())
         
-        // 7. Request tracing
+        // 8. Endpoint metrics tracking
+        .layer(from_fn(move |req: Request<Body>, next: Next| {
+            endpoint_metrics.clone().layer(req, next)
+        }))
+        
+        // 9. Request tracing
         .layer(TraceLayer::new_for_http())
 }

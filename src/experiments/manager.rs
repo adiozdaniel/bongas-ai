@@ -132,8 +132,8 @@ impl ExperimentManager {
                     .iter()
                     .map(|(name, arm)| {
                         (name.clone(), json!({
-                            "A_determinant": arm.A.determinant(),
-                            "d": arm.d
+                            "A_determinant": arm.a.determinant(),
+                            "d": arm.dim
                         }))
                     })
                     .collect();
