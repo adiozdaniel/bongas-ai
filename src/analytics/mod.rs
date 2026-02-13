@@ -4,6 +4,12 @@
 //! for all circuit breakers in the system. Lock-free where possible,
 //! with HDR histograms for accurate latency percentiles.
 //!
+//! # Netflix Resilience Features
+//! - **Error Classification Tracking**: Breakdown by classification type
+//! - **Degraded/Partial Failure Metrics**: Tracked separately
+//! - **Lock Poison Recovery**: All locks recover gracefully from panics
+//! - **Validated Configuration**: Builder pattern with cross-field validation
+//!
 //! # Design Patterns
 //! - **Observer**: `ResilienceMetricsCollector` receives circuit breaker events.
 //! - **Strategy**: `MetricsExporter` trait for pluggable export formats.
@@ -18,16 +24,36 @@ pub mod histogram;
 pub mod registry;
 pub mod types;
 
+// ─── Collector ──────────────────────────────────────────────────────────────
+
 pub use collector::ResilienceMetricsCollector;
+
+// ─── Configuration ──────────────────────────────────────────────────────────
+
 pub use config::AnalyticsConfig;
 pub use config::AnalyticsConfigBuilder;
+pub use config::AnalyticsConfigError;
+
+// ─── Exporters ──────────────────────────────────────────────────────────────
+
 pub use exporter::JsonExporter;
 pub use exporter::MetricsExporter;
 pub use exporter::PrometheusExporter;
+
+// ─── Histogram ──────────────────────────────────────────────────────────────
+
 pub use histogram::HdrHistogram;
+
+// ─── Registry ───────────────────────────────────────────────────────────────
+
 pub use registry::BreakerMetrics;
 pub use registry::MetricsRegistry;
+
+// ─── Types ──────────────────────────────────────────────────────────────────
+
 pub use types::BreakerSnapshot;
+pub use types::ClassificationCounters;
+pub use types::ClassificationSnapshot;
 pub use types::Counter;
 pub use types::Gauge;
 pub use types::Rate;

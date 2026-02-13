@@ -44,7 +44,7 @@ impl HdrHistogram {
 
     /// Record a latency value in microseconds.
     pub fn record(&self, value_micros: u64) {
-        let value = value_micros.min(MAX_VALUE_MICROS).max(1);
+        let value = value_micros.clamp(1, MAX_VALUE_MICROS);
         let bucket = self.value_to_bucket(value);
 
         self.buckets[bucket].fetch_add(1, Ordering::Relaxed);
