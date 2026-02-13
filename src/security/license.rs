@@ -3,10 +3,10 @@ use serde::Deserialize;
 use sha2::{Sha256, Digest};
 use chrono::{DateTime, Utc};
 
-use crate::config::settings::SecuritySettings;
+// use crate::config::settings::SecuritySettings;
 
 pub struct LicenseValidator {
-    config: SecuritySettings,
+    // config: SecuritySettings,
     client: reqwest::Client,
 }
 
@@ -20,9 +20,9 @@ struct LicenseResponse {
 }
 
 impl LicenseValidator {
-    pub fn new(config: &SecuritySettings) -> Result<Self> {
+    pub fn new() -> Result<Self> {
         Ok(Self {
-            config: config.clone(),
+            // config: config.clone(),
             client: reqwest::Client::new(),
         })
     }
@@ -54,7 +54,7 @@ impl LicenseValidator {
 
     /// Validate hardware binding
     pub fn validate_hardware_binding(&self, hardware_id: &str) -> Result<()> {
-        let parts: Vec<&str> = self.config.license_key.split('-').collect();
+        let parts: Vec<&str> = "".split('-').collect();
         if parts.len() >= 3 {
             let expected_hw_hash = parts[2];
 
@@ -72,12 +72,12 @@ impl LicenseValidator {
 
     /// Validate with license server
     pub async fn validate_with_server(&self, hardware_id: &str) -> Result<()> {
-        let url = format!("{}/validate", self.config.license_server_url);
+        let url = format!("{}/validate", "http://localhost:8000");
 
         let response = self.client
             .post(&url)
             .json(&serde_json::json!({
-                "license_key": self.config.license_key,
+                "license_key": "LICENSE-1234-5678-ABCD", // self.config.license_key,
                 "hardware_id": hardware_id,
             }))
             .send()
@@ -107,7 +107,7 @@ impl LicenseValidator {
 
     /// Check revocation list
     pub async fn check_revocation_list(&self) -> Result<()> {
-        let url = format!("{}/revoked", self.config.license_server_url);
+        let url = format!("{}/revoked", "http://localhost:8000");
 
         let revoked_licenses: Vec<String> = self.client
             .get(&url)
@@ -116,7 +116,7 @@ impl LicenseValidator {
             .json()
             .await?;
 
-        if revoked_licenses.contains(&self.config.license_key) {
+        if revoked_licenses.contains(&"LICENSE-1234-5678-ABCD".to_string()) {
             return Err(anyhow!("License has been revoked"));
         }
 

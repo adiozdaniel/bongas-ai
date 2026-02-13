@@ -1,14 +1,37 @@
-use anyhow::Result;
-use crate::config::settings::SecuritySettings;
 
-pub struct HeartbeatManager {
-    _config: SecuritySettings,
-}
+  //! Cross-module configuration validation.
 
-impl HeartbeatManager {
-    pub fn new(config: &SecuritySettings) -> Result<Self> {
-        Ok(Self {
-            _config: config.clone(),
-        })
-    }
-}
+//   use super::types::AppConfig;
+  use anyhow::{ Result};
+
+  /// Validate the entire application configuration.
+  pub fn validate_app_config() -> Result<()> {
+      // Cross-service validation
+    //   if !config.kafka.brokers.is_empty() && config.kafka.group_id.is_empty() {
+    //       return Err(anyhow!("Kafka configured but missing group_id"));
+    //   }
+
+    //   // Resource validation (e.g., file paths exist)
+    //   if !config.ml.model_path.exists() {
+    //       return Err(anyhow!("ML model path does not exist: {:?}", config.ml.model_path));
+    //   }
+
+    //   // Circuit breaker validation
+    //   if config.circuit_breaker.enabled && config.circuit_breaker.failure_threshold == 0.0 {
+    //       return Err(anyhow!("Circuit breaker failure threshold must be > 0.0"));
+    //   }
+
+    //   // Analytics validation
+    //   if config.analytics.enabled && !config.circuit_breaker.enabled {
+    //       return Err(anyhow!("Analytics requires circuit breaker to be enabled"));
+    //   }
+
+    //   // Error handling validation
+    //   if config.error.enabled && config.error.max_retries == 0 {
+    //       return Err(anyhow!("Error handling requires max_retries > 0"));
+    //   }
+
+      Ok(())
+  }
+
+

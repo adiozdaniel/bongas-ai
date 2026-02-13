@@ -1,15 +1,60 @@
-pub mod api;
-pub mod engine;
-pub mod scenarios;
-pub mod ml;
-pub mod experiments;
-pub mod db;
-pub mod error;
-pub mod cache;
-pub mod kafka;
-pub mod security;
+//! BONGAS-AI library providing Netflix-grade resilience patterns and configuration management.
+//!
+//! This crate provides the core functionality for the BONGAS-AI service including:
+//! - **Configuration Management**: Composite Configuration Pattern with layered loading
+//! - **Circuit Breaker**: Netflix Hystrix-inspired circuit breaker with metrics collection
+//! - **Error Handling**: Comprehensive error classification and retry strategies
+//! - **Analytics**: High-throughput metrics collection and export
+//! - **Telemetry**: Observability and distributed tracing
+//! - **Security**: License validation and hardware binding
+//! - **Caching**: Multi-layer caching with Redis and PostgreSQL
+//! - **ML**: Machine learning model management and ONNX runtime
+//! - **Pipeline**: Recommendation pipeline with dynamic scenarios
+//! - **Kafka**: Event streaming with circuit breaker protection
+//! - **Database**: PostgreSQL and ClickHouse integration
+//! - **API**: RESTful API with middleware stack
+//! - **Experiments**: A/B testing and bandit algorithms
+//! - **Scenarios**: Dynamic scenario management
+//! - **Engine**: Core recommendation engine
+//! - **Middlewares**: HTTP middleware stack
+
+// Core modules
 pub mod config;
-pub mod pipeline;
-pub mod middlewares;
+pub mod error;
+pub mod telemetry;
+pub mod security;
+
+// Resilience modules
 pub mod circuit_breaker;
 pub mod analytics;
+
+// Data modules
+pub mod cache;
+pub mod db;
+pub mod kafka;
+pub mod ml;
+
+// Business logic modules
+pub mod engine;
+pub mod scenarios;
+pub mod experiments;
+pub mod pipeline;
+
+// API and infrastructure
+pub mod api;
+pub mod middlewares;
+
+// Re-export key types for convenience
+pub use config::{ConfigLoader, AppConfig};
+pub use config::{
+    ServerConfig, DatabaseConfig, RedisConfig, ClickHouseConfig,
+    KafkaConfig, SecurityConfig, MlConfig
+};
+
+// Resilience types
+pub use circuit_breaker::{CircuitBreaker, CircuitBreakerConfig, CircuitState};
+pub use error::{AppError, AppResult, ErrorClassification, ErrorClassifier};
+pub use analytics::{ResilienceMetricsCollector, MetricsRegistry};
+
+// Telemetry
+pub use telemetry::{init as initialize_telemetry, TelemetryConfig};

@@ -1,3 +1,26 @@
-pub mod settings;
-pub mod kafka;
-pub mod spring_cloud;
+//! Configuration module for Netflix-grade Composite Configuration Pattern.
+//!
+//! Provides layered configuration loading with precedence:
+//! 1. TOML defaults (config/default.toml)
+//! 2. Environment variables (.env)
+//! 3. Spring Cloud Config (optional)
+//!
+//! All configuration is immutable at runtime for maximum throughput.
+
+pub mod loader;
+pub mod sources;
+pub mod types;
+pub mod validation;
+
+// Re-export main types
+pub use loader::ConfigLoader;
+pub use types::AppConfig;
+
+// Re-export config types for convenience
+pub use types::{
+    AnalyticsConfig, CircuitBreakerConfig, ClickHouseConfig, DatabaseConfig,
+    ErrorConfig, KafkaConfig, MlConfig, RedisConfig, SecurityConfig, ServerConfig,
+};
+
+// Re-export source types
+pub use sources::{ConfigError, ConfigResult, ConfigSource};

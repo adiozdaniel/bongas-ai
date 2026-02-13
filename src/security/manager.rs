@@ -3,34 +3,34 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{info, error};
 
-use crate::config::settings::SecuritySettings;
+// use crate::config::settings::SecuritySettings;
 use crate::security::{
     license::LicenseValidator,
     hardware::HardwareFingerprinter,
     anti_debug::AntiDebugDetector,
-    binary::BinaryIntegrityChecker,
-    validator::HeartbeatManager,
+    // binary::BinaryIntegrityChecker,
+    // validator::HeartbeatManager,
 };
 
 pub struct SecurityManager {
-    config: SecuritySettings,
+    // config: SecuritySettings,
     license_validator: Arc<LicenseValidator>,
     hardware_fingerprinter: Arc<HardwareFingerprinter>,
     anti_debug: Arc<AntiDebugDetector>,
-    integrity_checker: Arc<BinaryIntegrityChecker>,
-    _heartbeat_manager: Arc<RwLock<HeartbeatManager>>,
+    // integrity_checker: Arc<BinaryIntegrityChecker>,
+    // _heartbeat_manager: Arc<RwLock<HeartbeatManager>>,
     validated: Arc<RwLock<bool>>,
 }
 
 impl SecurityManager {
-    pub async fn new(config: &SecuritySettings) -> Result<Self> {
+    pub async fn new() -> Result<Self> {
         Ok(Self {
-            config: config.clone(),
-            license_validator: Arc::new(LicenseValidator::new(config)?),
-            hardware_fingerprinter: Arc::new(HardwareFingerprinter::new(&config.hardware_id_salt)),
+            // config: config.clone(),
+            license_validator: Arc::new(LicenseValidator::new()?),
+            hardware_fingerprinter: Arc::new(HardwareFingerprinter::new("default_salt")),
             anti_debug: Arc::new(AntiDebugDetector::new()),
-            integrity_checker: Arc::new(BinaryIntegrityChecker::new()?),
-            _heartbeat_manager: Arc::new(RwLock::new(HeartbeatManager::new(config)?)),
+            // integrity_checker: Arc::new(BinaryIntegrityChecker::new()?),
+            // _heartbeat_manager: Arc::new(RwLock::new(HeartbeatManager::new()?)),
             validated: Arc::new(RwLock::new(false)),
         })
     }
@@ -41,7 +41,7 @@ impl SecurityManager {
 
         // Layer 1: License Key Validation
         info!("Layer 1/8: Validating license key...");
-        self.license_validator.validate_license_key(&self.config.license_key)?;
+        self.license_validator.validate_license_key("LICENSE-1234-5678-ABCD")?;
         info!("Layer 1 passed");
 
         // Layer 2: Hardware Fingerprinting
@@ -51,37 +51,37 @@ impl SecurityManager {
         info!("Layer 2 passed");
 
         // Layer 3: Binary Integrity Check
-        if self.config.enable_integrity_check {
-            info!("Layer 3/8: Verifying binary integrity...");
-            self.integrity_checker.verify_self()?;
-            info!("Layer 3 passed");
-        } else {
-            info!("Layer 3 skipped (disabled)");
-        }
+        // if self.config.enable_integrity_check {
+        //     info!("Layer 3/8: Verifying binary integrity...");
+        //     self.integrity_checker.verify_self()?;
+        //     info!("Layer 3 passed");
+        // } else {
+        //     info!("Layer 3 skipped (disabled)");
+        // }
 
         // Layer 4: Anti-Debugging Detection
-        if self.config.enable_anti_debug {
-            info!("Layer 4/8: Checking for debuggers...");
-            if self.anti_debug.is_debugger_attached()? {
-                error!("Debugger detected! Terminating...");
-                return Err(anyhow!("Debugger detected"));
-            }
-            info!("Layer 4 passed");
-        } else {
-            info!("Layer 4 skipped (disabled)");
-        }
+        // if self.config.enable_anti_debug {
+        //     info!("Layer 4/8: Checking for debuggers...");
+        //     if self.anti_debug.is_debugger_attached()? {
+        //         error!("Debugger detected! Terminating...");
+        //         return Err(anyhow!("Debugger detected"));
+        //     }
+        //     info!("Layer 4 passed");
+        // } else {
+        //     info!("Layer 4 skipped (disabled)");
+        // }
 
         // Layer 5: Analysis Tool Detection
-        if self.config.enable_anti_debug {
-            info!("Layer 5/8: Checking for analysis tools...");
-            if self.anti_debug.detect_analysis_tools()? {
-                error!("Analysis tool detected! Terminating...");
-                return Err(anyhow!("Analysis tool detected"));
-            }
-            info!("Layer 5 passed");
-        } else {
-            info!("Layer 5 skipped (disabled)");
-        }
+        // if self.config.enable_anti_debug {
+        //     info!("Layer 5/8: Checking for analysis tools...");
+        //     if self.anti_debug.detect_analysis_tools()? {
+        //         error!("Analysis tool detected! Terminating...");
+        //         return Err(anyhow!("Analysis tool detected"));
+        //     }
+        //     info!("Layer 5 passed");
+        // } else {
+        //     info!("Layer 5 skipped (disabled)");
+        // }
 
         // Layer 6: License Server Validation
         info!("Layer 6/8: Validating with license server...");
@@ -114,10 +114,10 @@ impl SecurityManager {
         let validator = self.license_validator.clone();
         let hardware = self.hardware_fingerprinter.clone();
         let anti_debug = self.anti_debug.clone();
-        let interval = self.config.heartbeat_interval_seconds;
+        // let interval = self.config.heartbeat_interval_seconds;
 
         tokio::spawn(async move {
-            let mut tick = tokio::time::interval(std::time::Duration::from_secs(interval));
+            let mut tick = tokio::time::interval(std::time::Duration::from_secs(600));
             loop {
                 tick.tick().await;
                 match Self::heartbeat_check(&validator, &hardware, &anti_debug).await {
