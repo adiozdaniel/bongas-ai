@@ -13,10 +13,12 @@
 pub mod event;
 pub mod traits;
 
+// Re-export event types
 pub use event::CircuitBreakerEvent;
 pub use event::CircuitBreakerId;
 pub use event::CircuitState;
 
+// Re-export observer types
 pub use traits::CompositeObserver;
 pub use traits::NoOpObserver;
 pub use traits::ResilienceObserver;

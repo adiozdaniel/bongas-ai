@@ -73,6 +73,16 @@ impl ResilienceObserver for ResilienceMetricsCollector {
             CircuitBreakerEvent::MetricsReset { .. } => {
                 // No action needed - registry tracks independently
             }
+
+            CircuitBreakerEvent::SlowCall {
+                breaker_id,
+                latency,
+                ..
+            } => {
+                let metrics = self.registry.get_or_create(&breaker_id.label());
+                metrics.slow_calls.increment();
+                metrics.latency.record_duration(*latency);
+            }
         }
     }
 }

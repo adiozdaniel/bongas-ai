@@ -1,10 +1,11 @@
 //! Observer trait definitions for the Composite Resilience Pattern.
 //!
-//! Observers are decoupled from emitters. The circuit breaker holds a
-//! `Vec<Arc<dyn ResilienceObserver>>` and notifies all of them on every event.
+//! Observers are decoupled from emitters. The circuit breaker holds an
+//! `Arc<dyn ResilienceObserver>` and notifies it on every event.
 //! Implementations decide what to do: record Prometheus metrics, log via
 //! tracing, push to Kafka, or silently discard.
 
+use std::sync::Arc;
 use crate::circuit_breaker::observer::event::CircuitBreakerEvent;
 
 /// Receives events from resilience infrastructure.
@@ -27,6 +28,7 @@ pub trait ResilienceObserver: Send + Sync {
 pub struct NoOpObserver;
 
 impl ResilienceObserver for NoOpObserver {
+    #[inline]
     fn on_event(&self, _event: &CircuitBreakerEvent) {}
 }
 
@@ -35,12 +37,28 @@ impl ResilienceObserver for NoOpObserver {
 /// Implements the Composite pattern — the circuit breaker sees a single
 /// `ResilienceObserver`, but events reach all registered observers.
 pub struct CompositeObserver {
-    observers: Vec<std::sync::Arc<dyn ResilienceObserver>>,
+    observers: Vec<Arc<dyn ResilienceObserver>>,
 }
 
 impl CompositeObserver {
-    pub fn new(observers: Vec<std::sync::Arc<dyn ResilienceObserver>>) -> Self {
+    /// Create a new composite observer with the given observers.
+    pub fn new(observers: Vec<Arc<dyn ResilienceObserver>>) -> Self {
         Self { observers }
+    }
+
+    /// Add an observer to the composite.
+    pub fn add(&mut self, observer: Arc<dyn ResilienceObserver>) {
+        self.observers.push(observer);
+    }
+
+    /// Get the number of observers.
+    pub fn len(&self) -> usize {
+        self.observers.len()
+    }
+
+    /// Check if there are no observers.
+    pub fn is_empty(&self) -> bool {
+        self.observers.is_empty()
     }
 }
 
@@ -49,6 +67,12 @@ impl ResilienceObserver for CompositeObserver {
         for observer in &self.observers {
             observer.on_event(event);
         }
+    }
+}
+
+impl Default for CompositeObserver {
+    fn default() -> Self {
+        Self::new(Vec::new())
     }
 }
 
@@ -91,8 +115,8 @@ impl ResilienceObserver for TracingObserver {
                 tracing::info!(
                     target: "resilience::circuit_breaker",
                     breaker = %breaker,
-                    from = ?from,
-                    to = ?to,
+                    from = %from,
+                    to = %to,
                     "state changed"
                 );
             }
@@ -102,6 +126,15 @@ impl ResilienceObserver for TracingObserver {
                     breaker = %breaker,
                     timeout_ms = timeout.as_millis() as u64,
                     "call timed out"
+                );
+            }
+            CircuitBreakerEvent::SlowCall { latency, threshold, .. } => {
+                tracing::warn!(
+                    target: "resilience::circuit_breaker",
+                    breaker = %breaker,
+                    latency_ms = latency.as_millis() as u64,
+                    threshold_ms = threshold.as_millis() as u64,
+                    "slow call detected"
                 );
             }
             CircuitBreakerEvent::MetricsReset { .. } => {
