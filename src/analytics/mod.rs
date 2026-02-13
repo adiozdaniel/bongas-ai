@@ -1,18 +1,18 @@
-//! Analytics module exports.
-//!
-//! Re-exports public types and the global analytics manager for convenient
-//! consumption by other modules. Provides a single import point for all
-//! monitoring and telemetry functionality.
-
 pub mod clickhouse;
+pub mod kafka;
 pub mod manager;
+pub mod metrics;
 
-/// Re-export ClickHouse client for database operations.
-pub use self::clickhouse::ClickHouseClient;
+pub use manager::ANALYTICS;
 
-/// Re-export analytics components for metrics collection and monitoring.
-pub use self::manager::{
-    AnalyticsManager,
-    AnalyticsMetricsSummary,
-    ANALYTICS_MANAGER,
-};
+/*
+Usage Example:
+--------------
+use crate::analytics::ANALYTICS;
+
+ANALYTICS.kafka.messages_sent.with_label_values(&["user_events"]).inc();
+
+let timer = ANALYTICS.db.query_latency.with_label_values(&["users"]).start_timer();
+// ... run query ...
+timer.observe_duration();
+*/

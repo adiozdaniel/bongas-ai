@@ -12,3 +12,9 @@
 
 # Build files
 /target/
+
+# Ignore IDE and editor specific files
+/.idea/
+/.vscode/
+/package-lock.json
+/.lock

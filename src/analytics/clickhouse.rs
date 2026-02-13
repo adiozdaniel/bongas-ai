@@ -1,40 +1,31 @@
-//! ClickHouse database client implementation.
-//!
-//! Provides a configured wrapper around `clickhouse::Client` with
-//! application settings applied at initialization.
+//! ClickHouse-specific instrumentation.
 
-use crate::config::settings::ClickHouseSettings;
+use prometheus::{
+    register_histogram_vec_with_registry, register_int_counter_vec_with_registry, 
+    HistogramVec, IntCounterVec, Registry, opts,
+};
+use crate::analytics::metrics::{labels, NAMESPACE, DEFAULT_BUCKETS};
 
-/// Configured ClickHouse client with connection parameters applied.
-pub struct ClickHouseClient {
-    client: clickhouse::Client,
+pub struct ClickHouseMetrics {
+    pub queries_total: IntCounterVec,
+    pub query_latency: HistogramVec,
 }
 
-impl ClickHouseClient {
-    /// Creates a new client instance from the provided configuration.
-    ///
-    /// # Arguments
-    /// * `config` - Application ClickHouse settings containing URL, user, password, and database
-    ///
-    /// # Returns
-    /// * `Self` - Initialized client ready for database operations
-    ///
-    /// Applies URL, credentials, and default database to the underlying client.
-    pub fn new(config: &ClickHouseSettings) -> Self {
-        let client = clickhouse::Client::default()
-            .with_url(&config.url)
-            .with_user(&config.user)
-            .with_password(&config.password)
-            .with_database(&config.database);
-
-        Self { client }
-    }
-
-    /// Accessor for the inner client to perform direct queries.
-    ///
-    /// # Returns
-    /// * `&clickhouse::Client` - Reference to the underlying ClickHouse client
-    pub fn inner(&self) -> &clickhouse::Client {
-        &self.client
+impl ClickHouseMetrics {
+    pub fn new(registry: &Registry) -> Result<Self, prometheus::Error> {
+        Ok(Self {
+            queries_total: register_int_counter_vec_with_registry!(
+                opts!("clickhouse_queries_total", "Total database queries"),
+                &[labels::QUERY_TYPE, labels::TABLE],
+                registry
+            )?,
+            query_latency: register_histogram_vec_with_registry!(
+                format!("{}_clickhouse_query_duration_seconds", NAMESPACE),
+                "Query execution time",
+                &[labels::TABLE],
+                DEFAULT_BUCKETS.to_vec(),
+                registry
+            )?,
+        })
     }
 }
