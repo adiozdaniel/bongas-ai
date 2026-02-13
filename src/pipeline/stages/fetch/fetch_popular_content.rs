@@ -29,16 +29,16 @@ impl PipelineStage for FetchPopularContentStage {
         let min_views = params.min_views.unwrap_or(0);
 
         // Record ClickHouse query
-        if let Some(analytics) = context.analytics() {
-            analytics.record_clickhouse_query("fetch_popular_content", "item_features");
-        }
+        // if let Some(analytics) = context.analytics() {
+        //     analytics.record_clickhouse_query("fetch_popular_content", "item_features");
+        // }
 
         // Start timing the query
-        let _timer = if let Some(analytics) = context.analytics() {
-            Some(analytics.start_clickhouse_query_timer("fetch_popular_content"))
-        } else {
-            None
-        };
+        // let _timer = if let Some(analytics) = context.analytics() {
+        //     Some(analytics.start_clickhouse_query_timer("fetch_popular_content"))
+        // } else {
+        //     None
+        // };
 
         #[derive(sqlx::FromRow)]
         struct Row {

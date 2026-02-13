@@ -144,18 +144,18 @@ pub fn create_router(
         )
 
         // Analytics metrics
-        .route(
-            "/api/v1/analytics/metrics",
-            get(v1::analytics::get_analytics_metrics),
-        )
-        .route(
-            "/api/v1/analytics/metrics/summary",
-            get(v1::analytics::get_analytics_metrics_summary),
-        )
-        .route(
-            "/api/v1/analytics/metrics/health",
-            get(v1::analytics::get_analytics_health),
-        )
+        // .route(
+        //     "/api/v1/analytics/metrics",
+        //     get(v1::analytics::get_analytics_metrics),
+        // )
+        // .route(
+        //     "/api/v1/analytics/metrics/summary",
+        //     get(v1::analytics::get_analytics_metrics_summary),
+        // )
+        // .route(
+        //     "/api/v1/analytics/metrics/health",
+        //     get(v1::analytics::get_analytics_health),
+        // )
 
         // Health check
         .route("/health", get(|| async { "OK" }))

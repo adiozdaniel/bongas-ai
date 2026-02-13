@@ -16,7 +16,6 @@ use crate::db::models::PipelineDefinition;
 use crate::pipeline::executor::PipelineExecutor;
 use crate::pipeline::context::ExecutionContext;
 use crate::pipeline::ScoredItem;
-use crate::analytics::{ClickHouseClient, AnalyticsManager};
 use crate::cache::redis::RedisClient;
 use crate::cache::warming::CacheWarmer;
 use crate::kafka::manager::KafkaConsumerManager;
@@ -65,11 +64,11 @@ pub struct BongasEngine {
     security_manager: Option<Arc<SecurityManager>>,
 
     // Analytics
-    analytics: Arc<AnalyticsManager>,
+    // analytics: Arc<AnalyticsManager>,
 
     // Dependencies
     db_pool: Arc<PgPool>,
-    clickhouse: Arc<ClickHouseClient>,
+    // clickhouse: Arc<ClickHouseClient>,
     redis: Arc<RedisClient>,
 }
 
@@ -85,7 +84,6 @@ impl BongasEngine {
     /// Create new BongasEngine
     pub async fn new(
         db_pool: PgPool,
-        clickhouse: ClickHouseClient,
         redis_url: &str,
         model_dir: &str,
         security_manager: Option<Arc<SecurityManager>>,
@@ -93,7 +91,7 @@ impl BongasEngine {
         info!("Initializing BongasEngine...");
 
         let db_pool = Arc::new(db_pool);
-        let clickhouse = Arc::new(clickhouse);
+        // let clickhouse = Arc::new(clickhouse);
         let redis = Arc::new(RedisClient::new(redis_url).await?);
 
         // Create model repository and loader
@@ -113,10 +111,10 @@ impl BongasEngine {
         let staleness_engine = Arc::new(StalenessEngine::new(staging_manager.clone()));
 
         // Create analytics manager
-        let analytics = Arc::new(AnalyticsManager::new()?);
+        // let analytics = Arc::new(AnalyticsManager::new()?);
 
         // Create scenario factory
-        let scenario_factory = Arc::new(ScenarioFactory::new(db_pool.clone(), analytics.clone()));
+        let scenario_factory = Arc::new(ScenarioFactory::new(db_pool.clone()));
 
         // Create pipeline executor
         let pipeline_executor = Arc::new(PipelineExecutor::new());
@@ -151,9 +149,7 @@ impl BongasEngine {
             kafka_manager: Arc::new(RwLock::new(None)),
             kafka_metrics,
             security_manager,
-            analytics,
             db_pool,
-            clickhouse,
             redis,
         });
 
@@ -243,7 +239,7 @@ impl BongasEngine {
         );
 
         // Start recommendation timer
-        let _timer = self.analytics.start_recommendation_timer(scenario_slug);
+        // let _timer = self.analytics.start_recommendation_timer(scenario_slug);
 
         // Load scenario definition
         let scenario = {
@@ -271,7 +267,6 @@ impl BongasEngine {
         let context = ExecutionContext::new(
             user_id,
             self.db_pool.clone(),
-            self.clickhouse.clone(),
             self.redis.clone(),
             self.model_loader.clone(),
             request_id.clone(),
@@ -287,8 +282,7 @@ impl BongasEngine {
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string())
                 .unwrap_or_default()
-        )
-        .with_analytics(self.analytics.clone());
+        );
 
         let scored_items = self.pipeline_executor
             .execute(&scenario.pipeline, &context)
@@ -363,7 +357,6 @@ impl BongasEngine {
         let context = ExecutionContext::new(
             user_id,
             self.db_pool.clone(),
-            self.clickhouse.clone(),
             self.redis.clone(),
             self.model_loader.clone(),
             request_id,
@@ -379,8 +372,7 @@ impl BongasEngine {
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string())
                 .unwrap_or_default()
-        )
-        .with_analytics(self.analytics.clone());
+        );
 
         let scored_items = self.pipeline_executor
             .execute(&scenario.pipeline, &context)
@@ -421,9 +413,9 @@ impl BongasEngine {
     }
 
     /// Get ClickHouse client reference
-    pub fn clickhouse_client(&self) -> Arc<ClickHouseClient> {
-        self.clickhouse.clone()
-    }
+    // pub fn clickhouse_client(&self) -> Arc<ClickHouseClient> {
+    //     self.clickhouse.clone()
+    // }
 
     /// Reload all ONNX models (hot-reload)
     pub async fn reload_models(&self) -> Result<usize> {
@@ -616,9 +608,9 @@ impl BongasEngine {
     }
 
     /// Get analytics manager reference
-    pub fn analytics(&self) -> Arc<AnalyticsManager> {
-        self.analytics.clone()
-    }
+    // pub fn analytics(&self) -> Arc<AnalyticsManager> {
+    //     self.analytics.clone()
+    // }
 
     /// Convert ScoredItem to RecommendationItem
     fn convert_to_recommendation_items(scored_items: Vec<ScoredItem>) -> Vec<RecommendationItem> {

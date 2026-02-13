@@ -1,7 +1,6 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::time::Instant;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ArmStatistics {
@@ -60,15 +59,12 @@ impl UCB1 {
 
     /// Select arm using UCB1 algorithm
     pub fn select_arm(&self) -> Result<String> {
-        let start_time = Instant::now();
         
         // Pull each arm once initially
         for (name, stats) in &self.arms {
             if stats.pulls == 0 {
-                let duration = start_time.elapsed();
                 
                 // Track bandit selection metrics
-                crate::analytics::ANALYTICS_MANAGER.record_bandit_selection("ucb", &name);
                 
                 return Ok(name.clone());
             }
@@ -87,17 +83,13 @@ impl UCB1 {
                 best_arm = name.clone();
             }
         }
-
-        let duration = start_time.elapsed();
         
         // Track bandit selection metrics
-        crate::analytics::ANALYTICS_MANAGER.record_bandit_selection("ucb", &best_arm);
 
         Ok(best_arm)
     }
 
     pub fn update(&mut self, arm_name: &str, reward: f64) -> Result<()> {
-        let start_time = Instant::now();
         
         let stats = self.arms
             .get_mut(arm_name)
@@ -105,11 +97,8 @@ impl UCB1 {
 
         stats.update(reward);
         self.total_pulls += 1;
-
-        let duration = start_time.elapsed();
         
         // Track bandit update metrics
-        crate::analytics::ANALYTICS_MANAGER.record_bandit_reward("ucb", "reward", reward);
 
         Ok(())
     }
@@ -118,4 +107,3 @@ impl UCB1 {
         &self.arms
     }
 }
-

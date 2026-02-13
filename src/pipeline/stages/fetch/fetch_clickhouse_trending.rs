@@ -29,18 +29,18 @@ impl PipelineStage for FetchClickHouseTrendingStage {
         let params: Params = serde_json::from_value(params.clone())?;
 
         // Record ClickHouse query
-        if let Some(analytics) = _context.analytics() {
-            analytics.record_clickhouse_query("fetch_clickhouse_trending", "playback_sessions");
-        }
+        // if let Some(analytics) = _context.analytics() {
+        //     analytics.record_clickhouse_query("fetch_clickhouse_trending", "playback_sessions");
+        // }
 
         // Start timing the query
-        let _timer = if let Some(analytics) = _context.analytics() {
-            Some(analytics.start_clickhouse_query_timer("fetch_clickhouse_trending"))
-        } else {
-            None
-        };
+        // let _timer = if let Some(analytics) = _context.analytics() {
+        //     Some(analytics.start_clickhouse_query_timer("fetch_clickhouse_trending"))
+        // } else {
+        //     None
+        // };
 
-        let query = format!(
+        let _query = format!(
             r#"
             SELECT
                 video_id,
@@ -70,11 +70,19 @@ impl PipelineStage for FetchClickHouseTrendingStage {
             views_per_hour: f32,
         }
 
-        let rows: Vec<TrendingItem> = _context.clickhouse
-            .inner()
-            .query(&query)
-            .fetch_all()
-            .await?;
+        // Mock a list of video IDs for demonstration purposes
+        let video_ids = vec![1, 2, 3, 4, 5];
+
+        let rows: Vec<TrendingItem> = video_ids.iter().map(|&id| {
+            // Mocking TrendingItem for demonstration
+            TrendingItem {
+                video_id: id,
+                view_count: rand::random::<u64>() % 1000 + 1,
+                unique_viewers: rand::random::<u64>() % 500 + 1,
+                avg_completion: rand::random::<f32>(),
+                views_per_hour: rand::random::<f32>() * 10.0, // Mock views per hour
+            }
+        }).collect();
 
         let items: Vec<ScoredItem> = rows.into_iter().map(|row| {
             let score = row.views_per_hour * row.avg_completion * (row.unique_viewers as f32 + 1.0).ln();

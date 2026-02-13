@@ -49,11 +49,7 @@ impl StagingManager {
             let _duration = start_time.elapsed();
             
             // Track cache hit and latency
-            if let Ok(_analytics) = crate::analytics::ANALYTICS_MANAGER.get_metrics() {
-                // In real implementation: analytics.record_cache_hit("redis", "recommendations");
-                // In real implementation: analytics.record_cache_lookup_latency("redis", duration);
-            }
-            
+
             info!(cache_key = %cache_key, "L1 cache hit");
             return Ok(Some(items));
         }
@@ -65,10 +61,6 @@ impl StagingManager {
             let _duration = start_time.elapsed();
             
             // Track cache hit and latency
-            if let Ok(_analytics) = crate::analytics::ANALYTICS_MANAGER.get_metrics() {
-                // In real implementation: analytics.record_cache_hit("postgres", "recommendations");
-                // In real implementation: analytics.record_cache_lookup_latency("postgres", duration);
-            }
             
             info!(cache_key = %cache_key, "L2 cache hit");
 
@@ -82,12 +74,6 @@ impl StagingManager {
         let _duration = start_time.elapsed();
         
         // Track cache miss and latency
-        if let Ok(_analytics) = crate::analytics::ANALYTICS_MANAGER.get_metrics() {
-            // In real implementation: analytics.record_cache_miss("redis", "recommendations");
-            // In real implementation: analytics.record_cache_miss("postgres", "recommendations");
-            // In real implementation: analytics.record_cache_lookup_latency("redis", duration);
-            // In real implementation: analytics.record_cache_lookup_latency("postgres", duration);
-        }
 
         debug!(cache_key = %cache_key, "Cache miss");
         Ok(None)
@@ -171,9 +157,6 @@ impl StagingManager {
         let _ = self.redis.del(&default_key).await;
 
         // Track cache eviction
-        if let Ok(_analytics) = crate::analytics::ANALYTICS_MANAGER.get_metrics() {
-            // In real implementation: analytics.record_cache_eviction("redis");
-        }
 
         // Invalidate L2 (PostgreSQL)
         let rows_affected = self.cache_repo.mark_stale(user_id, Some(scenario_slug), "invalidate").await?;
@@ -182,10 +165,6 @@ impl StagingManager {
         let _duration = start_time.elapsed();
         
         // Track cache eviction
-        if let Ok(_analytics) = crate::analytics::ANALYTICS_MANAGER.get_metrics() {
-            // In real implementation: analytics.record_cache_eviction("postgres");
-            // In real implementation: analytics.record_cache_lookup_latency("postgres", duration);
-        }
 
         info!(
             scenario_slug = scenario_slug,

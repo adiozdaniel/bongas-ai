@@ -76,11 +76,6 @@ impl PipelineStage for ONNXInferenceStage {
         );
 
         // Record model inference start
-        let _timer = if let Some(analytics) = context.analytics() {
-            Some(analytics.start_model_inference_timer(&params.model_name))
-        } else {
-            None
-        };
 
         let start = std::time::Instant::now();
 

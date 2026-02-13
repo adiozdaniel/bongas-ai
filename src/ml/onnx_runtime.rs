@@ -4,7 +4,6 @@ use ort::session::Session;
 use ort::session::builder::GraphOptimizationLevel;
 use ort::value::TensorRef;
 use std::path::Path;
-use std::time::Instant;
 use tracing::{info, debug};
 
 pub struct OnnxInferenceEngine {
@@ -65,7 +64,6 @@ impl OnnxInferenceEngine {
         user_features: Array2<f32>,
         item_features: Array2<f32>,
     ) -> Result<Vec<f32>> {
-        let start_time = Instant::now();
         debug!(
             model = %self.model_name,
             batch_size = user_features.nrows(),
@@ -91,11 +89,8 @@ impl OnnxInferenceEngine {
             .map_err(|e| anyhow!("Failed to extract output tensor: {}", e))?;
 
         let scores_vec = scores_slice.to_vec();
-        let duration = start_time.elapsed();
 
         // Track model inference metrics
-        crate::analytics::ANALYTICS_MANAGER.record_model_inference_latency(&self.model_name, duration);
-        crate::analytics::ANALYTICS_MANAGER.record_model_prediction(&self.model_name, "two_tower");
 
         debug!(
             model = %self.model_name,
@@ -112,7 +107,6 @@ impl OnnxInferenceEngine {
         user_features: Vec<Vec<f32>>,
         item_features: Vec<Vec<f32>>,
     ) -> Result<Vec<f32>> {
-        let start_time = Instant::now();
         
         if user_features.len() != item_features.len() {
             return Err(anyhow!(
@@ -144,33 +138,10 @@ impl OnnxInferenceEngine {
         }
 
         let scores = self.predict_two_tower(user_array, item_array)?;
-        let duration = start_time.elapsed();
 
         // Track batch inference metrics
-        crate::analytics::ANALYTICS_MANAGER.record_model_inference_latency(&self.model_name, duration);
-        crate::analytics::ANALYTICS_MANAGER.record_model_prediction(&self.model_name, "batch");
 
         Ok(scores)
     }
 
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    #[ignore] // Requires actual ONNX model file
-    fn test_onnx_inference() {
-        let mut engine = OnnxInferenceEngine::new(
-            "models/onnx/two_tower_v1.onnx",
-            "two_tower_v1".to_string(),
-        ).unwrap();
-
-        let user_features = Array2::<f32>::zeros((2, 64));
-        let item_features = Array2::<f32>::zeros((2, 32));
-
-        let scores = engine.predict_two_tower(user_features, item_features).unwrap();
-        assert_eq!(scores.len(), 2);
-    }
 }

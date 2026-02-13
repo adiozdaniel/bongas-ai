@@ -85,7 +85,6 @@ impl ModelLoader {
         let _duration = start_time.elapsed();
         
         // Track model loading metrics
-        crate::analytics::ANALYTICS_MANAGER.set_model_accuracy(&model_entry.model_name, 1.0); // Assume loaded models are accurate
 
         // Cache in memory
         self.models.write().await.insert(model_key, engine.clone());
