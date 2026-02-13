@@ -11,6 +11,4 @@ pub mod security;
 pub mod config;
 pub mod pipeline;
 pub mod middlewares;
-pub mod error;
-pub mod observer;
 pub mod circuit_breaker;

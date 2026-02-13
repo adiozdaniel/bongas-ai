@@ -12,7 +12,7 @@
 //! HalfOpen ──(probe fails)──▶ Open
 //! ```
 
-use crate::observer::CircuitState;
+use crate::circuit_breaker::observer::CircuitState;
 
 /// Result of attempting a state transition.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -87,5 +87,11 @@ impl StateMachine {
             from,
             to: CircuitState::Closed,
         }
+    }
+}
+
+impl Default for StateMachine {
+    fn default() -> Self {
+        Self::new()
     }
 }

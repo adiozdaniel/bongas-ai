@@ -14,6 +14,8 @@
 
 pub mod breaker;
 pub mod config;
+pub mod error;
+pub mod observer;
 pub mod rolling_window;
 pub mod state;
 
@@ -24,3 +26,16 @@ pub use config::CircuitBreakerConfigBuilder;
 pub use rolling_window::WindowSnapshot;
 pub use state::StateMachine;
 pub use state::TransitionResult;
+
+// Re-export error types
+pub use error::ErrorClassification;
+pub use error::ErrorClassifier;
+
+// Re-export observer types
+pub use observer::CircuitBreakerEvent;
+pub use observer::CircuitBreakerId;
+pub use observer::CircuitState;
+pub use observer::CompositeObserver;
+pub use observer::NoOpObserver;
+pub use observer::ResilienceObserver;
+pub use observer::TracingObserver;

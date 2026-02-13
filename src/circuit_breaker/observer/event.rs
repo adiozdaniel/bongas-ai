@@ -4,7 +4,7 @@
 //! emit logs, or trigger alerts without reaching back into the emitter.
 
 use std::time::Duration;
-use crate::error::ErrorClassification;
+use crate::circuit_breaker::error::ErrorClassification;
 
 /// Identifies which circuit breaker emitted the event.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

@@ -1,44 +1,34 @@
-//! Analytics module root.
+//! Analytics module for the Composite Resilience Pattern.
 //!
-//! Re-exports all specialized metric collectors and provides the global analytics
-//! manager instance. This module serves as the single entry point for all application
-//! telemetry, centralizing metric definitions and collection.
+//! Provides high-throughput metrics collection, aggregation, and export
+//! for all circuit breakers in the system. Lock-free where possible,
+//! with HDR histograms for accurate latency percentiles.
+//!
+//! # Design Patterns
+//! - **Observer**: `ResilienceMetricsCollector` receives circuit breaker events.
+//! - **Strategy**: `MetricsExporter` trait for pluggable export formats.
+//! - **Builder**: `AnalyticsConfig::builder()` for configuration.
+//! - **Composite**: `MetricsRegistry` aggregates all breaker metrics.
+//! - **Flyweight**: Shared histogram buckets for memory efficiency.
 
-pub mod clickhouse;
-pub mod kafka;
-pub mod manager;
-pub mod metrics;
-pub mod postgres;
-pub mod redis;
-pub mod cache_warming;
-pub mod staging;
-pub mod pipeline;
-pub mod middleware;
-pub mod security;
-pub mod experiment;
-pub mod model;
-pub mod scenario;
+pub mod collector;
+pub mod config;
+pub mod exporter;
+pub mod histogram;
+pub mod registry;
+pub mod types;
 
-/// Global singleton instance for application-wide metrics collection.
-///
-/// Provides thread-safe access to all specialized metric collectors. Initialize
-/// once at application startup and use throughout the codebase for consistent
-/// telemetry recording.
-pub use manager::ANALYTICS;
-
-/*
-Usage Example:
---------------
-use crate::analytics::ANALYTICS;
-
-// Increment Kafka message counter
-ANALYTICS.kafka.messages_sent.with_label_values(&["user_events"]).inc();
-
-// Measure ClickHouse query latency
-let timer = ANALYTICS.db.query_latency.with_label_values(&["users"]).start_timer();
-// ... execute query ...
-timer.observe_duration();
-
-// Record cache warming operation
-ANALYTICS.cache_warming.warming_attempts.with_label_values(&["popular_items"]).inc();
-*/
+pub use collector::ResilienceMetricsCollector;
+pub use config::AnalyticsConfig;
+pub use config::AnalyticsConfigBuilder;
+pub use exporter::JsonExporter;
+pub use exporter::MetricsExporter;
+pub use exporter::PrometheusExporter;
+pub use histogram::HdrHistogram;
+pub use registry::BreakerMetrics;
+pub use registry::MetricsRegistry;
+pub use types::BreakerSnapshot;
+pub use types::Counter;
+pub use types::Gauge;
+pub use types::Rate;
+pub use types::RegistrySnapshot;

@@ -16,8 +16,8 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::{Mutex, Semaphore};
 
-use crate::error::{ErrorClassification, ErrorClassifier};
-use crate::observer::{
+use crate::circuit_breaker::error::{ErrorClassification, ErrorClassifier};
+use crate::circuit_breaker::observer::{
     CircuitBreakerEvent, CircuitBreakerId, CircuitState, ResilienceObserver, NoOpObserver,
 };
 

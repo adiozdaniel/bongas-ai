@@ -5,7 +5,7 @@
 //! Implementations decide what to do: record Prometheus metrics, log via
 //! tracing, push to Kafka, or silently discard.
 
-use crate::observer::event::CircuitBreakerEvent;
+use crate::circuit_breaker::observer::event::CircuitBreakerEvent;
 
 /// Receives events from resilience infrastructure.
 ///
