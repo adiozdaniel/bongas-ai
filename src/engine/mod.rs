@@ -12,6 +12,7 @@ use tokio::sync::RwLock;
 use sqlx::PgPool;
 use tracing::info;
 
+use crate::ResilienceMetricsCollector;
 use crate::db::models::PipelineDefinition;
 use crate::pipeline::executor::PipelineExecutor;
 use crate::pipeline::context::ExecutionContext;
@@ -97,7 +98,7 @@ impl BongasEngine {
         let cache_manager = Arc::new(CacheManager::new(redis_url, cache_config.clone()).await?);
 
         // Create model repository and loader
-        let model_repo = Arc::new(ModelRepository::new(db_pool.as_ref().clone()));
+        let model_repo = Arc::new(ModelRepository::new(Arc::clone(&db_pool), Arc::new(ResilienceMetricsCollector::new())));
         let model_loader = Arc::new(ModelLoader::new(model_dir, model_repo.clone()));
 
         // Load all deployed ONNX models

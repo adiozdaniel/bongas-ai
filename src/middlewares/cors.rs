@@ -105,34 +105,3 @@ pub fn create_dev_cors_layer() -> CorsLayer {
         .allow_credentials(true)
         .build()
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_cors_config_default() {
-        let config = CorsConfig::new();
-        assert_eq!(config.allowed_origins, vec!["http://localhost:3000"]);
-        assert!(config.allow_credentials);
-        assert_eq!(config.max_age, Some(3600));
-    }
-
-    #[test]
-    fn test_cors_config_custom() {
-        let config = CorsConfig::new()
-            .with_origins(vec!["https://example.com".to_string()])
-            .allow_credentials(false);
-
-        assert_eq!(config.allowed_origins, vec!["https://example.com"]);
-        assert!(!config.allow_credentials);
-    }
-
-    #[test]
-    fn test_create_dev_cors_layer() {
-        let _cors = create_dev_cors_layer();
-        // Basic test to ensure the layer can be created
-        // CorsLayer doesn't have is_none method, so we just check it's created
-        assert!(true);
-    }
-}

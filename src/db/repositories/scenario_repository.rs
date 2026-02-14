@@ -1,24 +1,95 @@
-use anyhow::Result;
-use sqlx::PgPool;
-use crate::db::models::ScenarioConfig;
+//! Scenario repository with Netflix-grade resilience patterns.
+//!
+//! Provides database access for scenario configurations with:
+//! - Circuit breaker protection against cascading failures
+//! - Bulkhead pattern for concurrency limiting
+//! - Comprehensive error classification and metrics
 
+use std::sync::Arc;
+
+use crate::analytics::ResilienceMetricsCollector;
+use crate::db::models::ScenarioConfig;
+use crate::db::ResilientPool;
+use crate::error::{AppError, AppResult, PostgresError};
+
+/// Repository for scenario configuration data with resilience patterns.
 pub struct ScenarioRepository {
-    pool: PgPool,
+    pool: Arc<ResilientPool>,
+    metrics_collector: Arc<ResilienceMetricsCollector>,
 }
 
 impl ScenarioRepository {
-    pub fn new(pool: PgPool) -> Self {
-        Self { pool }
+    /// Create a new repository with resilient pool and metrics collector.
+    pub fn new(
+        pool: Arc<ResilientPool>,
+        metrics_collector: Arc<ResilienceMetricsCollector>,
+    ) -> Self {
+        Self {
+            pool,
+            metrics_collector,
+        }
     }
 
-    /// Load all enabled scenarios from database
-    pub async fn find_all_enabled(&self) -> Result<Vec<ScenarioConfig>> {
-        let scenarios = sqlx::query_as::<_, ScenarioConfig>(
-            "SELECT * FROM scenario_configs WHERE enabled = true ORDER BY priority DESC"
-        )
-        .fetch_all(&self.pool)
-        .await?;
+    /// Load all enabled scenarios from database.
+    ///
+    /// Executes through circuit breaker with bulkhead protection.
+    pub async fn find_all_enabled(&self) -> AppResult<Vec<ScenarioConfig>> {
+        self.pool
+            .execute(|pool| async move {
+                sqlx::query_as::<_, ScenarioConfig>(
+                    "SELECT * FROM scenario_configs WHERE enabled = true ORDER BY priority DESC",
+                )
+                .fetch_all(&pool)
+                .await
+            })
+            .await
+            .map_err(|e| {
+                AppError::Postgres(PostgresError::Query {
+                    message: format!("Failed to fetch enabled scenarios: {}", e),
+                    source: None,
+                })
+            })
+    }
 
-        Ok(scenarios)
+    /// Find scenario by slug.
+    pub async fn find_by_slug(&self, slug: &str) -> AppResult<Option<ScenarioConfig>> {
+        let slug = slug.to_string();
+        self.pool
+            .execute(|pool| async move {
+                sqlx::query_as::<_, ScenarioConfig>(
+                    "SELECT * FROM scenario_configs WHERE slug = $1",
+                )
+                .bind(&slug)
+                .fetch_optional(&pool)
+                .await
+            })
+            .await
+            .map_err(|e| {
+                AppError::Postgres(PostgresError::Query {
+                    message: format!("Failed to fetch scenario by slug: {}", e),
+                    source: None,
+                })
+            })
+    }
+
+    /// Find scenarios by category.
+    pub async fn find_by_category(&self, category: &str) -> AppResult<Vec<ScenarioConfig>> {
+        let category = category.to_string();
+        self.pool
+            .execute(|pool| async move {
+                sqlx::query_as::<_, ScenarioConfig>(
+                    "SELECT * FROM scenario_configs WHERE category = $1 AND enabled = true ORDER BY priority DESC",
+                )
+                .bind(&category)
+                .fetch_all(&pool)
+                .await
+            })
+            .await
+            .map_err(|e| {
+                AppError::Postgres(PostgresError::Query {
+                    message: format!("Failed to fetch scenarios by category: {}", e),
+                    source: None,
+                })
+            })
     }
 }

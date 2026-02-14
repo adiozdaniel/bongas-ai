@@ -18,3 +18,4 @@
 /.vscode/
 /package-lock.json
 /.lock
+.aider*

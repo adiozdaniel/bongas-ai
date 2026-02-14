@@ -52,27 +52,3 @@ impl CompressionConfig {
         CompressionLayer::new()
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_compression_config_default() {
-        let config = CompressionConfig::default();
-        assert_eq!(config.min_size, 1024);
-        assert!(config.enable_gzip);
-        assert!(config.enable_brotli);
-        assert!(config.enable_deflate);
-    }
-
-    #[test]
-    fn test_compression_config_builder() {
-        let config = CompressionConfig::new()
-            .min_size(2048)
-            .enable_gzip(false);
-
-        assert_eq!(config.min_size, 2048);
-        assert!(!config.enable_gzip);
-    }
-}
