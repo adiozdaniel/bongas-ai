@@ -370,6 +370,24 @@
       }
   }
 
+  impl From<redis::RedisError> for RedisError {
+      fn from(err: redis::RedisError) -> Self {
+          if err.is_timeout() {
+              RedisError::Timeout(Duration::from_secs(30))
+          } else if err.is_connection_refusal() || err.is_io_error() {
+              RedisError::Connection {
+                  message: err.to_string(),
+                  source: Some(Box::new(err)),
+              }
+          } else {
+              RedisError::Command {
+                  message: err.to_string(),
+                  source: Some(Box::new(err)),
+              }
+          }
+      }
+  }
+
   #[derive(Debug, Error)]
   pub enum PostgresError {
       #[error("postgres query failed: {message}")]

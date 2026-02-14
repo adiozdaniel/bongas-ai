@@ -16,8 +16,7 @@ use crate::db::models::PipelineDefinition;
 use crate::pipeline::executor::PipelineExecutor;
 use crate::pipeline::context::ExecutionContext;
 use crate::pipeline::ScoredItem;
-use crate::cache::redis::RedisClient;
-use crate::cache::warming::CacheWarmer;
+use crate::cache::{CacheManager, CacheConfig, CacheWarmer, CacheMetricsSnapshot};
 use crate::kafka::manager::KafkaConsumerManager;
 use crate::kafka::metrics::KafkaMetricsRegistry;
 use crate::ml::model_loader::ModelLoader;
@@ -69,7 +68,7 @@ pub struct BongasEngine {
     // Dependencies
     db_pool: Arc<PgPool>,
     // clickhouse: Arc<ClickHouseClient>,
-    redis: Arc<RedisClient>,
+    cache_manager: Arc<CacheManager>,
 }
 
 #[derive(Debug, Clone)]
@@ -87,12 +86,14 @@ impl BongasEngine {
         redis_url: &str,
         model_dir: &str,
         security_manager: Option<Arc<SecurityManager>>,
+        cache_config: CacheConfig,
     ) -> Result<Arc<Self>> {
         info!("Initializing BongasEngine...");
 
         let db_pool = Arc::new(db_pool);
-        // let clickhouse = Arc::new(clickhouse);
-        let redis = Arc::new(RedisClient::new(redis_url).await?);
+
+        // Create Netflix-grade cache manager
+        let cache_manager = Arc::new(CacheManager::new(redis_url, cache_config.clone()).await?);
 
         // Create model repository and loader
         let model_repo = Arc::new(ModelRepository::new(db_pool.as_ref().clone()));
@@ -102,9 +103,9 @@ impl BongasEngine {
         let model_count = model_loader.load_all_models().await?;
         info!(model_count = model_count, "ONNX models loaded");
 
-        // Create staging manager (owns its own Redis connection)
+        // Create staging manager with CacheManager
         let staging_manager = Arc::new(
-            StagingManager::new(redis_url, db_pool.as_ref().clone()).await?
+            StagingManager::new(redis_url, db_pool.as_ref().clone(), cache_config).await?
         );
 
         // Create staleness engine
@@ -150,7 +151,7 @@ impl BongasEngine {
             kafka_metrics,
             security_manager,
             db_pool,
-            redis,
+            cache_manager,
         });
 
         info!("BongasEngine initialized successfully");
@@ -267,7 +268,7 @@ impl BongasEngine {
         let context = ExecutionContext::new(
             user_id,
             self.db_pool.clone(),
-            self.redis.clone(),
+            self.cache_manager.clone(),
             self.model_loader.clone(),
             request_id.clone(),
         )
@@ -357,7 +358,7 @@ impl BongasEngine {
         let context = ExecutionContext::new(
             user_id,
             self.db_pool.clone(),
-            self.redis.clone(),
+            self.cache_manager.clone(),
             self.model_loader.clone(),
             request_id,
         )
@@ -441,37 +442,29 @@ impl BongasEngine {
     }
 
     /// Start cache warming background task
-    pub fn start_cache_warming(self: Arc<Self>, warm_scenarios: Vec<String>, interval_minutes: u64) {
+    pub fn start_cache_warming(self: Arc<Self>, warm_scenarios: Vec<String>, interval: std::time::Duration) {
         let scenarios_clone = warm_scenarios.clone();
+        let cache_manager = self.staging_manager.cache_manager();
         let cache_warmer = Arc::new(CacheWarmer::new(
-            self.clone(),
+            cache_manager,
             scenarios_clone,
-            interval_minutes,
+            interval,
         ));
-        
-        cache_warmer.start();
+
+        tokio::spawn(async move {
+            cache_warmer.start().await;
+        });
+
         info!(
             scenarios = ?warm_scenarios,
-            interval_minutes = interval_minutes,
+            interval_secs = interval.as_secs(),
             "Cache warming started"
         );
     }
 
     /// Get cache statistics
-    pub fn get_cache_stats(&self) -> crate::cache::metrics::CacheStatsSnapshot {
-        // Convert StagingStats to CacheStatsSnapshot
-        let staging_stats = self.staging_manager.get_stats();
-        crate::cache::metrics::CacheStatsSnapshot {
-            l1_hits: staging_stats.l1_hits,
-            l1_misses: staging_stats.l1_misses,
-            l2_hits: staging_stats.l2_hits,
-            l2_misses: staging_stats.l2_misses,
-            invalidations: staging_stats.invalidations,
-            warmings: 0, // StagingManager doesn't track warmings
-            overall_hit_rate: staging_stats.hit_rate,
-            l1_hit_rate: 0.0, // Calculate if needed
-            l2_hit_rate: 0.0, // Calculate if needed
-        }
+    pub fn get_cache_stats(&self) -> CacheMetricsSnapshot {
+        self.staging_manager.cache_manager().metrics()
     }
 
     /// Get cache hit rate

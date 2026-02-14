@@ -205,13 +205,11 @@ impl ONNXInferenceStage {
         user_id: i32,
         feature_dim: usize,
     ) -> Result<Vec<f32>> {
-        // Try Redis cache first
+        // Try cache first
         let cache_key = format!("user_features:{}", user_id);
-        if let Ok(Some(cached)) = context.redis.get(&cache_key).await {
-            if let Ok(features) = serde_json::from_str::<Vec<f32>>(&cached) {
-                debug!(user_id = user_id, "User features from cache");
-                return Ok(Self::pad_or_truncate(features, feature_dim));
-            }
+        if let Ok(Some(features)) = context.cache_manager.get::<Vec<f32>>(&cache_key).await {
+            debug!(user_id = user_id, "User features from cache");
+            return Ok(Self::pad_or_truncate(features, feature_dim));
         }
 
         // Query database
@@ -263,10 +261,8 @@ impl ONNXInferenceStage {
             }
         };
 
-        // Cache for future requests (1 hour TTL)
-        if let Ok(json) = serde_json::to_string(&features) {
-            let _ = context.redis.set_ex(&cache_key, &json, 3600).await;
-        }
+        // Cache for future requests
+        let _ = context.cache_manager.set(&cache_key, &features).await;
 
         Ok(Self::pad_or_truncate(features, feature_dim))
     }

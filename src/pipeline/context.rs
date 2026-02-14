@@ -1,6 +1,6 @@
 use std::sync::Arc;
 use sqlx::PgPool;
-use crate::cache::redis::RedisClient;
+use crate::cache::CacheManager;
 use crate::ml::model_loader::ModelLoader;
 
 /// Execution context passed to all pipeline stages
@@ -12,8 +12,8 @@ pub struct ExecutionContext {
 
     // Dependencies
     pub db_pool: Arc<PgPool>,
-    pub redis: Arc<RedisClient>,
-    pub model_loader: Arc<ModelLoader>,  // ◄── NEW: ONNX model access
+    pub cache_manager: Arc<CacheManager>,
+    pub model_loader: Arc<ModelLoader>,
 
     // Request metadata
     pub request_id: String,
@@ -33,7 +33,7 @@ impl ExecutionContext {
     pub fn new(
         user_id: Option<i32>,
         db_pool: Arc<PgPool>,
-        redis: Arc<RedisClient>,
+        cache_manager: Arc<CacheManager>,
         model_loader: Arc<ModelLoader>,
         request_id: String,
     ) -> Self {
@@ -43,7 +43,7 @@ impl ExecutionContext {
             location: None,
             _profile_context: None,
             db_pool,
-            redis,
+            cache_manager,
             model_loader,
             request_id,
         }

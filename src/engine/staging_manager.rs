@@ -1,39 +1,37 @@
+//! Staging manager for recommendation caching with Netflix-grade patterns.
+//!
+//! Architecture:
+//! - L1: In-memory LRU cache (via CacheManager)
+//! - L2: Redis cache with circuit breaker (via CacheManager)
+//! - L3: PostgreSQL for persistence (via CacheRepository)
+
 use anyhow::Result;
 use sha2::{Sha256, Digest};
 use serde_json::Value as JsonValue;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 use std::time::Instant;
 use tracing::{info, debug};
 
-use crate::cache::redis::RedisClient;
+use crate::cache::{CacheManager, CacheConfig, CacheMetricsSnapshot};
 use crate::db::repositories::cache_repository::CacheRepository;
 use crate::pipeline::ScoredItem;
 
 pub struct StagingManager {
-    redis: RedisClient,
+    cache_manager: Arc<CacheManager>,
     cache_repo: CacheRepository,
-    // Metrics counters
-    l1_hits: AtomicU64,
-    l1_misses: AtomicU64,
-    l2_hits: AtomicU64,
-    l2_misses: AtomicU64,
-    invalidations: AtomicU64,
 }
 
 impl StagingManager {
-    pub async fn new(redis_url: &str, db_pool: sqlx::PgPool) -> Result<Self> {
+    pub async fn new(redis_url: &str, db_pool: sqlx::PgPool, config: CacheConfig) -> Result<Self> {
+        let cache_manager = Arc::new(CacheManager::new(redis_url, config).await?);
+
         Ok(Self {
-            redis: RedisClient::new(redis_url).await?,
+            cache_manager,
             cache_repo: CacheRepository::new(db_pool),
-            l1_hits: AtomicU64::new(0),
-            l1_misses: AtomicU64::new(0),
-            l2_hits: AtomicU64::new(0),
-            l2_misses: AtomicU64::new(0),
-            invalidations: AtomicU64::new(0),
         })
     }
 
-    /// Get recommendations from L1 (Redis) or L2 (PostgreSQL) cache
+    /// Get recommendations from cache tiers (L1 -> L2 -> L3)
     pub async fn get_cached(
         &self,
         scenario_slug: &str,
@@ -43,43 +41,30 @@ impl StagingManager {
         let cache_key = Self::build_cache_key(scenario_slug, user_id, context_hash);
         let start_time = Instant::now();
 
-        // Try L1 cache (Redis) first
-        if let Some(items) = self.get_from_l1(&cache_key).await? {
-            self.l1_hits.fetch_add(1, Ordering::Relaxed);
+        // Try L1 (LRU) and L2 (Redis) via CacheManager
+        if let Some(items) = self.cache_manager.get::<Vec<ScoredItem>>(&cache_key).await? {
             let _duration = start_time.elapsed();
-            
-            // Track cache hit and latency
-
-            info!(cache_key = %cache_key, "L1 cache hit");
+            info!(cache_key = %cache_key, "Cache hit (L1/L2)");
             return Ok(Some(items));
         }
-        self.l1_misses.fetch_add(1, Ordering::Relaxed);
 
-        // Try L2 cache (PostgreSQL)
-        if let Some(items) = self.get_from_l2(&cache_key).await? {
-            self.l2_hits.fetch_add(1, Ordering::Relaxed);
+        // Try L3 (PostgreSQL)
+        if let Some(items) = self.get_from_l3(&cache_key).await? {
             let _duration = start_time.elapsed();
-            
-            // Track cache hit and latency
-            
-            info!(cache_key = %cache_key, "L2 cache hit");
+            info!(cache_key = %cache_key, "L3 cache hit (PostgreSQL)");
 
-            // Promote to L1 cache
-            self.save_to_l1(&cache_key, &items, 300).await?;
+            // Promote to L1/L2
+            let _ = self.cache_manager.set(&cache_key, &items).await;
 
             return Ok(Some(items));
         }
-        self.l2_misses.fetch_add(1, Ordering::Relaxed);
 
         let _duration = start_time.elapsed();
-        
-        // Track cache miss and latency
-
         debug!(cache_key = %cache_key, "Cache miss");
         Ok(None)
     }
 
-    /// Save recommendations to both L1 and L2 caches
+    /// Save recommendations to all cache tiers
     pub async fn save_cached(
         &self,
         scenario_slug: &str,
@@ -90,11 +75,11 @@ impl StagingManager {
     ) -> Result<()> {
         let cache_key = Self::build_cache_key(scenario_slug, user_id, context_hash);
 
-        // Save to L1 (Redis) with short TTL
-        self.save_to_l1(&cache_key, items, ttl_seconds).await?;
+        // Save to L1/L2 via CacheManager
+        self.cache_manager.set(&cache_key, &items.to_vec()).await?;
 
-        // Save to L2 (PostgreSQL) with longer TTL (12x)
-        let l2_ttl = ttl_seconds * 12;
+        // Save to L3 (PostgreSQL) with longer TTL (12x)
+        let l3_ttl = ttl_seconds * 12;
         let items_json = serde_json::to_value(items)?;
         self.cache_repo.set(
             &cache_key,
@@ -102,14 +87,13 @@ impl StagingManager {
             user_id,
             Some(context_hash),
             items_json,
-            l2_ttl,
+            l3_ttl,
         ).await?;
 
         info!(
             cache_key = %cache_key,
-            l1_ttl = ttl_seconds,
-            l2_ttl = l2_ttl,
-            "Saved to L1 and L2 caches"
+            l3_ttl = l3_ttl,
+            "Saved to all cache tiers"
         );
 
         Ok(())
@@ -122,12 +106,16 @@ impl StagingManager {
         scenario_slug: Option<&str>,
         reason: &str,
     ) -> Result<()> {
-        // Invalidate L1 cache (Redis)
-        self.invalidate_l1_for_user(user_id, scenario_slug).await?;
+        // Invalidate L1/L2 via pattern (best effort)
+        let key_pattern = if let Some(slug) = scenario_slug {
+            format!("rec:{}:{}:*", slug, user_id)
+        } else {
+            format!("rec:*:{}:*", user_id)
+        };
+        let _ = self.cache_manager.delete(&key_pattern).await;
 
-        // Mark L2 cache as stale
+        // Mark L3 cache as stale
         let rows_affected = self.cache_repo.mark_stale(user_id, scenario_slug, reason).await?;
-        self.invalidations.fetch_add(1, Ordering::Relaxed);
 
         info!(
             user_id = user_id,
@@ -140,7 +128,7 @@ impl StagingManager {
         Ok(())
     }
 
-    /// Invalidate both L1 and L2 for a specific scenario + user
+    /// Invalidate cache for a specific scenario + user
     pub async fn invalidate(
         &self,
         scenario_slug: &str,
@@ -148,103 +136,65 @@ impl StagingManager {
     ) -> Result<()> {
         let start_time = Instant::now();
 
-        // Invalidate L1 (Redis) - specific key pattern
+        // Invalidate L1/L2 - specific key patterns
         let key = format!("rec:{}:{}:*", scenario_slug, user_id);
-        let _ = self.redis.del(&key).await;
+        let _ = self.cache_manager.delete(&key).await;
 
-        // Also try the default context hash key
         let default_key = format!("rec:{}:{}:default", scenario_slug, user_id);
-        let _ = self.redis.del(&default_key).await;
+        let _ = self.cache_manager.delete(&default_key).await;
 
-        // Track cache eviction
-
-        // Invalidate L2 (PostgreSQL)
+        // Invalidate L3 (PostgreSQL)
         let rows_affected = self.cache_repo.mark_stale(user_id, Some(scenario_slug), "invalidate").await?;
-        self.invalidations.fetch_add(1, Ordering::Relaxed);
 
         let _duration = start_time.elapsed();
-        
-        // Track cache eviction
 
         info!(
             scenario_slug = scenario_slug,
             user_id = user_id,
             rows_affected = rows_affected,
-            "Invalidated L1 and L2 caches"
+            "Invalidated all cache tiers"
         );
 
         Ok(())
     }
 
-    /// Cleanup expired L2 cache entries
+    /// Cleanup expired L3 cache entries
     pub async fn cleanup_expired(&self) -> Result<u64> {
         let deleted = self.cache_repo.cleanup_expired().await?;
-        info!(deleted = deleted, "Cleaned up expired L2 cache entries");
+        info!(deleted = deleted, "Cleaned up expired L3 cache entries");
         Ok(deleted)
     }
 
-    /// Get cache hit rate
+    /// Get cache hit rate from CacheManager metrics
     pub fn get_hit_rate(&self) -> f64 {
-        let total_hits = self.l1_hits.load(Ordering::Relaxed)
-            + self.l2_hits.load(Ordering::Relaxed);
-        let total_misses = self.l1_misses.load(Ordering::Relaxed)
-            + self.l2_misses.load(Ordering::Relaxed);
-
-        if total_hits + total_misses == 0 {
-            return 0.0;
-        }
-
-        total_hits as f64 / (total_hits + total_misses) as f64
+        self.cache_manager.metrics().overall_hit_rate()
     }
 
     /// Get cache statistics
     pub fn get_stats(&self) -> StagingStats {
+        let metrics = self.cache_manager.metrics();
         StagingStats {
-            l1_hits: self.l1_hits.load(Ordering::Relaxed),
-            l1_misses: self.l1_misses.load(Ordering::Relaxed),
-            l2_hits: self.l2_hits.load(Ordering::Relaxed),
-            l2_misses: self.l2_misses.load(Ordering::Relaxed),
-            invalidations: self.invalidations.load(Ordering::Relaxed),
-            hit_rate: self.get_hit_rate(),
+            l1_hits: metrics.l1_hits,
+            l1_misses: metrics.l1_misses,
+            l2_hits: metrics.l2_hits,
+            l2_misses: metrics.l2_misses,
+            invalidations: 0, // TODO: Track via CacheMetrics
+            hit_rate: metrics.overall_hit_rate(),
         }
     }
 
-    /// Get from Redis L1 cache
-    async fn get_from_l1(&self, cache_key: &str) -> Result<Option<Vec<ScoredItem>>> {
-        if let Some(json_str) = self.redis.get(cache_key).await? {
-            let items: Vec<ScoredItem> = serde_json::from_str(&json_str)?;
-            return Ok(Some(items));
-        }
-        Ok(None)
+    /// Get the underlying CacheManager for direct access
+    pub fn cache_manager(&self) -> Arc<CacheManager> {
+        Arc::clone(&self.cache_manager)
     }
 
-    /// Save to Redis L1 cache
-    async fn save_to_l1(&self, cache_key: &str, items: &[ScoredItem], ttl_seconds: i32) -> Result<()> {
-        let json_str = serde_json::to_string(items)?;
-        self.redis.set_ex(cache_key, &json_str, ttl_seconds as u64).await?;
-        Ok(())
-    }
-
-    /// Get from PostgreSQL L2 cache
-    async fn get_from_l2(&self, cache_key: &str) -> Result<Option<Vec<ScoredItem>>> {
+    /// Get from PostgreSQL L3 cache
+    async fn get_from_l3(&self, cache_key: &str) -> Result<Option<Vec<ScoredItem>>> {
         if let Some(entry) = self.cache_repo.get(cache_key).await? {
             let items: Vec<ScoredItem> = serde_json::from_value(entry.recommendations)?;
             return Ok(Some(items));
         }
         Ok(None)
-    }
-
-    /// Invalidate L1 cache for user
-    async fn invalidate_l1_for_user(&self, user_id: i32, scenario_slug: Option<&str>) -> Result<()> {
-        let key = if let Some(slug) = scenario_slug {
-            format!("rec:{}:{}:default", slug, user_id)
-        } else {
-            format!("rec:*:{}:*", user_id)
-        };
-
-        // Best-effort deletion
-        let _ = self.redis.del(&key).await;
-        Ok(())
     }
 
     /// Build cache key
