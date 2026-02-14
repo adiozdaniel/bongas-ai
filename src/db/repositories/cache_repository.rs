@@ -35,7 +35,9 @@ impl CacheRepository {
 
     /// Get cached recommendations from L2 by cache key.
     pub async fn get(&self, cache_key: &str) -> AppResult<Option<RecommendationCacheL2>> {
-        let entry = sqlx::query_as::<_, RecommendationCacheL2>(
+        let start_time = std::time::Instant::now();
+        
+        let result = sqlx::query_as::<_, RecommendationCacheL2>(
             r#"
             SELECT * FROM recommendation_cache_l2
             WHERE cache_key = $1
@@ -45,29 +47,45 @@ impl CacheRepository {
         )
         .bind(cache_key)
         .fetch_optional(&self.pool)
-        .await
-        .map_err(|e| {
-            AppError::Postgres(PostgresError::Query {
-                message: format!("Failed to fetch cache entry: {}", e),
-                source: Some(Box::new(e)),
-            })
-        })?;
+        .await;
 
-        // Update hit count if found (fire and forget, don't fail on this)
-        if entry.is_some() {
-            let key = cache_key.to_string();
-            let pool = self.pool.clone();
-            tokio::spawn(async move {
-                let _ = sqlx::query(
-                    "UPDATE recommendation_cache_l2 SET hit_count = hit_count + 1, last_hit_at = NOW() WHERE cache_key = $1",
-                )
-                .bind(&key)
-                .execute(&pool)
-                .await;
-            });
+        let duration = start_time.elapsed();
+        
+        match result {
+            Ok(entry) => {
+                // Record successful cache operation
+                let metrics = self.metrics_collector.registry().get_or_create("cache_l2");
+                metrics.latency.record_duration(duration);
+                metrics.successes.increment();
+                
+                // Update hit count if found (fire and forget, don't fail on this)
+                if entry.is_some() {
+                    let key = cache_key.to_string();
+                    let pool = self.pool.clone();
+                    tokio::spawn(async move {
+                        let _ = sqlx::query(
+                            "UPDATE recommendation_cache_l2 SET hit_count = hit_count + 1, last_hit_at = NOW() WHERE cache_key = $1",
+                        )
+                        .bind(&key)
+                        .execute(&pool)
+                        .await;
+                    });
+                }
+
+                Ok(entry)
+            }
+            Err(e) => {
+                // Record cache failure
+                let metrics = self.metrics_collector.registry().get_or_create("cache_l2");
+                metrics.latency.record_duration(duration);
+                metrics.failures.increment();
+                
+                Err(AppError::Postgres(PostgresError::Query {
+                    message: format!("Failed to fetch cache entry: {}", e),
+                    source: Some(Box::new(e)),
+                }))
+            }
         }
-
-        Ok(entry)
     }
 
     /// Save recommendations to L2 cache.

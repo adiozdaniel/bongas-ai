@@ -34,7 +34,9 @@ impl ModelRepository {
     ///
     /// Executes through circuit breaker with bulkhead protection.
     pub async fn get_deployed_onnx_models(&self) -> AppResult<Vec<ModelRegistry>> {
-        self.pool
+        let start_time = std::time::Instant::now();
+        
+        let result = self.pool
             .execute(|pool| async move {
                 sqlx::query_as::<_, ModelRegistry>(
                     r#"
@@ -47,13 +49,30 @@ impl ModelRepository {
                 .fetch_all(&pool)
                 .await
             })
-            .await
-            .map_err(|e| {
-                AppError::Postgres(PostgresError::Query {
+            .await;
+
+        let duration = start_time.elapsed();
+        
+        match result {
+            Ok(models) => {
+                // Record successful operation
+                let metrics = self.metrics_collector.registry().get_or_create("model_registry");
+                metrics.latency.record_duration(duration);
+                metrics.successes.increment();
+                Ok(models)
+            }
+            Err(e) => {
+                // Record failed operation
+                let metrics = self.metrics_collector.registry().get_or_create("model_registry");
+                metrics.latency.record_duration(duration);
+                metrics.failures.increment();
+                
+                Err(AppError::Postgres(PostgresError::Query {
                     message: format!("Failed to fetch deployed ONNX models: {}", e),
                     source: None,
-                })
-            })
+                }))
+            }
+        }
     }
 
     /// Get ONNX model by name and version.

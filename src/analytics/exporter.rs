@@ -112,42 +112,84 @@ impl PrometheusExporter {
 
 impl AnalyticsExporter for PrometheusExporter {
     fn export_business_metrics(&self, metrics: &BusinessMetrics) -> Result<(), Box<dyn std::error::Error>> {
-        // For simplicity, just log the metrics
-        tracing::info!(
-            active_users = metrics.get_active_users(),
-            new_users = metrics.get_new_users(),
-            revenue = metrics.get_revenue(),
-            conversion_rate = metrics.get_conversion_rate(),
-            retention_rate = metrics.get_retention_rate(),
-            "Business metrics exported to Prometheus"
-        );
-        Ok(())
+        let data = serde_json::json!({
+            "active_users": metrics.get_active_users(),
+            "new_users": metrics.get_new_users(),
+            "revenue": metrics.get_revenue(),
+            "conversion_rate": metrics.get_conversion_rate(),
+            "retention_rate": metrics.get_retention_rate(),
+        });
+        
+        let client = reqwest::blocking::Client::new();
+        let response = client.post(&self.endpoint)
+            .json(&data)
+            .send()?;
+            
+        if response.status().is_success() {
+            tracing::info!("Business metrics successfully sent to Prometheus endpoint: {}", self.endpoint);
+            Ok(())
+        } else {
+            Err(format!("Failed to send business metrics to Prometheus: HTTP {}", response.status()).into())
+        }
     }
 
     fn export_user_behavior(&self, metrics: &UserBehavior) -> Result<(), Box<dyn std::error::Error>> {
-        tracing::info!(
-            page_views = metrics.get_page_views(),
-            avg_session_duration_ms = metrics.get_avg_session_duration().as_millis(),
-            "User behavior metrics exported to Prometheus"
-        );
-        Ok(())
+        let data = serde_json::json!({
+            "page_views": metrics.get_page_views(),
+            "avg_session_duration_ms": metrics.get_avg_session_duration().as_millis(),
+        });
+        
+        let client = reqwest::blocking::Client::new();
+        let response = client.post(&self.endpoint)
+            .json(&data)
+            .send()?;
+            
+        if response.status().is_success() {
+            tracing::info!("User behavior metrics successfully sent to Prometheus endpoint: {}", self.endpoint);
+            Ok(())
+        } else {
+            Err(format!("Failed to send user behavior metrics to Prometheus: HTTP {}", response.status()).into())
+        }
     }
 
     fn export_performance_metrics(&self, _metrics: &PerformanceMetrics) -> Result<(), Box<dyn std::error::Error>> {
-        tracing::info!("Performance metrics exported to Prometheus (endpoint-specific queries required)");
-        Ok(())
+        let data = serde_json::json!({
+            "note": "Performance metrics require endpoint-specific queries",
+        });
+        
+        let client = reqwest::blocking::Client::new();
+        let response = client.post(&self.endpoint)
+            .json(&data)
+            .send()?;
+            
+        if response.status().is_success() {
+            tracing::info!("Performance metrics successfully sent to Prometheus endpoint: {}", self.endpoint);
+            Ok(())
+        } else {
+            Err(format!("Failed to send performance metrics to Prometheus: HTTP {}", response.status()).into())
+        }
     }
 
     fn export_resource_metrics(&self, metrics: &ResourceMetrics) -> Result<(), Box<dyn std::error::Error>> {
-        tracing::info!(
-            memory_usage_bytes = metrics.get_memory_usage(),
-            cpu_usage_percent = metrics.get_cpu_usage(),
-            disk_reads = metrics.get_disk_reads(),
-            disk_writes = metrics.get_disk_writes(),
-            network_bytes_sent = metrics.get_network_sent(),
-            network_bytes_received = metrics.get_network_received(),
-            "Resource metrics exported to Prometheus"
-        );
-        Ok(())
+        let data = serde_json::json!({
+            "memory_usage_bytes": metrics.get_memory_usage(),
+            "cpu_usage_percent": metrics.get_cpu_usage(),
+            "disk_reads": metrics.get_disk_reads(),
+            "disk_writes": metrics.get_disk_writes(),
+            "network_bytes_sent": metrics.get_network_sent(),
+            "network_bytes_received": metrics.get_network_received(),
+        });
+        
+        let client = reqwest::blocking::Client::new();
+        let response = client.post(&self.endpoint)
+            .json(&data)
+            .send()?;
+            
+        if response.status().is_success() {
+            tracing::info!("Resource metrics successfully sent to Prometheus endpoint: {}", self.endpoint);
+            Ok(())
+        } else {
+            Err(format!("Failed to send resource metrics to Prometheus: HTTP {}", response.status()).into())
+        }
     }
 }

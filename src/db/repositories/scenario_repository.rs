@@ -34,7 +34,9 @@ impl ScenarioRepository {
     ///
     /// Executes through circuit breaker with bulkhead protection.
     pub async fn find_all_enabled(&self) -> AppResult<Vec<ScenarioConfig>> {
-        self.pool
+        let start_time = std::time::Instant::now();
+        
+        let result = self.pool
             .execute(|pool| async move {
                 sqlx::query_as::<_, ScenarioConfig>(
                     "SELECT * FROM scenario_configs WHERE enabled = true ORDER BY priority DESC",
@@ -42,13 +44,30 @@ impl ScenarioRepository {
                 .fetch_all(&pool)
                 .await
             })
-            .await
-            .map_err(|e| {
-                AppError::Postgres(PostgresError::Query {
+            .await;
+
+        let duration = start_time.elapsed();
+        
+        match result {
+            Ok(scenarios) => {
+                // Record successful operation
+                let metrics = self.metrics_collector.registry().get_or_create("scenario_config");
+                metrics.latency.record_duration(duration);
+                metrics.successes.increment();
+                Ok(scenarios)
+            }
+            Err(e) => {
+                // Record failed operation
+                let metrics = self.metrics_collector.registry().get_or_create("scenario_config");
+                metrics.latency.record_duration(duration);
+                metrics.failures.increment();
+                
+                Err(AppError::Postgres(PostgresError::Query {
                     message: format!("Failed to fetch enabled scenarios: {}", e),
                     source: None,
-                })
-            })
+                }))
+            }
+        }
     }
 
     /// Find scenario by slug.

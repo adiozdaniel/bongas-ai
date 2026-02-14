@@ -39,7 +39,9 @@ impl InteractionRepository {
         rating: f32,
         watch_duration_seconds: i32,
     ) -> AppResult<()> {
-        self.pool
+        let start_time = std::time::Instant::now();
+        
+        let result = self.pool
             .execute(|pool| async move {
                 sqlx::query(
                     r#"
@@ -56,16 +58,33 @@ impl InteractionRepository {
                 .await
                 .map(|_| ())
             })
-            .await
-            .map_err(|e| {
-                AppError::Postgres(PostgresError::Query {
+            .await;
+
+        let duration = start_time.elapsed();
+        
+        match result {
+            Ok(()) => {
+                // Record successful operation
+                let metrics = self.metrics_collector.registry().get_or_create("interaction_implicit");
+                metrics.latency.record_duration(duration);
+                metrics.successes.increment();
+                Ok(())
+            }
+            Err(e) => {
+                // Record failed operation
+                let metrics = self.metrics_collector.registry().get_or_create("interaction_implicit");
+                metrics.latency.record_duration(duration);
+                metrics.failures.increment();
+                
+                Err(AppError::Postgres(PostgresError::Query {
                     message: format!(
                         "Failed to create implicit rating for user={}, item={}: {}",
                         user_id, item_id, e
                     ),
                     source: None,
-                })
-            })
+                }))
+            }
+        }
     }
 
     /// Create an explicit rating from user input.

@@ -34,7 +34,9 @@ impl FeatureRepository {
     ///
     /// Executes through circuit breaker with bulkhead protection.
     pub async fn get_user_features(&self, user_id: i32) -> AppResult<Option<UserFeatures>> {
-        self.pool
+        let start_time = std::time::Instant::now();
+        
+        let result = self.pool
             .execute(|pool| async move {
                 sqlx::query_as::<_, UserFeatures>(
                     "SELECT * FROM user_features WHERE user_id = $1",
@@ -43,13 +45,30 @@ impl FeatureRepository {
                 .fetch_optional(&pool)
                 .await
             })
-            .await
-            .map_err(|e| {
-                AppError::Postgres(PostgresError::Query {
+            .await;
+
+        let duration = start_time.elapsed();
+        
+        match result {
+            Ok(features) => {
+                // Record successful operation
+                let metrics = self.metrics_collector.registry().get_or_create("feature_user");
+                metrics.latency.record_duration(duration);
+                metrics.successes.increment();
+                Ok(features)
+            }
+            Err(e) => {
+                // Record failed operation
+                let metrics = self.metrics_collector.registry().get_or_create("feature_user");
+                metrics.latency.record_duration(duration);
+                metrics.failures.increment();
+                
+                Err(AppError::Postgres(PostgresError::Query {
                     message: format!("Failed to fetch user features for user_id={}: {}", user_id, e),
                     source: None,
-                })
-            })
+                }))
+            }
+        }
     }
 
     /// Get item features by item ID.

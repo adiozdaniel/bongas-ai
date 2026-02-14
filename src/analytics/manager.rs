@@ -93,6 +93,16 @@ impl AnalyticsManager {
         Arc::clone(&self.resource_metrics)
     }
 
+    /// Get the analytics configuration.
+    pub fn config(&self) -> &AnalyticsConfig {
+        &self.config
+    }
+
+    /// Get the analytics exporter if available.
+    pub fn exporter(&self) -> Option<&Arc<dyn AnalyticsExporter + Send + Sync>> {
+        self.exporter.as_ref()
+    }
+
     /// Shutdown the analytics manager.
     pub async fn shutdown(&self) {
         // We can't move out of self, so we need to handle this differently
