@@ -170,6 +170,42 @@ impl ResilientPool {
         })
     }
 
+    /// Wrap an existing PgPool with resilience (circuit breaker + bulkhead + timeout).
+    pub fn from_pool(
+        pool: PgPool,
+        config: ResilientPoolConfig,
+        circuit_breaker_registry: Arc<CircuitBreakerRegistry>,
+    ) -> Result<Self> {
+        let cb_config = CircuitBreakerConfig::builder()
+            .failure_rate_threshold(config.failure_rate_threshold)
+            .slow_call_rate_threshold(config.slow_call_rate_threshold)
+            .slow_call_duration(config.slow_call_duration)
+            .minimum_calls(10)
+            .build()
+            .context("Invalid circuit breaker config")?;
+
+        let circuit_breaker =
+            circuit_breaker_registry.get_or_create(CircuitBreakerId::new("postgres"), cb_config);
+
+        let bulkhead = Arc::new(Semaphore::new(config.max_concurrent_queries));
+        let metrics = Arc::new(DatabaseMetrics::new());
+
+        tracing::info!(
+            max_concurrent_queries = config.max_concurrent_queries,
+            query_timeout_ms = config.query_timeout.as_millis() as u64,
+            "Resilient database pool initialized (from existing pool)"
+        );
+
+        Ok(Self {
+            pool,
+            circuit_breaker,
+            bulkhead,
+            query_timeout: config.query_timeout,
+            metrics,
+            config,
+        })
+    }
+
     /// Execute a query with full resilience (circuit breaker + bulkhead + timeout).
     ///
     /// The operation receives a reference to the underlying PgPool.
@@ -252,8 +288,8 @@ impl ResilientPool {
     /// Check if the circuit breaker is open.
     pub fn is_circuit_open(&self) -> bool {
         matches!(
-            self.circuit_breaker.state(),
-            crate::circuit_breaker::CircuitBreakerState::Open
+            self.circuit_breaker.current_state(),
+            crate::circuit_breaker::observer::CircuitState::Open
         )
     }
 

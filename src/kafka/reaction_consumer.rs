@@ -3,9 +3,10 @@ use rdkafka::config::ClientConfig;
 use rdkafka::consumer::{Consumer, StreamConsumer};
 use rdkafka::message::Message;
 use serde::{Deserialize, Serialize};
-use sqlx::PgPool;
 use std::sync::Arc;
 use tracing::{info, error};
+use crate::resilience::ResilienceMetricsCollector;
+use crate::db::ResilientPool;
 use crate::engine::staleness_engine::{StalenessEngine, UserEvent};
 use crate::db::repositories::interaction_repository::InteractionRepository;
 
@@ -28,7 +29,8 @@ impl ReactionConsumer {
         kafka_brokers: &str,
         group_id: &str,
         topic: &str,
-        db_pool: Arc<PgPool>,
+        resilient_pool: Arc<ResilientPool>,
+        metrics_collector: Arc<ResilienceMetricsCollector>,
         staleness_engine: Arc<StalenessEngine>,
     ) -> Result<Self> {
         let consumer: StreamConsumer = ClientConfig::new()
@@ -40,7 +42,7 @@ impl ReactionConsumer {
 
         consumer.subscribe(&[topic])?;
 
-        let interaction_repo = Arc::new(InteractionRepository::new(db_pool));
+        let interaction_repo = Arc::new(InteractionRepository::new(resilient_pool, metrics_collector));
 
         Ok(Self {
             consumer,

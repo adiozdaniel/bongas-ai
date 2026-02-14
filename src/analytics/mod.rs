@@ -1,32 +1,25 @@
-//! Analytics module for the Composite Resilience Pattern.
+//! Analytics module for business and application metrics.
 //!
-//! Provides high-throughput metrics collection, aggregation, and export
-//! for all circuit breakers in the system. Lock-free where possible,
-//! with HDR histograms for accurate latency percentiles.
+//! Provides metrics collection for business KPIs, user behavior tracking,
+//! and application performance monitoring. This is separate from resilience
+//! metrics which are handled by the `resilience` module.
 //!
-//! # Netflix Resilience Features
-//! - **Error Classification Tracking**: Breakdown by classification type
-//! - **Degraded/Partial Failure Metrics**: Tracked separately
-//! - **Lock Poison Recovery**: All locks recover gracefully from panics
-//! - **Validated Configuration**: Builder pattern with cross-field validation
+//! # Business Analytics Features
+//! - **User Behavior Tracking**: Page views, feature usage, conversion rates
+//! - **Business KPIs**: Active users, retention, revenue metrics
+//! - **Performance Monitoring**: API response times, throughput by endpoint
+//! - **Resource Usage**: Memory consumption, CPU usage, disk I/O
 //!
 //! # Design Patterns
-//! - **Observer**: `ResilienceMetricsCollector` receives circuit breaker events.
-//! - **Strategy**: `MetricsExporter` trait for pluggable export formats.
-//! - **Builder**: `AnalyticsConfig::builder()` for configuration.
-//! - **Composite**: `MetricsRegistry` aggregates all breaker metrics.
-//! - **Flyweight**: Shared histogram buckets for memory efficiency.
+//! - **Strategy**: `AnalyticsExporter` trait for pluggable export formats
+//! - **Builder**: `AnalyticsConfig::builder()` for configuration
+//! - **Observer**: Event-driven telemetry for business events
+//! - **Composite**: `AnalyticsManager` aggregates all business metrics
 
-pub mod collector;
 pub mod config;
 pub mod exporter;
-pub mod histogram;
-pub mod registry;
+pub mod manager;
 pub mod types;
-
-// ─── Collector ──────────────────────────────────────────────────────────────
-
-pub use collector::ResilienceMetricsCollector;
 
 // ─── Configuration ──────────────────────────────────────────────────────────
 
@@ -36,25 +29,17 @@ pub use config::AnalyticsConfigError;
 
 // ─── Exporters ──────────────────────────────────────────────────────────────
 
+pub use exporter::AnalyticsExporter;
 pub use exporter::JsonExporter;
-pub use exporter::MetricsExporter;
 pub use exporter::PrometheusExporter;
 
-// ─── Histogram ──────────────────────────────────────────────────────────────
+// ─── Manager ────────────────────────────────────────────────────────────────
 
-pub use histogram::HdrHistogram;
-
-// ─── Registry ───────────────────────────────────────────────────────────────
-
-pub use registry::BreakerMetrics;
-pub use registry::MetricsRegistry;
+pub use manager::AnalyticsManager;
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
-pub use types::BreakerSnapshot;
-pub use types::ClassificationCounters;
-pub use types::ClassificationSnapshot;
-pub use types::Counter;
-pub use types::Gauge;
-pub use types::Rate;
-pub use types::RegistrySnapshot;
+pub use types::BusinessMetrics;
+pub use types::UserBehavior;
+pub use types::PerformanceMetrics;
+pub use types::ResourceMetrics;

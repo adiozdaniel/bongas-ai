@@ -1,9 +1,10 @@
 use anyhow::Result;
 use std::sync::Arc;
 use std::collections::HashMap;
-use sqlx::PgPool;
 use tracing::{info, warn};
 
+use crate::resilience::ResilienceMetricsCollector;
+use crate::db::ResilientPool;
 use crate::db::repositories::scenario_repository::ScenarioRepository;
 use crate::db::models::PipelineDefinition;
 use super::ScenarioDefinition;
@@ -13,9 +14,9 @@ pub struct ScenarioFactory {
 }
 
 impl ScenarioFactory {
-    pub fn new(db_pool: Arc<PgPool>) -> Self {
+    pub fn new(resilient_pool: Arc<ResilientPool>, metrics_collector: Arc<ResilienceMetricsCollector>) -> Self {
         Self {
-            repo: ScenarioRepository::new(db_pool.as_ref().clone())
+            repo: ScenarioRepository::new(resilient_pool, metrics_collector)
         }
     }
 

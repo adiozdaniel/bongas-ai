@@ -27,7 +27,7 @@ impl StagingManager {
 
         Ok(Self {
             cache_manager,
-            cache_repo: CacheRepository::new(db_pool),
+            cache_repo: CacheRepository::new(db_pool, Arc::new(crate::resilience::ResilienceMetricsCollector::new(Arc::new(crate::resilience::MetricsRegistry::new(crate::resilience::ResilienceConfig::default()))))),
         })
     }
 

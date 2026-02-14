@@ -7,7 +7,7 @@
 
 use std::sync::Arc;
 
-use crate::analytics::ResilienceMetricsCollector;
+use crate::resilience::ResilienceMetricsCollector;
 use crate::db::ResilientPool;
 use crate::error::{AppError, AppResult, PostgresError};
 

@@ -12,7 +12,8 @@ use tokio::sync::RwLock;
 use sqlx::PgPool;
 use tracing::info;
 
-use crate::ResilienceMetricsCollector;
+use crate::resilience::{ResilienceMetricsCollector, MetricsRegistry, ResilienceConfig};
+use crate::db::{ResilientPool, ResilientPoolConfig};
 use crate::db::models::PipelineDefinition;
 use crate::pipeline::executor::PipelineExecutor;
 use crate::pipeline::context::ExecutionContext;
@@ -66,6 +67,8 @@ pub struct BongasEngine {
 
     // Resilience
     circuit_breaker_registry: Arc<CircuitBreakerRegistry>,
+    resilient_pool: Arc<ResilientPool>,
+    resilience_metrics: Arc<ResilienceMetricsCollector>,
 
     // Dependencies
     db_pool: Arc<PgPool>,
@@ -92,13 +95,23 @@ impl BongasEngine {
     ) -> Result<Arc<Self>> {
         info!("Initializing BongasEngine...");
 
+        // Create shared resilience infrastructure
+        let resilience_metrics = Arc::new(ResilienceMetricsCollector::new(
+            Arc::new(MetricsRegistry::new(ResilienceConfig::default())),
+        ));
+        let resilient_pool = Arc::new(ResilientPool::from_pool(
+            db_pool.clone(),
+            ResilientPoolConfig::default(),
+            circuit_breaker_registry.clone(),
+        )?);
+
         let db_pool = Arc::new(db_pool);
 
         // Create Netflix-grade cache manager
         let cache_manager = Arc::new(CacheManager::new(redis_url, cache_config.clone()).await?);
 
         // Create model repository and loader
-        let model_repo = Arc::new(ModelRepository::new(Arc::clone(&db_pool), Arc::new(ResilienceMetricsCollector::new())));
+        let model_repo = Arc::new(ModelRepository::new(resilient_pool.clone(), resilience_metrics.clone()));
         let model_loader = Arc::new(ModelLoader::new(model_dir, model_repo.clone()));
 
         // Load all deployed ONNX models
@@ -107,7 +120,7 @@ impl BongasEngine {
 
         // Create staging manager with CacheManager
         let staging_manager = Arc::new(
-            StagingManager::new(redis_url, db_pool.as_ref().clone(), cache_config).await?
+            StagingManager::new(redis_url, (*db_pool).clone(), cache_config).await?
         );
 
         // Create staleness engine
@@ -117,7 +130,7 @@ impl BongasEngine {
         // let analytics = Arc::new(AnalyticsManager::new()?);
 
         // Create scenario factory
-        let scenario_factory = Arc::new(ScenarioFactory::new(db_pool.clone()));
+        let scenario_factory = Arc::new(ScenarioFactory::new(resilient_pool.clone(), resilience_metrics.clone()));
 
         // Create pipeline executor
         let pipeline_executor = Arc::new(PipelineExecutor::new());
@@ -134,9 +147,9 @@ impl BongasEngine {
         let experiment_manager = Arc::new(ExperimentManager::new(db_pool.clone()));
 
         // Create repositories
-        let feature_repo = Arc::new(FeatureRepository::new(db_pool.as_ref().clone()));
-        let experiment_repo = Arc::new(ExperimentRepository::new(db_pool.as_ref().clone()));
-        let cache_repo = Arc::new(CacheRepository::new(db_pool.as_ref().clone()));
+        let feature_repo = Arc::new(FeatureRepository::new(resilient_pool.clone(), resilience_metrics.clone()));
+        let experiment_repo = Arc::new(ExperimentRepository::new((*db_pool).clone()));
+        let cache_repo = Arc::new(CacheRepository::new((*db_pool).clone(), resilience_metrics.clone()));
 
         let engine = Arc::new(Self {
             scenarios: Arc::new(RwLock::new(HashMap::new())),
@@ -153,6 +166,8 @@ impl BongasEngine {
             kafka_metrics,
             security_manager,
             circuit_breaker_registry,
+            resilient_pool,
+            resilience_metrics,
             db_pool,
             cache_manager,
         });
@@ -173,6 +188,8 @@ impl BongasEngine {
         manager.start_all(
             kafka_brokers,
             self.db_pool.clone(),
+            self.resilient_pool.clone(),
+            self.resilience_metrics.clone(),
             self.staleness_engine.clone(),
         )?;
 

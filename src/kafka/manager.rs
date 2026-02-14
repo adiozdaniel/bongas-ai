@@ -3,6 +3,8 @@ use sqlx::PgPool;
 use std::sync::Arc;
 use tokio::task::JoinHandle;
 use tracing::info;
+use crate::resilience::ResilienceMetricsCollector;
+use crate::db::ResilientPool;
 use crate::engine::staleness_engine::StalenessEngine;
 use super::playback_consumer::PlaybackConsumer;
 use super::reaction_consumer::ReactionConsumer;
@@ -24,6 +26,8 @@ impl KafkaConsumerManager {
         &mut self,
         kafka_brokers: &str,
         db_pool: Arc<PgPool>,
+        resilient_pool: Arc<ResilientPool>,
+        metrics_collector: Arc<ResilienceMetricsCollector>,
         staleness_engine: Arc<StalenessEngine>,
     ) -> Result<()> {
         info!("Starting all Kafka consumers");
@@ -33,7 +37,8 @@ impl KafkaConsumerManager {
             kafka_brokers,
             "bongas-playback-consumer",
             "playback.sessions",
-            db_pool.clone(),
+            resilient_pool.clone(),
+            metrics_collector.clone(),
             staleness_engine.clone(),
         )?);
         self.handles.push(tokio::spawn(async move {
@@ -45,7 +50,8 @@ impl KafkaConsumerManager {
             kafka_brokers,
             "bongas-reaction-consumer",
             "user.reactions",
-            db_pool.clone(),
+            resilient_pool.clone(),
+            metrics_collector.clone(),
             staleness_engine.clone(),
         )?);
         self.handles.push(tokio::spawn(async move {

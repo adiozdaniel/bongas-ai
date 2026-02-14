@@ -26,6 +26,7 @@ pub mod security;
 
 // Resilience modules
 pub mod circuit_breaker;
+pub mod resilience;
 pub mod analytics;
 
 // Data modules
@@ -54,7 +55,7 @@ pub use config::{
 // Resilience types
 pub use circuit_breaker::{CircuitBreaker, CircuitBreakerConfig, CircuitState};
 pub use error::{AppError, AppResult, ErrorClassification, ErrorClassifier};
-pub use analytics::{ResilienceMetricsCollector, MetricsRegistry};
+pub use resilience::{ResilienceMetricsCollector, MetricsRegistry};
 
 // Telemetry
 pub use telemetry::{init as initialize_telemetry, TelemetryConfig};
