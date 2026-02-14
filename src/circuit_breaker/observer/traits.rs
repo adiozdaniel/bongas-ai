@@ -93,11 +93,46 @@
                   );
               }
 
-              CircuitBreakerEvent::CallRejected { .. } => { /* ... */ }
-              CircuitBreakerEvent::StateChanged { from, to, .. } => { /* ... */ }
-              CircuitBreakerEvent::CallTimedOut { timeout, .. } => { /* ... */ }
-              CircuitBreakerEvent::SlowCall { latency, threshold, .. } => { /* ... */ }
-              CircuitBreakerEvent::MetricsReset { .. } => { /* ... */ }
+              CircuitBreakerEvent::CallRejected { .. } => {
+                  tracing::warn!(
+                      target: "resilience::circuit_breaker",
+                      breaker = %breaker,
+                      "call rejected - circuit open"
+                  );
+              }
+              CircuitBreakerEvent::StateChanged { from, to, .. } => {
+                  tracing::info!(
+                      target: "resilience::circuit_breaker",
+                      breaker = %breaker,
+                      from = ?from,
+                      to = ?to,
+                      "circuit state changed"
+                  );
+              }
+              CircuitBreakerEvent::CallTimedOut { timeout, .. } => {
+                  tracing::warn!(
+                      target: "resilience::circuit_breaker",
+                      breaker = %breaker,
+                      timeout_ms = timeout.as_millis() as u64,
+                      "call timed out"
+                  );
+              }
+              CircuitBreakerEvent::SlowCall { latency, threshold, .. } => {
+                  tracing::warn!(
+                      target: "resilience::circuit_breaker",
+                      breaker = %breaker,
+                      latency_ms = latency.as_millis() as u64,
+                      threshold_ms = threshold.as_millis() as u64,
+                      "slow call detected"
+                  );
+              }
+              CircuitBreakerEvent::MetricsReset { .. } => {
+                  tracing::debug!(
+                      target: "resilience::circuit_breaker",
+                      breaker = %breaker,
+                      "metrics reset"
+                  );
+              }
           }
       }
   }

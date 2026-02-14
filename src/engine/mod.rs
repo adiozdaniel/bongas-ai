@@ -17,6 +17,7 @@ use crate::pipeline::executor::PipelineExecutor;
 use crate::pipeline::context::ExecutionContext;
 use crate::pipeline::ScoredItem;
 use crate::cache::{CacheManager, CacheConfig, CacheWarmer, CacheMetricsSnapshot};
+use crate::circuit_breaker::CircuitBreakerRegistry;
 use crate::kafka::manager::KafkaConsumerManager;
 use crate::kafka::metrics::KafkaMetricsRegistry;
 use crate::ml::model_loader::ModelLoader;
@@ -62,12 +63,11 @@ pub struct BongasEngine {
     // Security
     security_manager: Option<Arc<SecurityManager>>,
 
-    // Analytics
-    // analytics: Arc<AnalyticsManager>,
+    // Resilience
+    circuit_breaker_registry: Arc<CircuitBreakerRegistry>,
 
     // Dependencies
     db_pool: Arc<PgPool>,
-    // clickhouse: Arc<ClickHouseClient>,
     cache_manager: Arc<CacheManager>,
 }
 
@@ -87,6 +87,7 @@ impl BongasEngine {
         model_dir: &str,
         security_manager: Option<Arc<SecurityManager>>,
         cache_config: CacheConfig,
+        circuit_breaker_registry: Arc<CircuitBreakerRegistry>,
     ) -> Result<Arc<Self>> {
         info!("Initializing BongasEngine...");
 
@@ -150,6 +151,7 @@ impl BongasEngine {
             kafka_manager: Arc::new(RwLock::new(None)),
             kafka_metrics,
             security_manager,
+            circuit_breaker_registry,
             db_pool,
             cache_manager,
         });
@@ -600,10 +602,15 @@ impl BongasEngine {
         }
     }
 
-    /// Get analytics manager reference
-    // pub fn analytics(&self) -> Arc<AnalyticsManager> {
-    //     self.analytics.clone()
-    // }
+    /// Get circuit breaker registry for health checks and management
+    pub fn circuit_breaker_registry(&self) -> Arc<CircuitBreakerRegistry> {
+        self.circuit_breaker_registry.clone()
+    }
+
+    /// Get circuit breaker health summary for all registered breakers
+    pub fn circuit_breaker_health(&self) -> crate::circuit_breaker::RegistryStateSummary {
+        self.circuit_breaker_registry.state_summary()
+    }
 
     /// Convert ScoredItem to RecommendationItem
     fn convert_to_recommendation_items(scored_items: Vec<ScoredItem>) -> Vec<RecommendationItem> {

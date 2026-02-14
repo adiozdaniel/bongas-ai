@@ -2,12 +2,11 @@
 
   use crate::cache::config::CacheConfig;
   use crate::cache::metrics::{CacheMetrics, CacheMetricsSnapshot};
-  use crate::cache::strategies::{LruCache, RedisCache, NoOpCache};
+  use crate::cache::strategies::{LruCache, RedisCache};
   use crate::cache::traits::CacheStrategy;
   use anyhow::Result;
   use serde::{Deserialize, Serialize};
   use std::sync::Arc;
-  use std::time::Duration;
 
   /// Netflix-grade cache manager with multi-tier caching.
   ///

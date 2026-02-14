@@ -12,7 +12,7 @@ use std::sync::Arc;
 use std::time::Instant;
 use tracing::{info, debug};
 
-use crate::cache::{CacheManager, CacheConfig, CacheMetricsSnapshot};
+use crate::cache::{CacheManager, CacheConfig};
 use crate::db::repositories::cache_repository::CacheRepository;
 use crate::pipeline::ScoredItem;
 

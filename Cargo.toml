@@ -71,7 +71,7 @@ lazy_static = "1.4"
 dashmap = "6"
 
 # HTTP Client (for Spring Cloud Config)
-reqwest = { version = "0.12", features = ["json", "rustls-tls"] }
+reqwest = { version = "0.12", features = ["json", "rustls-tls", "blocking"] }
 
 # Additional dependencies for middleware
 bytes = "1.0"

@@ -44,6 +44,12 @@
 
       #[error("Validation error: {0}")]
       Validation(String),
+
+      #[error("Configuration source error: {0}")]
+      Source(String),
+
+      #[error("Configuration parse error: {0}")]
+      Parse(String),
   }
 
   /// Result type for configuration operations.
