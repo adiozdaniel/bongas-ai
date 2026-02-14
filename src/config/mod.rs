@@ -7,6 +7,7 @@
 //!
 //! All configuration is immutable at runtime for maximum throughput.
 
+pub mod http;
 pub mod loader;
 pub mod sources;
 pub mod types;
@@ -15,6 +16,9 @@ pub mod validation;
 // Re-export main types
 pub use loader::ConfigLoader;
 pub use types::AppConfig;
+
+// Re-export HTTP config types
+pub use http::{CompressionConfig, CorsConfig};
 
 // Re-export config types for convenience
 pub use types::{

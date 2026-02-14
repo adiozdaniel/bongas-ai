@@ -16,20 +16,20 @@ use std::sync::Arc;
 use tower_http::trace::TraceLayer;
 use serde_json::json;
 use crate::engine::BongasEngine;
-use crate::middlewares::{
-    logging::{logging_middleware},
-    error_handling::{error_handling_middleware, EnhancedErrorMiddleware, validation_error_middleware},
-    metrics::{MetricsCollector, DurationTracker, EndpointMetrics, HttpMetricsMiddleware},
-    cors::create_dev_cors_layer,
-    compression::CompressionConfig,
-    rate_limit::RateLimiter,
-    response_cache::ResponseCacheMiddleware,
-};
+  use crate::middlewares::{
+      error_handling::{error_handling_middleware, EnhancedErrorMiddleware, validation_error_middleware},
+      metrics::{MetricsCollector, DurationTracker, EndpointMetrics},
+      rate_limit::RateLimiter,
+  };
+  use crate::config::{CompressionConfig, CorsConfig};
+  use crate::circuit_breaker::CircuitBreakerRegistry;
+
 
 pub fn create_router(
     engine: Arc<BongasEngine>,
     redis: Arc<redis::Client>,
     metrics_collector: Arc<MetricsCollector>,
+    circuit_breaker_registry: Arc<CircuitBreakerRegistry>,
 ) -> Router {
     // Create endpoint metrics tracker
     let endpoint_metrics = Arc::new(EndpointMetrics::new());
@@ -239,6 +239,7 @@ pub fn create_router(
         // Inject shared state
         .layer(axum::Extension(engine))
         .layer(axum::Extension(redis))
+        .layer(axum::Extension(circuit_breaker_registry))
         .layer(axum::Extension(metrics_collector))
 
         // ========== MIDDLEWARE STACK (applied in reverse order) ==========
@@ -254,7 +255,8 @@ pub fn create_router(
         // 2. Rate limiting
         .layer(from_fn(|req: Request<Body>, next: Next| async move {
             let redis = req.extensions().get::<Arc<redis::Client>>().unwrap();
-            let rate_limiter = RateLimiter::new(redis.clone(), 100, 60);
+            let circuit_breaker = req.extensions().get::<Arc<CircuitBreakerRegistry>>().unwrap();
+            let rate_limiter = RateLimiter::new(redis.clone(), circuit_breaker.clone(), 60, 100);
             
             // Extract IP from request
             let ip = req.headers()
@@ -289,24 +291,8 @@ pub fn create_router(
         }))
         
         // 3. Request logging with correlation IDs
-        .layer(from_fn(logging_middleware))
         
         // 4. Response body caching
-        .layer(from_fn(|req: Request<Body>, next: Next| async move {
-            let redis = req.extensions().get::<Arc<redis::Client>>().cloned();
-            match redis {
-                Some(redis) => {
-                    let cache = ResponseCacheMiddleware::new(redis, 300); // 5 minutes TTL
-                    cache.layer(req, next).await.unwrap_or_else(|e| {
-                        Response::builder()
-                            .status(e)
-                            .body(Body::empty())
-                            .unwrap()
-                    })
-                }
-                None => next.run(req).await
-            }
-        }))
         
         // 5. Response compression (Enhanced)
         .layer(CompressionConfig::new()
@@ -316,14 +302,14 @@ pub fn create_router(
             .enable_deflate(false)
             .build())
         
+        .layer(CorsConfig::dev())
+
         // 6. Duration tracking middleware
         .layer(from_fn(DurationTracker::layer))
         
         // 7. HTTP metrics middleware (integrates with AnalyticsManager)
-        .layer(from_fn(HttpMetricsMiddleware::layer))
         
         // 8. CORS (Enhanced - Development)
-        .layer(create_dev_cors_layer())
         
         // 8. Endpoint metrics tracking
         .layer(from_fn(move |req: Request<Body>, next: Next| {

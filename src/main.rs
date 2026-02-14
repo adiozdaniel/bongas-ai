@@ -181,6 +181,7 @@ async fn main() -> Result<()> {
         engine.clone(),
         redis_client,
         metrics_collector.clone(),
+        circuit_breaker_registry.clone(),
     );
 
     // ═══════════════════════════════════════════════════════════════════════════

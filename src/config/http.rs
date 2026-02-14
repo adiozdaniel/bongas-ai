@@ -1,8 +1,72 @@
+//! Centralized HTTP configuration for reusability (DRY principle).
+//!
+//! Used by both middleware and API handlers.
+
+use tower_http::compression::CompressionLayer;
 use tower_http::cors::{CorsLayer, Any};
 use axum::http::{Method, HeaderName, HeaderValue};
 use std::str::FromStr;
 
-/// Enhanced CORS middleware configuration
+// ─── Compression Configuration ─────────────────────────────────────────────
+
+/// Compression configuration for HTTP responses.
+#[derive(Debug, Clone)]
+pub struct CompressionConfig {
+    /// Minimum size threshold for compression (default: 1KB)
+    pub min_size: u64,
+    /// Enable gzip compression
+    pub enable_gzip: bool,
+    /// Enable brotli compression
+    pub enable_brotli: bool,
+    /// Enable deflate compression
+    pub enable_deflate: bool,
+}
+
+impl Default for CompressionConfig {
+    fn default() -> Self {
+        Self {
+            min_size: 1024, // 1KB minimum
+            enable_gzip: true,
+            enable_brotli: true,
+            enable_deflate: true,
+        }
+    }
+}
+
+impl CompressionConfig {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn min_size(mut self, size: u64) -> Self {
+        self.min_size = size;
+        self
+    }
+
+    pub fn enable_gzip(mut self, enable: bool) -> Self {
+        self.enable_gzip = enable;
+        self
+    }
+
+    pub fn enable_brotli(mut self, enable: bool) -> Self {
+        self.enable_brotli = enable;
+        self
+    }
+
+    pub fn enable_deflate(mut self, enable: bool) -> Self {
+        self.enable_deflate = enable;
+        self
+    }
+
+    pub fn build(&self) -> CompressionLayer {
+        CompressionLayer::new()
+    }
+}
+
+// ─── CORS Configuration ────────────────────────────────────────────────────
+
+/// CORS configuration for HTTP endpoints.
+#[derive(Debug, Clone)]
 pub struct CorsConfig {
     allowed_origins: Vec<String>,
     allowed_methods: Vec<Method>,
@@ -12,8 +76,8 @@ pub struct CorsConfig {
     max_age: Option<u64>,
 }
 
-impl CorsConfig {
-    pub fn new() -> Self {
+impl Default for CorsConfig {
+    fn default() -> Self {
         Self {
             allowed_origins: vec!["http://localhost:3000".to_string()],
             allowed_methods: vec![
@@ -44,6 +108,12 @@ impl CorsConfig {
             allow_credentials: true,
             max_age: Some(3600), // 1 hour
         }
+    }
+}
+
+impl CorsConfig {
+    pub fn new() -> Self {
+        Self::default()
     }
 
     pub fn with_origins(mut self, origins: Vec<String>) -> Self {
@@ -91,17 +161,17 @@ impl CorsConfig {
 
         cors
     }
-}
 
-/// Create default CORS layer for development
-pub fn create_dev_cors_layer() -> CorsLayer {
-    CorsConfig::new()
-        .with_origins(vec![
-            "http://localhost:3000".to_string(),
-            "http://127.0.0.1:3000".to_string(),
-            "http://localhost:8080".to_string(),
-            "http://127.0.0.1:8080".to_string(),
-        ])
-        .allow_credentials(true)
-        .build()
+    /// Create CORS layer for development (permissive).
+    pub fn dev() -> CorsLayer {
+        Self::new()
+            .with_origins(vec![
+                "http://localhost:3000".to_string(),
+                "http://127.0.0.1:3000".to_string(),
+                "http://localhost:8080".to_string(),
+                "http://127.0.0.1:8080".to_string(),
+            ])
+            .allow_credentials(true)
+            .build()
+    }
 }
