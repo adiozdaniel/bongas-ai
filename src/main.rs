@@ -47,7 +47,7 @@ async fn main() -> Result<()> {
       // 2. Initialize telemetry from config
       // Note: Telemetry configuration needs to be added to AppConfig
       // For now, use default telemetry configuration
-      let telemetry = initialize_telemetry(&TelemetryConfig::default())?;
+      let _telemetry = initialize_telemetry(&TelemetryConfig::default())?;
 
       // 3. Log config loading completion
       tracing::info!(

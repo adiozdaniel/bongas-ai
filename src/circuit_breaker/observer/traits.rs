@@ -1,149 +1,103 @@
-//! Observer trait definitions for the Composite Resilience Pattern.
-//!
-//! Observers are decoupled from emitters. The circuit breaker holds an
-//! `Arc<dyn ResilienceObserver>` and notifies it on every event.
-//! Implementations decide what to do: record Prometheus metrics, log via
-//! tracing, push to Kafka, or silently discard.
 
-use std::sync::Arc;
-use crate::circuit_breaker::observer::event::CircuitBreakerEvent;
+  //! Observer trait definitions for the Composite Resilience Pattern.
+  //!
+  //! Observers are decoupled from emitters. The circuit breaker holds an
+  //! `Arc<dyn ResilienceObserver>` and notifies it on every event.
+  //! Implementations decide what to do: record Prometheus metrics, log via
+  //! tracing, push to Kafka, or silently discard.
 
-/// Receives events from resilience infrastructure.
-///
-/// Implementations must be `Send + Sync` because the circuit breaker may
-/// be shared across threads via `Arc`.
-///
-/// The `on_event` method is intentionally synchronous — observers should
-/// never block. If an observer needs async work (e.g. sending to Kafka),
-/// it should buffer internally and flush on a background task.
-pub trait ResilienceObserver: Send + Sync {
-    /// Called by the circuit breaker on every state change or call result.
-    fn on_event(&self, event: &CircuitBreakerEvent);
-}
+  use std::sync::Arc;
+  use crate::circuit_breaker::observer::event::CircuitBreakerEvent;
 
-/// No-op observer that discards all events.
-///
-/// Used as the default when no observer is configured, avoiding
-/// `Option<Arc<dyn ResilienceObserver>>` checks throughout the code.
-pub struct NoOpObserver;
+  /// Receives events from resilience infrastructure.
+  ///
+  /// Implementations must be `Send + Sync` because the circuit breaker may
+  /// be shared across threads via `Arc`.
+  ///
+  /// The `on_event` method is intentionally synchronous — observers should
+  /// never block. If an observer needs async work (e.g. sending to Kafka),
+  /// it should buffer internally and flush on a background task.
+  pub trait ResilienceObserver: Send + Sync {
+      /// Called by the circuit breaker on every state change or call result.
+      fn on_event(&self, event: &CircuitBreakerEvent);
+  }
 
-impl ResilienceObserver for NoOpObserver {
-    #[inline]
-    fn on_event(&self, _event: &CircuitBreakerEvent) {}
-}
+  /// No-op observer that discards all events.
+  pub struct NoOpObserver;
 
-/// Composite observer that fans out events to multiple observers.
-///
-/// Implements the Composite pattern — the circuit breaker sees a single
-/// `ResilienceObserver`, but events reach all registered observers.
-pub struct CompositeObserver {
-    observers: Vec<Arc<dyn ResilienceObserver>>,
-}
+  impl ResilienceObserver for NoOpObserver {
+      #[inline]
+      fn on_event(&self, _event: &CircuitBreakerEvent) {}
+  }
 
-impl CompositeObserver {
-    /// Create a new composite observer with the given observers.
-    pub fn new(observers: Vec<Arc<dyn ResilienceObserver>>) -> Self {
-        Self { observers }
-    }
+  /// Composite observer that fans out events to multiple observers.
+  pub struct CompositeObserver {
+      observers: Vec<Arc<dyn ResilienceObserver>>,
+  }
 
-    /// Add an observer to the composite.
-    pub fn add(&mut self, observer: Arc<dyn ResilienceObserver>) {
-        self.observers.push(observer);
-    }
+  impl CompositeObserver {
+      pub fn new(observers: Vec<Arc<dyn ResilienceObserver>>) -> Self {
+          Self { observers }
+      }
 
-    /// Get the number of observers.
-    pub fn len(&self) -> usize {
-        self.observers.len()
-    }
+      pub fn add(&mut self, observer: Arc<dyn ResilienceObserver>) {
+          self.observers.push(observer);
+      }
 
-    /// Check if there are no observers.
-    pub fn is_empty(&self) -> bool {
-        self.observers.is_empty()
-    }
-}
+      pub fn len(&self) -> usize {
+          self.observers.len()
+      }
 
-impl ResilienceObserver for CompositeObserver {
-    fn on_event(&self, event: &CircuitBreakerEvent) {
-        for observer in &self.observers {
-            observer.on_event(event);
-        }
-    }
-}
+      pub fn is_empty(&self) -> bool {
+          self.observers.is_empty()
+      }
+  }
 
-impl Default for CompositeObserver {
-    fn default() -> Self {
-        Self::new(Vec::new())
-    }
-}
+  impl ResilienceObserver for CompositeObserver {
+      fn on_event(&self, event: &CircuitBreakerEvent) {
+          for observer in &self.observers {
+              observer.on_event(event);
+          }
+      }
+  }
 
-/// Logging observer that emits structured tracing events.
-///
-/// Provides out-of-the-box observability for any circuit breaker
-/// without requiring Prometheus setup.
-pub struct TracingObserver;
+  impl Default for CompositeObserver {
+      fn default() -> Self {
+          Self::new(Vec::new())
+      }
+  }
 
-impl ResilienceObserver for TracingObserver {
-    fn on_event(&self, event: &CircuitBreakerEvent) {
-        let breaker = event.breaker_id().label();
+  /// Logging observer that emits structured tracing events.
+  pub struct TracingObserver;
 
-        match event {
-            CircuitBreakerEvent::CallSucceeded { latency, .. } => {
-                tracing::debug!(
-                    target: "resilience::circuit_breaker",
-                    breaker = %breaker,
-                    latency_ms = latency.as_millis() as u64,
-                    "call succeeded"
-                );
-            }
-            CircuitBreakerEvent::CallFailed { latency, classification, .. } => {
-                tracing::warn!(
-                    target: "resilience::circuit_breaker",
-                    breaker = %breaker,
-                    latency_ms = latency.as_millis() as u64,
-                    classification = ?classification,
-                    "call failed"
-                );
-            }
-            CircuitBreakerEvent::CallRejected { .. } => {
-                tracing::warn!(
-                    target: "resilience::circuit_breaker",
-                    breaker = %breaker,
-                    "call rejected — circuit is open"
-                );
-            }
-            CircuitBreakerEvent::StateChanged { from, to, .. } => {
-                tracing::info!(
-                    target: "resilience::circuit_breaker",
-                    breaker = %breaker,
-                    from = %from,
-                    to = %to,
-                    "state changed"
-                );
-            }
-            CircuitBreakerEvent::CallTimedOut { timeout, .. } => {
-                tracing::warn!(
-                    target: "resilience::circuit_breaker",
-                    breaker = %breaker,
-                    timeout_ms = timeout.as_millis() as u64,
-                    "call timed out"
-                );
-            }
-            CircuitBreakerEvent::SlowCall { latency, threshold, .. } => {
-                tracing::warn!(
-                    target: "resilience::circuit_breaker",
-                    breaker = %breaker,
-                    latency_ms = latency.as_millis() as u64,
-                    threshold_ms = threshold.as_millis() as u64,
-                    "slow call detected"
-                );
-            }
-            CircuitBreakerEvent::MetricsReset { .. } => {
-                tracing::debug!(
-                    target: "resilience::circuit_breaker",
-                    breaker = %breaker,
-                    "metrics reset"
-                );
-            }
-        }
-    }
-}
+  impl ResilienceObserver for TracingObserver {
+      fn on_event(&self, event: &CircuitBreakerEvent) {
+          let breaker = event.breaker_id().label();
+
+          match event {
+              CircuitBreakerEvent::CallSucceeded { latency, .. } => {
+                  tracing::debug!(
+                      target: "resilience::circuit_breaker",
+                      breaker = %breaker,
+                      latency_ms = latency.as_millis() as u64,
+                      "call succeeded"
+                  );
+              }
+              CircuitBreakerEvent::CallFailed { latency, classification, .. } => {
+                  tracing::warn!(
+                      target: "resilience::circuit_breaker",
+                      breaker = %breaker,
+                      latency_ms = latency.as_millis() as u64,
+                      classification = ?classification,
+                      "call failed"
+                  );
+              }
+
+              CircuitBreakerEvent::CallRejected { .. } => { /* ... */ }
+              CircuitBreakerEvent::StateChanged { from, to, .. } => { /* ... */ }
+              CircuitBreakerEvent::CallTimedOut { timeout, .. } => { /* ... */ }
+              CircuitBreakerEvent::SlowCall { latency, threshold, .. } => { /* ... */ }
+              CircuitBreakerEvent::MetricsReset { .. } => { /* ... */ }
+          }
+      }
+  }
