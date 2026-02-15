@@ -43,7 +43,7 @@ pub use types::PartialResult;
 pub use types::RedisError;
 pub use types::PostgresError;
 pub use types::ClickHouseError;
-pub use types::KafkaError;
+pub use types::IngestionError;
 pub use types::CacheError;
 pub use types::PipelineError;
 pub use types::ModelError;

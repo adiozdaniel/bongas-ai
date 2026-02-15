@@ -16,6 +16,7 @@ pub mod kafka;
 pub mod security;
 pub mod ml;
 pub mod pipeline;
+pub mod ingestion;
 
 // Re-export commonly used types
 pub use app::AppConfig;
@@ -30,3 +31,4 @@ pub use kafka::KafkaConfig;
 pub use security::SecurityConfig;
 pub use ml::MlConfig;
 pub use pipeline::PipelineConfig;
+pub use ingestion::{IngestionConfig, KafkaSourceConfig, ApiSourceConfig, ClickHouseSourceConfig};

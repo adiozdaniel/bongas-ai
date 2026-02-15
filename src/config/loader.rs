@@ -4,15 +4,17 @@
   //! TOML defaults → ENV overrides → Spring Cloud Config. Provides immutable
   //! configuration for Netflix-grade resilience patterns.
 
-  use super::sources::{ConfigSource, ConfigResult, ConfigError, TomlSource, EnvSource, SpringCloudSource};
-  use super::types::{
-      AppConfig, CircuitBreakerConfig, ErrorConfig, AnalyticsConfig,
-      ServerConfig, DatabaseConfig, RedisConfig, ClickHouseConfig,
-      KafkaConfig, SecurityConfig, MlConfig, PipelineConfig,
-  };
-  use std::collections::HashMap;
-  use std::path::PathBuf;
-  use std::time::Duration;
+use crate::config::types::ingestion;
+
+use super::sources::{ConfigSource, ConfigResult, ConfigError, TomlSource, EnvSource, SpringCloudSource};
+use super::types::{
+    AppConfig, CircuitBreakerConfig, ErrorConfig, AnalyticsConfig,
+    ServerConfig, DatabaseConfig, RedisConfig, ClickHouseConfig,
+    KafkaConfig, SecurityConfig, MlConfig, PipelineConfig,
+};
+use std::collections::HashMap;
+use std::path::PathBuf;
+use std::time::Duration;
 
   /// Configuration loader for the Composite Configuration Pattern.
   ///
@@ -377,7 +379,7 @@
               database,
               redis,
               clickhouse,
-              kafka,
+              ingestion,
               security,
               ml,
               pipeline,

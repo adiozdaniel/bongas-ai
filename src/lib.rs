@@ -31,7 +31,7 @@ pub mod analytics;
 // Data modules
 pub mod cache;
 pub mod db;
-pub mod kafka;
+pub mod ingestion;
 pub mod ml;
 
 // Business logic modules
@@ -47,7 +47,7 @@ pub mod middlewares;
 pub use config::{ConfigLoader, AppConfig};
 pub use config::{
     ServerConfig, DatabaseConfig, RedisConfig, ClickHouseConfig,
-    KafkaConfig, SecurityConfig, MlConfig
+    IngestionConfig, SecurityConfig, MlConfig
 };
 
 // Resilience types

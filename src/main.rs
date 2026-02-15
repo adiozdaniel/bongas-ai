@@ -152,13 +152,17 @@ async fn main() -> Result<()> {
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // 9. START KAFKA CONSUMERS (if configured)
+    // 9. START ACTIVITY INGESTION (all configured sources)
     // ═══════════════════════════════════════════════════════════════════════════
-    if !config.kafka.brokers.is_empty() {
-        match engine.start_kafka_consumers(&config.kafka.brokers).await {
-            Ok(()) => info!(brokers = ?config.kafka.brokers, "Kafka consumers started"),
-            Err(e) => warn!(error = %e, "Failed to start Kafka consumers, continuing without"),
-        }
+    match engine.start_ingestion(&config.ingestion).await {
+        Ok(()) => {
+            let mut sources = Vec::new();
+            if config.ingestion.kafka.enabled { sources.push("kafka"); }
+            if config.ingestion.api.enabled { sources.push("api"); }
+            if config.ingestion.clickhouse.enabled { sources.push("clickhouse"); }
+            info!(sources = ?sources, "Activity ingestion started");
+        },
+        Err(e) => warn!(error = %e, "Failed to start ingestion, continuing without"),
     }
 
     // ═══════════════════════════════════════════════════════════════════════════

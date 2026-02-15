@@ -20,8 +20,8 @@ use crate::pipeline::context::ExecutionContext;
 use crate::pipeline::ScoredItem;
 use crate::cache::{CacheManager, CacheConfig, CacheWarmer, CacheMetricsSnapshot};
 use crate::circuit_breaker::CircuitBreakerRegistry;
-use crate::kafka::manager::KafkaConsumerManager;
-use crate::kafka::metrics::KafkaMetricsRegistry;
+use crate::ingestion::IngestionManager;
+use crate::ingestion::metrics::IngestionMetrics;
 use crate::ml::model_loader::ModelLoader;
 use crate::db::repositories::model_repository::ModelRepository;
 use crate::db::repositories::feature_repository::FeatureRepository;
@@ -53,10 +53,9 @@ pub struct BongasEngine {
     feature_repo: Arc<FeatureRepository>,
     cache_repo: Arc<CacheRepository>,
 
-
-    // Kafka
-    kafka_manager: Arc<RwLock<Option<KafkaConsumerManager>>>,
-    kafka_metrics: Arc<KafkaMetricsRegistry>,
+    // Ingestion
+    ingestion_manager: Arc<RwLock<Option<IngestionManager>>>,
+    ingestion_metrics: Arc<IngestionMetrics>,
 
     // Security
     security_manager: Arc<SecurityManager>,
@@ -163,8 +162,8 @@ impl BongasEngine {
             "Pipeline executor ready"
         );
 
-        // Create Kafka metrics registry
-        let kafka_metrics = Arc::new(KafkaMetricsRegistry::new());
+        // Create Ingestion metrics registry
+        let ingestion_metrics = Arc::new(IngestionMetrics::new(resilience_metrics.clone()));
 
         // Create repositories
         let feature_repo = Arc::new(FeatureRepository::new(resilient_pool.clone(), resilience_metrics.clone()));
@@ -179,8 +178,8 @@ impl BongasEngine {
             model_loader,
             feature_repo,
             cache_repo,
-            kafka_manager: Arc::new(RwLock::new(None)),
-            kafka_metrics,
+            ingestion_manager: Arc::new(RwLock::new(None)),
+            ingestion_metrics,
             security_manager,
             circuit_breaker_registry,
             resilient_pool,
@@ -194,46 +193,50 @@ impl BongasEngine {
         Ok(engine)
     }
 
-    /// Start Kafka consumers
-    pub async fn start_kafka_consumers(
+    /// Start activity ingestion from all configured sources
+    pub async fn start_ingestion(
         self: &Arc<Self>,
-        kafka_brokers: &str,
+        config: &crate::config::IngestionConfig,
     ) -> Result<()> {
-        info!("Starting Kafka consumers...");
+        info!("Starting activity ingestion...");
 
-        let mut manager = KafkaConsumerManager::new();
-        manager.start_all(
-            kafka_brokers,
+        let manager = IngestionManager::new(
+            config.clone(),
             self.db_pool.clone(),
             self.resilient_pool.clone(),
             self.resilience_metrics.clone(),
             self.staleness_engine.clone(),
-        )?;
+            self.circuit_breaker_registry.clone(),
+            self.ingestion_metrics.clone(),
+        );
 
-        *self.kafka_manager.write().await = Some(manager);
+        manager.start().await?;
 
-        info!("Kafka consumers started successfully");
+        *self.ingestion_manager.write().await = Some(manager);
+
+        info!("Activity ingestion started successfully");
         Ok(())
     }
 
-    /// Shutdown Kafka consumers gracefully
-    pub async fn shutdown_kafka_consumers(&self) {
-        if let Some(manager) = self.kafka_manager.write().await.take() {
-            info!("Shutting down Kafka consumers...");
+    /// Shutdown ingestion gracefully
+    pub async fn shutdown_ingestion(&self) {
+        if let Some(manager) = self.ingestion_manager.write().await.take() {
+            info!("Shutting down activity ingestion...");
             manager.shutdown().await;
-            info!("Kafka consumers shut down");
+            info!("Activity ingestion shut down");
         }
     }
 
-    /// Get Kafka metrics
-    pub fn kafka_metrics(&self) -> Arc<KafkaMetricsRegistry> {
-        self.kafka_metrics.clone()
+    /// Get ingestion metrics
+    pub fn ingestion_metrics(&self) -> Arc<IngestionMetrics> {
+        self.ingestion_metrics.clone()
     }
 
-    /// Get Kafka health summary
-    pub async fn kafka_health(&self) -> crate::kafka::metrics::KafkaHealthSummary {
-        self.kafka_metrics.health_summary().await
+    /// Get ingestion health summary
+    pub async fn ingestion_health(&self) -> crate::ingestion::metrics::IngestionHealthSummary {
+        self.ingestion_metrics.health_summary().await
     }
+
 
     /// HOT-RELOAD: Reload all scenarios from database without restart
     pub async fn reload_scenarios(&self) -> Result<usize> {

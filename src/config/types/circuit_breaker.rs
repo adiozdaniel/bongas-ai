@@ -49,7 +49,7 @@ impl Default for CircuitBreakerConfig {
             record_exceptions: vec![
                 "RedisError".to_string(),
                 "PostgresError".to_string(),
-                "KafkaError".to_string(),
+                "IngestionError".to_string(),
             ],
             ignore_exceptions: vec![
                 "ValidationError".to_string(),

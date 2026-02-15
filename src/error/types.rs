@@ -438,21 +438,24 @@
   }
 
   #[derive(Debug, Error)]
-  pub enum KafkaError {
-      #[error("kafka operation failed: {message}")]
-      Operation { message: String, #[source] source: Option<Box<dyn std::error::Error + Send + Sync>> },
-      #[error("kafka connection failed: {message}")]
-      Connection { message: String },
-      #[error("kafka operation timed out after {0:?}")]
+  pub enum IngestionError {
+      #[error("ingestion source unavailable: {source}")]
+      SourceUnavailable { source: String },
+      #[error("activity processing failed ({activity_type}): {message}")]
+      ProcessingFailed { activity_type: String, message: String },
+      #[error("all ingestion sources degraded")]
+      AllSourcesDegraded,
+      #[error("ingestion operation timed out after {0:?}")]
       Timeout(Duration),
   }
 
-  impl ErrorClassifier for KafkaError {
+  impl ErrorClassifier for IngestionError {
       fn classify(&self) -> ErrorClassification {
           match self {
-              KafkaError::Operation { .. } => ErrorClassification::Transient,
-              KafkaError::Connection { .. } => ErrorClassification::Transient,
-              KafkaError::Timeout(_) => ErrorClassification::Timeout,
+              IngestionError::SourceUnavailable { .. } => ErrorClassification::Transient,
+              IngestionError::ProcessingFailed { .. } => ErrorClassification::Transient,
+              IngestionError::AllSourcesDegraded => ErrorClassification::Degraded,
+              IngestionError::Timeout(_) => ErrorClassification::Timeout,
           }
       }
   }
@@ -804,7 +807,7 @@
       #[error(transparent)]
       ClickHouse(#[from] ClickHouseError),
       #[error(transparent)]
-      Kafka(#[from] KafkaError),
+      Ingestion(#[from] IngestionError),
       #[error(transparent)]
       Cache(#[from] CacheError),
       #[error(transparent)]
@@ -831,7 +834,7 @@
               AppError::Redis(e) => e.classify(),
               AppError::Postgres(e) => e.classify(),
               AppError::ClickHouse(e) => e.classify(),
-              AppError::Kafka(e) => e.classify(),
+              AppError::Ingestion(e) => e.classify(),
               AppError::Cache(e) => e.classify(),
               AppError::Pipeline(e) => e.classify(),
               AppError::Model(e) => e.classify(),

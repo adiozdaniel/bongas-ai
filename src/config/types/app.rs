@@ -7,7 +7,7 @@
 use super::{
     CircuitBreakerConfig, ErrorConfig, AnalyticsConfig,
     ServerConfig, DatabaseConfig, RedisConfig, ClickHouseConfig,
-    KafkaConfig, SecurityConfig, MlConfig, PipelineConfig,
+    IngestionConfig, SecurityConfig, MlConfig, PipelineConfig,
 };
 
 /// Root application configuration.
@@ -21,7 +21,7 @@ pub struct AppConfig {
     pub database: DatabaseConfig,
     pub redis: RedisConfig,
     pub clickhouse: ClickHouseConfig,
-    pub kafka: KafkaConfig,
+    pub ingestion: IngestionConfig,
     pub security: SecurityConfig,
     pub ml: MlConfig,
     pub pipeline: PipelineConfig,
@@ -37,7 +37,7 @@ impl AppConfig {
         database: DatabaseConfig,
         redis: RedisConfig,
         clickhouse: ClickHouseConfig,
-        kafka: KafkaConfig,
+        ingestion: IngestionConfig,
         security: SecurityConfig,
         ml: MlConfig,
         pipeline: PipelineConfig,
@@ -50,7 +50,7 @@ impl AppConfig {
             database,
             redis,
             clickhouse,
-            kafka,
+            ingestion,
             security,
             ml,
             pipeline,
@@ -73,8 +73,14 @@ impl AppConfig {
         if !self.clickhouse.url.is_empty() {
             services.push("clickhouse");
         }
-        if !self.kafka.brokers.is_empty() {
-            services.push("kafka");
+        if self.ingestion.kafka.enabled {
+            services.push("ingestion:kafka");
+        }
+        if self.ingestion.api.enabled {
+            services.push("ingestion:api");
+        }
+        if self.ingestion.clickhouse.enabled {
+            services.push("ingestion:clickhouse");
         }
         if self.circuit_breaker.enabled {
             services.push("circuit_breaker");
