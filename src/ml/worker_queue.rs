@@ -13,7 +13,7 @@ use std::time::Instant;
 use tokio::sync::mpsc;
 use tracing::{info, warn, error, debug};
 
-use crate::analytics::PerformanceMetrics;
+use crate::analytics::types::PerformanceStats;
 use crate::config::MlConfig;
 
 /// A unit of work to be processed by the ML worker pool.
@@ -70,14 +70,14 @@ pub struct MlWorkerQueue {
     shutdown: Arc<AtomicBool>,
     worker_handles: Vec<tokio::task::JoinHandle<()>>,
     queue_depth: usize,
-    analytics: Option<Arc<PerformanceMetrics>>,
+    analytics: Option<Arc<PerformanceStats>>,
 }
 
 impl MlWorkerQueue {
     /// Create a new worker queue and spawn worker tasks.
     pub fn new(
         config: &MlConfig,
-        analytics: Option<Arc<PerformanceMetrics>>,
+        analytics: Option<Arc<PerformanceStats>>,
     ) -> Self {
         let queue_depth = config.worker_queue_depth;
         let (sender, receiver) = mpsc::channel::<MlTask>(queue_depth);

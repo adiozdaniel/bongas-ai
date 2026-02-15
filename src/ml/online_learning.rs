@@ -13,7 +13,6 @@ use std::time::Instant;
 use tokio::sync::{mpsc, Mutex};
 use tracing::{info, warn, error, debug};
 
-use crate::analytics::PerformanceMetrics;
 use crate::config::MlConfig;
 
 /// A single feedback event from a user interaction.
@@ -46,13 +45,13 @@ pub struct OnlineLearningManager {
     stats_received: Arc<AtomicU64>,
     stats_flushed: Arc<AtomicU64>,
     stats_rejected: Arc<AtomicU64>,
-    analytics: Option<Arc<PerformanceMetrics>>,
+    analytics: Option<Arc<crate::analytics::types::PerformanceStats>>,
 }
 
 impl OnlineLearningManager {
     pub fn new(
         config: &MlConfig,
-        analytics: Option<Arc<PerformanceMetrics>>,
+        analytics: Option<Arc<crate::analytics::types::PerformanceStats>>,
     ) -> Self {
         let buffer_size = config.feedback_batch_size * 4; // 4x batch size as buffer
         let (feedback_tx, feedback_rx) = mpsc::channel::<FeedbackEvent>(buffer_size);
@@ -182,7 +181,7 @@ impl OnlineLearningManager {
     async fn flush_batch(
         batch: &mut Vec<FeedbackEvent>,
         flushed_counter: &AtomicU64,
-        analytics: &Option<Arc<PerformanceMetrics>>,
+        analytics: &Option<Arc<crate::analytics::types::PerformanceStats>>,
     ) {
         if batch.is_empty() {
             return;

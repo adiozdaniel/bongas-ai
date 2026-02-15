@@ -17,7 +17,6 @@ use sqlx::PgPool;
 use tokio::sync::Semaphore;
 use tracing::{debug, warn};
 
-use crate::analytics::PerformanceMetrics;
 use crate::cache::CacheManager;
 use crate::config::MlConfig;
 use crate::error::ModelError;
@@ -28,7 +27,7 @@ pub struct FeatureStore {
     cache_manager: Arc<CacheManager>,
     bulkhead: Arc<Semaphore>,
     config: MlConfig,
-    analytics: Option<Arc<PerformanceMetrics>>,
+    analytics: Option<Arc<crate::analytics::types::PerformanceStats>>,
 }
 
 impl FeatureStore {
@@ -36,7 +35,7 @@ impl FeatureStore {
         db_pool: Arc<PgPool>,
         cache_manager: Arc<CacheManager>,
         config: MlConfig,
-        analytics: Option<Arc<PerformanceMetrics>>,
+        analytics: Option<Arc<crate::analytics::types::PerformanceStats>>,
     ) -> Self {
         let bulkhead = Arc::new(Semaphore::new(config.feature_fetch_max_concurrent));
         Self {

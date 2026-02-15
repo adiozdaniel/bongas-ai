@@ -14,7 +14,7 @@ use std::collections::HashMap;
 use std::time::Duration;
 use tracing::{info, warn, error, debug};
 
-use crate::analytics::PerformanceMetrics;
+use crate::analytics::types::PerformanceStats;
 use crate::circuit_breaker::{
     CircuitBreaker, CircuitBreakerConfig as BreakerConfig,
     CircuitBreakerRegistry, CircuitBreakerId,
@@ -38,7 +38,7 @@ pub struct PipelineExecutor {
     config: PipelineConfig,
 
     /// Analytics for pipeline-level metrics.
-    analytics: Option<Arc<PerformanceMetrics>>,
+    analytics: Option<Arc<PerformanceStats>>,
 }
 
 impl PipelineExecutor {
@@ -47,7 +47,7 @@ impl PipelineExecutor {
         config: PipelineConfig,
         breaker_registry: Arc<CircuitBreakerRegistry>,
         observer: Arc<dyn ResilienceObserver>,
-        analytics: Option<Arc<PerformanceMetrics>>,
+        analytics: Option<Arc<PerformanceStats>>,
     ) -> Self {
         let registry = build_stage_registry();
 

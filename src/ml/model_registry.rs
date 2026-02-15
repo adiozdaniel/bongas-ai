@@ -13,7 +13,6 @@ use std::time::Instant;
 use tokio::sync::RwLock;
 use tracing::{info, debug};
 
-use crate::analytics::PerformanceMetrics;
 use crate::config::MlConfig;
 /// Model version state in the registry.
 #[derive(Debug, Clone)]
@@ -54,13 +53,13 @@ pub struct ModelHealth {
 pub struct VersionedModelRegistry {
     versions: Arc<RwLock<HashMap<String, Vec<ModelVersion>>>>,
     config: MlConfig,
-    analytics: Option<Arc<PerformanceMetrics>>,
+    analytics: Option<Arc<crate::analytics::types::PerformanceStats>>,
 }
 
 impl VersionedModelRegistry {
     pub fn new(
         config: MlConfig,
-        analytics: Option<Arc<PerformanceMetrics>>,
+        analytics: Option<Arc<crate::analytics::types::PerformanceStats>>,
     ) -> Self {
         Self {
             versions: Arc::new(RwLock::new(HashMap::new())),

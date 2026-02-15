@@ -9,7 +9,7 @@
 
 use std::sync::Arc;
 use sqlx::PgPool;
-use crate::analytics::PerformanceMetrics;
+use crate::analytics::types::PerformanceStats;
 use crate::cache::CacheManager;
 use crate::config::PipelineConfig;
 use crate::ml::model_loader::ModelLoader;
@@ -37,7 +37,7 @@ pub struct ExecutionContext {
     pub embedding_manager: Option<Arc<EmbeddingManager>>,
 
     // ── Analytics ───────────────────────────────────────────────────────
-    pub analytics: Option<Arc<PerformanceMetrics>>,
+    pub analytics: Option<Arc<PerformanceStats>>,
 
     // ── Pipeline config ─────────────────────────────────────────────────
     pub pipeline_config: Arc<PipelineConfig>,
@@ -89,7 +89,7 @@ impl ExecutionContext {
         self
     }
 
-    pub fn with_analytics(mut self, analytics: Arc<PerformanceMetrics>) -> Self {
+    pub fn with_analytics(mut self, analytics: Arc<PerformanceStats>) -> Self {
         self.analytics = Some(analytics);
         self
     }

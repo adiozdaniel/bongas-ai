@@ -19,7 +19,6 @@ use ort::value::TensorRef;
 use tokio::sync::Semaphore;
 use tracing::{info, warn, debug};
 
-use crate::analytics::PerformanceMetrics;
 use crate::circuit_breaker::{CircuitBreaker, CircuitBreakerConfig, CircuitBreakerId};
 use crate::circuit_breaker::observer::ResilienceObserver;
 use crate::config::MlConfig;
@@ -43,7 +42,7 @@ pub struct OnnxInferenceEngine {
     inference_timeout: std::time::Duration,
 
     // Analytics
-    analytics: Option<Arc<PerformanceMetrics>>,
+    analytics: Option<Arc<crate::analytics::types::PerformanceStats>>,
 }
 
 // Session is Send but not Sync by default in ort v2;
@@ -57,7 +56,7 @@ impl OnnxInferenceEngine {
         model_name: String,
         config: &MlConfig,
         observer: Arc<dyn ResilienceObserver>,
-        analytics: Option<Arc<PerformanceMetrics>>,
+        analytics: Option<Arc<crate::analytics::types::PerformanceStats>>,
     ) -> Result<Self, ModelError> {
         let model_path = model_path.as_ref();
 

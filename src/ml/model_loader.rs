@@ -16,7 +16,6 @@ use anyhow::{Result, Context};
 use tokio::sync::RwLock;
 use tracing::{info, warn};
 
-use crate::analytics::PerformanceMetrics;
 use crate::circuit_breaker::observer::ResilienceObserver;
 use crate::config::MlConfig;
 use crate::db::models::ModelRegistry;
@@ -37,7 +36,7 @@ pub struct ModelLoader {
     model_repo: Arc<ModelRepository>,
     config: MlConfig,
     observer: Arc<dyn ResilienceObserver>,
-    analytics: Option<Arc<PerformanceMetrics>>,
+    analytics: Option<Arc<crate::analytics::types::PerformanceStats>>,
 }
 
 impl ModelLoader {
@@ -46,7 +45,7 @@ impl ModelLoader {
         model_repo: Arc<ModelRepository>,
         config: MlConfig,
         observer: Arc<dyn ResilienceObserver>,
-        analytics: Option<Arc<PerformanceMetrics>>,
+        analytics: Option<Arc<crate::analytics::types::PerformanceStats>>,
     ) -> Self {
         Self {
             models: Arc::new(RwLock::new(HashMap::new())),
