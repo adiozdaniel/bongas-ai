@@ -5,3 +5,4 @@ pub mod cache_repository;
 pub mod interaction_repository;
 pub mod configuration_repository;
 pub mod user_repository;
+pub mod item_feature_service;

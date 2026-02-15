@@ -12,6 +12,7 @@ use sqlx::PgPool;
 use crate::analytics::types::PerformanceStats;
 use crate::cache::CacheManager;
 use crate::config::PipelineConfig;
+use crate::db::repositories::item_feature_service::ItemFeatureService;
 use crate::ml::model_loader::ModelLoader;
 use crate::ml::feature_store::FeatureStore;
 use crate::ml::embeddings::EmbeddingManager;
@@ -32,6 +33,11 @@ pub struct ExecutionContext {
     pub cache_manager: Arc<CacheManager>,
     pub model_loader: Arc<ModelLoader>,
 
+    // ── Resilient data access ───────────────────────────────────────────
+    /// Unified item/user feature service — pipeline stages should use this
+    /// instead of querying db_pool directly.
+    pub item_feature_service: Arc<ItemFeatureService>,
+
     // ── ML infrastructure (resilient) ───────────────────────────────────
     pub feature_store: Option<Arc<FeatureStore>>,
     pub embedding_manager: Option<Arc<EmbeddingManager>>,
@@ -50,6 +56,7 @@ impl ExecutionContext {
         db_pool: Arc<PgPool>,
         cache_manager: Arc<CacheManager>,
         model_loader: Arc<ModelLoader>,
+        item_feature_service: Arc<ItemFeatureService>,
         request_id: String,
     ) -> Self {
         Self {
@@ -60,6 +67,7 @@ impl ExecutionContext {
             db_pool,
             cache_manager,
             model_loader,
+            item_feature_service,
             feature_store: None,
             embedding_manager: None,
             analytics: None,

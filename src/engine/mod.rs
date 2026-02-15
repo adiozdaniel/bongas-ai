@@ -26,6 +26,7 @@ use crate::ml::model_loader::ModelLoader;
 use crate::db::repositories::model_repository::ModelRepository;
 use crate::db::repositories::feature_repository::FeatureRepository;
 use crate::db::repositories::cache_repository::CacheRepository;
+use crate::db::repositories::item_feature_service::ItemFeatureService;
 use crate::config::SecurityConfig;
 use crate::security::SecurityManager;
 
@@ -49,7 +50,8 @@ pub struct BongasEngine {
     // ML Model Management
     model_loader: Arc<ModelLoader>,
 
-    // Repositories
+    // Repositories & services
+    item_feature_service: Arc<ItemFeatureService>,
     feature_repo: Arc<FeatureRepository>,
     cache_repo: Arc<CacheRepository>,
 
@@ -165,7 +167,8 @@ impl BongasEngine {
         // Create Ingestion metrics registry
         let ingestion_metrics = Arc::new(IngestionMetrics::new(Vec::new()));
 
-        // Create repositories
+        // Create repositories & services
+        let item_feature_service = Arc::new(ItemFeatureService::new(resilient_pool.clone(), resilience_metrics.clone()));
         let feature_repo = Arc::new(FeatureRepository::new(resilient_pool.clone(), resilience_metrics.clone()));
         let cache_repo = Arc::new(CacheRepository::new((*db_pool).clone(), resilience_metrics.clone()));
 
