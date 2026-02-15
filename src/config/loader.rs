@@ -12,6 +12,7 @@
   };
   use std::collections::HashMap;
   use std::path::PathBuf;
+  use std::time::Duration;
 
   /// Configuration loader for the Composite Configuration Pattern.
   ///
@@ -224,32 +225,49 @@
           };
 
           // Parse ML configuration
-          let ml = MlConfig {
-              model_path: config_map.get("ml.model_path")
-                  .map(PathBuf::from)
-                  .unwrap_or_else(|| PathBuf::from("./models")),
-              batch_size: config_map.get("ml.batch_size")
-                  .and_then(|s| s.parse().ok())
-                  .unwrap_or(32),
-              onnx_enabled: config_map.get("onnx.enabled")
-                  .and_then(|s| s.parse().ok())
-                  .unwrap_or(true),
-              onnx_execution_provider: config_map.get("onnx.execution_provider")
-                  .cloned()
-                  .unwrap_or_else(|| "cpu".to_string()),
-              onnx_graph_optimization: config_map.get("onnx.graph_optimization")
-                  .and_then(|s| s.parse().ok())
-                  .unwrap_or(true),
-              feature_store_enabled: config_map.get("ml.feature_store_enabled")
-                  .and_then(|s| s.parse().ok())
-                  .unwrap_or(true),
-              online_learning_enabled: config_map.get("ml.online_learning_enabled")
-                  .and_then(|s| s.parse().ok())
-                  .unwrap_or(false),
-              model_cache_size: config_map.get("ml.model_cache_size")
-                  .and_then(|s| s.parse().ok())
-                  .unwrap_or(100),
-          };
+          let mut ml = MlConfig::default();
+          if let Some(v) = config_map.get("ml.model_path") {
+              ml.model_path = PathBuf::from(v);
+          }
+          if let Some(v) = config_map.get("ml.batch_size").and_then(|s| s.parse().ok()) {
+              ml.batch_size = v;
+          }
+          if let Some(v) = config_map.get("onnx.enabled").and_then(|s| s.parse().ok()) {
+              ml.onnx_enabled = v;
+          }
+          if let Some(v) = config_map.get("onnx.execution_provider") {
+              ml.onnx_execution_provider = v.clone();
+          }
+          if let Some(v) = config_map.get("onnx.graph_optimization").and_then(|s| s.parse().ok()) {
+              ml.onnx_graph_optimization = v;
+          }
+          if let Some(v) = config_map.get("onnx.intra_threads").and_then(|s| s.parse().ok()) {
+              ml.onnx_intra_threads = v;
+          }
+          if let Some(v) = config_map.get("ml.feature_store_enabled").and_then(|s| s.parse().ok()) {
+              ml.feature_store_enabled = v;
+          }
+          if let Some(v) = config_map.get("ml.online_learning_enabled").and_then(|s| s.parse().ok()) {
+              ml.online_learning_enabled = v;
+          }
+          if let Some(v) = config_map.get("ml.model_cache_size").and_then(|s| s.parse().ok()) {
+              ml.model_cache_size = v;
+          }
+          if let Some(v) = config_map.get("ml.inference_max_concurrent").and_then(|s| s.parse().ok()) {
+              ml.inference_max_concurrent = v;
+          }
+          if let Some(v) = config_map.get("ml.inference_timeout_ms").and_then(|s| s.parse::<u64>().ok()) {
+              ml.inference_timeout = Duration::from_millis(v);
+          }
+          if let Some(v) = config_map.get("ml.analytics_enabled").and_then(|s| s.parse().ok()) {
+              ml.analytics_enabled = v;
+          }
+          if let Some(v) = config_map.get("ml.canary_enabled").and_then(|s| s.parse().ok()) {
+              ml.canary_enabled = v;
+          }
+          if let Some(v) = config_map.get("ml.canary_traffic_percent").and_then(|s| s.parse().ok()) {
+              ml.canary_traffic_percent = v;
+          }
 
           // Circuit breaker, error, and analytics configs use defaults
           // These are configured in code, not in TOML

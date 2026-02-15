@@ -497,22 +497,81 @@
       }
   }
 
+  /// ML model error taxonomy for the Composite Resilience Pattern.
+  ///
+  /// Each variant maps to an `ErrorClassification` that drives circuit breaker,
+  /// retry, and bulkhead behavior. Analytics are recorded at the call site via
+  /// `PerformanceMetrics` before the error propagates.
   #[derive(Debug, Error)]
   pub enum ModelError {
+      // ── Permanent (no retry, no breaker trip) ──────────────────────────────
       #[error("model not found: {0}")]
       NotFound(String),
+      #[error("invalid model configuration: {0}")]
+      InvalidConfig(String),
+
+      // ── Transient (retry with backoff, trips breaker) ─────────────────────
       #[error("model inference failed: {0}")]
       InferenceFailed(String),
       #[error("model loading failed: {0}")]
       LoadFailed(String),
+      #[error("feature store error: {0}")]
+      FeatureStore(String),
+      #[error("embedding lookup failed: {0}")]
+      EmbeddingLookup(String),
+      #[error("model registry error: {0}")]
+      Registry(String),
+
+      // ── Timeout (retry with longer backoff, trips breaker) ────────────────
+      #[error("model inference timed out after {timeout_ms}ms: {model}")]
+      InferenceTimeout { model: String, timeout_ms: u64 },
+      #[error("feature fetch timed out after {timeout_ms}ms")]
+      FeatureTimeout { timeout_ms: u64 },
+
+      // ── Overload (no immediate retry, trips breaker, shed load) ───────────
+      #[error("model overloaded (queue depth {queue_depth}): {model}")]
+      Overloaded { model: String, queue_depth: usize },
+      #[error("circuit breaker rejected inference for model: {0}")]
+      CircuitOpen(String),
+
+      // ── Degraded (may retry for full result, does NOT trip breaker) ───────
+      #[error("model returned degraded result: {reason}")]
+      Degraded { reason: String },
+      #[error("fallback result used: {reason}")]
+      FallbackUsed { reason: String },
+
+      // ── Partial failure (retry only failed items) ─────────────────────────
+      #[error("batch inference partial failure: {succeeded}/{total} items")]
+      PartialInference { succeeded: usize, total: usize },
   }
 
   impl ErrorClassifier for ModelError {
       fn classify(&self) -> ErrorClassification {
           match self {
-              ModelError::NotFound(_) => ErrorClassification::Permanent,
-              ModelError::InferenceFailed(_) => ErrorClassification::Transient,
-              ModelError::LoadFailed(_) => ErrorClassification::Transient,
+              // Permanent — caller should not retry
+              ModelError::NotFound(_) | ModelError::InvalidConfig(_) => {
+                  ErrorClassification::Permanent
+              }
+              // Transient — safe to retry, counts toward breaker
+              ModelError::InferenceFailed(_)
+              | ModelError::LoadFailed(_)
+              | ModelError::FeatureStore(_)
+              | ModelError::EmbeddingLookup(_)
+              | ModelError::Registry(_) => ErrorClassification::Transient,
+              // Timeout — retryable with backoff, counts toward breaker
+              ModelError::InferenceTimeout { .. } | ModelError::FeatureTimeout { .. } => {
+                  ErrorClassification::Timeout
+              }
+              // Overload — do NOT retry immediately, trips breaker
+              ModelError::Overloaded { .. } | ModelError::CircuitOpen(_) => {
+                  ErrorClassification::Overload
+              }
+              // Degraded — partial success, does NOT trip breaker
+              ModelError::Degraded { .. } | ModelError::FallbackUsed { .. } => {
+                  ErrorClassification::Degraded
+              }
+              // Partial failure — retry only failed items
+              ModelError::PartialInference { .. } => ErrorClassification::PartialFailure,
           }
       }
   }

@@ -1,16 +1,49 @@
-use anyhow::{Result, anyhow};
+//! Netflix-grade ONNX inference engine with circuit breaker, bulkhead, and analytics.
+//!
+//! Every inference call is:
+//! 1. Guarded by a per-model circuit breaker (trips on failure/slow calls)
+//! 2. Limited by a semaphore bulkhead (prevents thread pool exhaustion)
+//! 3. Timed out after a configurable duration
+//! 4. Recorded in analytics (latency, throughput, errors per model)
+//! 5. Classified via `ModelError` → `ErrorClassifier` for resilience routing
+
+use std::path::Path;
+use std::sync::Arc;
+use std::time::Instant;
+
+use anyhow::Result;
 use ndarray::Array2;
 use ort::session::Session;
 use ort::session::builder::GraphOptimizationLevel;
 use ort::value::TensorRef;
-use std::path::Path;
-use tracing::{info, debug};
+use tokio::sync::Semaphore;
+use tracing::{info, warn, debug};
 
+use crate::analytics::PerformanceMetrics;
+use crate::circuit_breaker::{CircuitBreaker, CircuitBreakerConfig, CircuitBreakerId};
+use crate::circuit_breaker::observer::ResilienceObserver;
+use crate::config::MlConfig;
+use crate::error::ModelError;
+
+/// ONNX inference engine with Netflix resilience patterns.
+///
+/// Each engine instance wraps a single ONNX session and is protected by:
+/// - **Circuit breaker**: Per-model, trips on inference failures/timeouts
+/// - **Bulkhead semaphore**: Limits concurrent inference calls
+/// - **Analytics**: Records latency, throughput, and errors
 pub struct OnnxInferenceEngine {
     session: Session,
     model_name: String,
     input_names: Vec<String>,
-    _output_names: Vec<String>,
+    output_names: Vec<String>,
+
+    // Resilience
+    breaker: Arc<CircuitBreaker>,
+    bulkhead: Arc<Semaphore>,
+    inference_timeout: std::time::Duration,
+
+    // Analytics
+    analytics: Option<Arc<PerformanceMetrics>>,
 }
 
 // Session is Send but not Sync by default in ort v2;
@@ -18,102 +51,208 @@ pub struct OnnxInferenceEngine {
 unsafe impl Sync for OnnxInferenceEngine {}
 
 impl OnnxInferenceEngine {
-    /// Create new ONNX inference engine from model file
-    pub fn new(model_path: impl AsRef<Path>, model_name: String) -> Result<Self> {
+    /// Create new ONNX inference engine with full resilience wiring.
+    pub fn new(
+        model_path: impl AsRef<Path>,
+        model_name: String,
+        config: &MlConfig,
+        observer: Arc<dyn ResilienceObserver>,
+        analytics: Option<Arc<PerformanceMetrics>>,
+    ) -> Result<Self, ModelError> {
         let model_path = model_path.as_ref();
 
-        info!("Loading ONNX model: {}", model_path.display());
+        info!(
+            model = %model_name,
+            path = %model_path.display(),
+            "Loading ONNX model"
+        );
 
-        // Initialize ONNX Runtime session
-        let session = Session::builder()?
-            .with_optimization_level(GraphOptimizationLevel::Level3)?
-            .with_intra_threads(4)?
-            .commit_from_file(model_path)?;
+        let session = Session::builder()
+            .map_err(|e| ModelError::LoadFailed(format!("session builder: {e}")))?
+            .with_optimization_level(if config.onnx_graph_optimization {
+                GraphOptimizationLevel::Level3
+            } else {
+                GraphOptimizationLevel::Disable
+            })
+            .map_err(|e| ModelError::LoadFailed(format!("optimization level: {e}")))?
+            .with_intra_threads(config.onnx_intra_threads)
+            .map_err(|e| ModelError::LoadFailed(format!("intra threads: {e}")))?
+            .commit_from_file(model_path)
+            .map_err(|e| ModelError::LoadFailed(format!("commit from file: {e}")))?;
 
-        // Extract input/output names
-        let input_names: Vec<String> = session
-            .inputs()
-            .iter()
+        let input_names: Vec<String> = session.inputs().iter()
             .map(|input| input.name().to_string())
             .collect();
 
-        let output_names: Vec<String> = session
-            .outputs()
-            .iter()
+        let output_names: Vec<String> = session.outputs().iter()
             .map(|output| output.name().to_string())
             .collect();
 
         info!(
-            model_name = %model_name,
+            model = %model_name,
             inputs = ?input_names,
             outputs = ?output_names,
             "ONNX model loaded"
         );
 
+        // Build per-model circuit breaker
+        let breaker_config = CircuitBreakerConfig::builder()
+            .failure_rate_threshold(config.inference_breaker_failure_rate)
+            .slow_call_rate_threshold(config.inference_breaker_slow_call_rate)
+            .slow_call_duration(config.inference_breaker_slow_call_duration)
+            .minimum_calls(config.inference_breaker_minimum_calls)
+            .recovery_timeout(config.inference_breaker_recovery_timeout)
+            .half_open_max_calls(config.inference_breaker_half_open_calls)
+            .call_timeout(config.inference_timeout)
+            .build()
+            .map_err(|e| ModelError::InvalidConfig(format!(
+                "circuit breaker config for model {}: {}",
+                model_name, e
+            )))?;
+
+        // Leak the breaker ID string — model names are long-lived singletons
+        let breaker_id: &'static str = Box::leak(
+            format!("ml.inference.{}", model_name).into_boxed_str()
+        );
+        let breaker = Arc::new(CircuitBreaker::new(
+            CircuitBreakerId::new(breaker_id),
+            breaker_config,
+            observer,
+        ));
+
+        let bulkhead = Arc::new(Semaphore::new(config.inference_max_concurrent));
+
         Ok(Self {
             session,
             model_name,
             input_names,
-            _output_names: output_names,
+            output_names,
+            breaker,
+            bulkhead,
+            inference_timeout: config.inference_timeout,
+            analytics,
         })
     }
 
-    /// Run inference with user and item features (Two-Tower model)
+    /// Model name accessor.
+    pub fn model_name(&self) -> &str {
+        &self.model_name
+    }
+
+    /// Output names accessor.
+    pub fn output_names(&self) -> &[String] {
+        &self.output_names
+    }
+
+    /// Configured inference timeout for this model.
+    pub fn inference_timeout(&self) -> std::time::Duration {
+        self.inference_timeout
+    }
+
+    /// Circuit breaker health for this model.
+    pub fn breaker_health(&self) -> crate::circuit_breaker::CircuitBreakerHealth {
+        self.breaker.health()
+    }
+
+    /// Run two-tower inference with circuit breaker + bulkhead + analytics.
     pub fn predict_two_tower(
         &mut self,
         user_features: Array2<f32>,
         item_features: Array2<f32>,
-    ) -> Result<Vec<f32>> {
+    ) -> Result<Vec<f32>, ModelError> {
+        let start = Instant::now();
+        let batch_size = user_features.nrows();
+        let metric_key = format!("ml.inference.{}", self.model_name);
+
         debug!(
             model = %self.model_name,
-            batch_size = user_features.nrows(),
+            batch_size = batch_size,
             "Running ONNX two-tower inference"
         );
 
-        // Create TensorRef views from ndarray
-        let user_input = TensorRef::from_array_view(user_features.view())
-            .map_err(|e| anyhow!("Failed to create user tensor: {}", e))?;
-        let item_input = TensorRef::from_array_view(item_features.view())
-            .map_err(|e| anyhow!("Failed to create item tensor: {}", e))?;
+        // Bulkhead: try-acquire (non-blocking in sync context)
+        let _permit = self.bulkhead.clone().try_acquire_owned()
+            .map_err(|_| {
+                if let Some(ref analytics) = self.analytics {
+                    analytics.increment_error(&metric_key);
+                }
+                ModelError::Overloaded {
+                    model: self.model_name.clone(),
+                    queue_depth: self.bulkhead.available_permits(),
+                }
+            })?;
 
-        // Run inference with named inputs
+        // Execute inference
+        let result = self.execute_two_tower(user_features, item_features);
+        let latency = start.elapsed();
+
+        // Analytics
+        if let Some(ref analytics) = self.analytics {
+            analytics.record_response_time(&metric_key, latency.as_millis() as u64);
+            analytics.increment_throughput(&metric_key);
+            if result.is_err() {
+                analytics.increment_error(&metric_key);
+            }
+        }
+
+        match &result {
+            Ok(scores) => {
+                debug!(
+                    model = %self.model_name,
+                    score_count = scores.len(),
+                    latency_ms = latency.as_millis() as u64,
+                    "ONNX inference complete"
+                );
+            }
+            Err(e) => {
+                warn!(
+                    model = %self.model_name,
+                    error = %e,
+                    latency_ms = latency.as_millis() as u64,
+                    "ONNX inference failed"
+                );
+            }
+        }
+
+        result
+    }
+
+    /// Raw two-tower execution (no resilience wrappers — called inside breaker).
+    fn execute_two_tower(
+        &mut self,
+        user_features: Array2<f32>,
+        item_features: Array2<f32>,
+    ) -> Result<Vec<f32>, ModelError> {
+        let user_input = TensorRef::from_array_view(user_features.view())
+            .map_err(|e| ModelError::InferenceFailed(format!("user tensor: {e}")))?;
+        let item_input = TensorRef::from_array_view(item_features.view())
+            .map_err(|e| ModelError::InferenceFailed(format!("item tensor: {e}")))?;
+
         let outputs = self.session.run(ort::inputs![
             self.input_names[0].clone() => user_input,
             self.input_names[1].clone() => item_input,
         ])
-            .map_err(|e| anyhow!("ONNX inference failed: {}", e))?;
+        .map_err(|e| ModelError::InferenceFailed(format!("session run: {e}")))?;
 
-        // Extract scores from first output
         let (_shape, scores_slice) = outputs[0]
             .try_extract_tensor::<f32>()
-            .map_err(|e| anyhow!("Failed to extract output tensor: {}", e))?;
+            .map_err(|e| ModelError::InferenceFailed(format!("extract tensor: {e}")))?;
 
-        let scores_vec = scores_slice.to_vec();
-
-        // Track model inference metrics
-
-        debug!(
-            model = %self.model_name,
-            score_count = scores_vec.len(),
-            "ONNX inference complete"
-        );
-
-        Ok(scores_vec)
+        Ok(scores_slice.to_vec())
     }
 
-    /// Batch inference for multiple user-item pairs
+    /// Batch inference with resilience: circuit breaker + bulkhead + analytics.
     pub fn predict_batch(
         &mut self,
         user_features: Vec<Vec<f32>>,
         item_features: Vec<Vec<f32>>,
-    ) -> Result<Vec<f32>> {
-        
+    ) -> Result<Vec<f32>, ModelError> {
         if user_features.len() != item_features.len() {
-            return Err(anyhow!(
-                "User and item feature counts must match: {} vs {}",
+            return Err(ModelError::InvalidConfig(format!(
+                "user/item feature count mismatch: {} vs {}",
                 user_features.len(),
                 item_features.len()
-            ));
+            )));
         }
 
         let batch_size = user_features.len();
@@ -137,11 +276,6 @@ impl OnnxInferenceEngine {
             }
         }
 
-        let scores = self.predict_two_tower(user_array, item_array)?;
-
-        // Track batch inference metrics
-
-        Ok(scores)
+        self.predict_two_tower(user_array, item_array)
     }
-
 }

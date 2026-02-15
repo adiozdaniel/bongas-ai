@@ -112,7 +112,13 @@ impl BongasEngine {
 
         // Create model repository and loader
         let model_repo = Arc::new(ModelRepository::new(resilient_pool.clone(), resilience_metrics.clone()));
-        let model_loader = Arc::new(ModelLoader::new(model_dir, model_repo.clone()));
+        let model_loader = Arc::new(ModelLoader::new(
+            model_dir,
+            model_repo.clone(),
+            crate::config::MlConfig::default(),
+            resilience_metrics.clone(),
+            None,
+        ));
 
         // Load all deployed ONNX models
         let model_count = model_loader.load_all_models().await?;
