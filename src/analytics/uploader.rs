@@ -11,6 +11,7 @@ use reqwest::Client;
 use crate::analytics::types::{ClientStatsPayload, SecurityDetails};
 use crate::circuit_breaker::CircuitBreaker;
 use crate::error::{ErrorClassification, ErrorClassifier};
+use crate::security::SecurityManager;
 
 /// Statistics uploader with Netflix resilience patterns.
 pub struct StatsUploader {
@@ -28,6 +29,9 @@ pub struct StatsUploader {
     
     /// Circuit breaker for upload protection.
     circuit_breaker: Arc<CircuitBreaker>,
+
+    /// Security manager for real license/hardware validation.
+    security_manager: Arc<SecurityManager>,
 }
 
 impl StatsUploader {
@@ -38,6 +42,7 @@ impl StatsUploader {
         client_id: String,
         upload_interval: Duration,
         circuit_breaker: Arc<CircuitBreaker>,
+        security_manager: Arc<SecurityManager>,
     ) -> Self {
         Self {
             client,
@@ -45,6 +50,7 @@ impl StatsUploader {
             client_id,
             upload_interval,
             circuit_breaker,
+            security_manager,
         }
     }
 
@@ -115,13 +121,18 @@ impl StatsUploader {
         }
     }
 
-    /// Get security details for upload.
+    /// Get security details from the real SecurityManager.
     async fn get_security_details(&self) -> SecurityDetails {
-        // In a real implementation, this would get details from security manager
-        // For now, return mock security details
+        let license_valid = self.security_manager.is_validated().await;
+        let hardware_fingerprint = self
+            .security_manager
+            .get_hardware_id()
+            .await
+            .unwrap_or_else(|| "unknown".to_string());
+
         SecurityDetails::new(
-            true, // license_valid
-            "mock-hardware-fingerprint".to_string(),
+            license_valid,
+            hardware_fingerprint,
             env!("CARGO_PKG_VERSION").to_string(),
         )
     }

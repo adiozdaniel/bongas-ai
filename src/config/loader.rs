@@ -203,26 +203,93 @@
           };
 
           // Parse Security configuration
-          let security = SecurityConfig {
-              license_key: config_map.get("security.license_key")
-                  .cloned()
-                  .unwrap_or_else(|| "".to_string()),
-              license_server_url: config_map.get("security.license_server_url")
-                  .cloned()
-                  .unwrap_or_else(|| "https://license.example.com".to_string()),
-              hardware_id_salt: config_map.get("security.hardware_id_salt")
-                  .cloned()
-                  .unwrap_or_else(|| "".to_string()),
-              anti_debug_enabled: config_map.get("security.anti_debug_enabled")
-                  .and_then(|s| s.parse().ok())
-                  .unwrap_or(true),
-              binary_protection_enabled: config_map.get("security.binary_protection_enabled")
-                  .and_then(|s| s.parse().ok())
-                  .unwrap_or(true),
-              license_validation_interval: config_map.get("security.license_validation_interval")
-                  .and_then(|s| s.parse().ok())
-                  .unwrap_or(3600),
-          };
+          let mut security = SecurityConfig::default();
+          
+          if let Some(v) = config_map.get("security.license_key") {
+              security.license_key = v.clone();
+          }
+          if let Some(v) = config_map.get("security.license_server_url") {
+              security.license_server_url = v.clone();
+          }
+          if let Some(v) = config_map.get("security.hardware_id_salt") {
+              security.hardware_id_salt = v.clone();
+          }
+          if let Some(v) = config_map.get("security.anti_debug_enabled").and_then(|s| s.parse().ok()) {
+              security.anti_debug_enabled = v;
+          }
+          if let Some(v) = config_map.get("security.binary_protection_enabled").and_then(|s| s.parse().ok()) {
+              security.binary_protection_enabled = v;
+          }
+          if let Some(v) = config_map.get("security.license_validation_interval").and_then(|s| s.parse().ok()) {
+              security.license_validation_interval = v;
+          }
+          
+          // Per-layer circuit breaker configuration
+          if let Some(v) = config_map.get("security.circuit_breaker_enabled").and_then(|s| s.parse().ok()) {
+              security.circuit_breaker_enabled = v;
+          }
+          if let Some(v) = config_map.get("security.license_server_failure_rate").and_then(|s| s.parse().ok()) {
+              security.license_server_failure_rate = v;
+          }
+          if let Some(v) = config_map.get("security.license_server_slow_call_rate").and_then(|s| s.parse().ok()) {
+              security.license_server_slow_call_rate = v;
+          }
+          if let Some(v) = config_map.get("security.license_server_recovery_timeout").and_then(|s| s.parse::<u64>().ok()) {
+              security.license_server_recovery_timeout = Duration::from_secs(v);
+          }
+          if let Some(v) = config_map.get("security.revocation_check_failure_rate").and_then(|s| s.parse().ok()) {
+              security.revocation_check_failure_rate = v;
+          }
+          if let Some(v) = config_map.get("security.revocation_check_slow_call_rate").and_then(|s| s.parse().ok()) {
+              security.revocation_check_slow_call_rate = v;
+          }
+          if let Some(v) = config_map.get("security.revocation_check_recovery_timeout").and_then(|s| s.parse::<u64>().ok()) {
+              security.revocation_check_recovery_timeout = Duration::from_secs(v);
+          }
+          if let Some(v) = config_map.get("security.heartbeat_failure_rate").and_then(|s| s.parse().ok()) {
+              security.heartbeat_failure_rate = v;
+          }
+          if let Some(v) = config_map.get("security.heartbeat_slow_call_rate").and_then(|s| s.parse().ok()) {
+              security.heartbeat_slow_call_rate = v;
+          }
+          if let Some(v) = config_map.get("security.heartbeat_recovery_timeout").and_then(|s| s.parse::<u64>().ok()) {
+              security.heartbeat_recovery_timeout = Duration::from_secs(v);
+          }
+          
+          // Per-layer timeouts
+          if let Some(v) = config_map.get("security.server_validation_timeout").and_then(|s| s.parse::<u64>().ok()) {
+              security.server_validation_timeout = Duration::from_secs(v);
+          }
+          if let Some(v) = config_map.get("security.revocation_check_timeout").and_then(|s| s.parse::<u64>().ok()) {
+              security.revocation_check_timeout = Duration::from_secs(v);
+          }
+          if let Some(v) = config_map.get("security.heartbeat_interval").and_then(|s| s.parse::<u64>().ok()) {
+              security.heartbeat_interval = Duration::from_secs(v);
+          }
+          
+          // Bulkhead configuration
+          if let Some(v) = config_map.get("security.max_concurrent_validations").and_then(|s| s.parse().ok()) {
+              security.max_concurrent_validations = v;
+          }
+          
+          // Fallback configuration
+          if let Some(v) = config_map.get("security.fallback_on_server_timeout").and_then(|s| s.parse().ok()) {
+              security.fallback_on_server_timeout = v;
+          }
+          if let Some(v) = config_map.get("security.fallback_on_server_error").and_then(|s| s.parse().ok()) {
+              security.fallback_on_server_error = v;
+          }
+          if let Some(v) = config_map.get("security.allow_degraded_mode").and_then(|s| s.parse().ok()) {
+              security.allow_degraded_mode = v;
+          }
+          
+          // Analytics configuration
+          if let Some(v) = config_map.get("security.analytics_enabled").and_then(|s| s.parse().ok()) {
+              security.analytics_enabled = v;
+          }
+          if let Some(v) = config_map.get("security.analytics_per_layer").and_then(|s| s.parse().ok()) {
+              security.analytics_per_layer = v;
+          }
 
           // Parse ML configuration
           let mut ml = MlConfig::default();

@@ -106,7 +106,7 @@ async fn main() -> Result<()> {
         db_pool,
         &config.redis.url,
         model_path,
-        None, // SecurityManager - enable when needed
+        config.security.clone(),
         cache_config.clone(),
         circuit_breaker_registry.clone(),
     )

@@ -651,20 +651,109 @@
 
   #[derive(Debug, Error)]
   pub enum SecurityError {
-      #[error("authentication failed: {0}")]
-      AuthenticationFailed(String),
-      #[error("authorization failed: {0}")]
-      AuthorizationFailed(String),
-      #[error("security validation failed: {0}")]
-      ValidationFailed(String),
+      // Permanent errors (no retry, no breaker trip)
+      #[error("license invalid: {0}")]
+      LicenseInvalid(String),
+      #[error("license revoked: {0}")]
+      LicenseRevoked(String),
+      #[error("hardware mismatch: {0}")]
+      HardwareMismatch(String),
+      #[error("binary tampered: {0}")]
+      BinaryTampered(String),
+      #[error("debugger detected")]
+      DebuggerDetected,
+      #[error("analysis tool detected: {0}")]
+      AnalysisToolDetected(String),
+
+      // Transient errors (retry with backoff, trips breaker)
+      #[error("server validation failed: {reason}")]
+      ServerValidationFailed { reason: String },
+      #[error("revocation check failed: {reason}")]
+      RevocationCheckFailed { reason: String },
+      #[error("hardware fingerprint failed: {reason}")]
+      HardwareFingerprintFailed { reason: String },
+
+      // Timeout errors (retry with longer backoff, trips breaker)
+      #[error("server timeout after {timeout_ms}ms")]
+      ServerTimeout { timeout_ms: u64 },
+      #[error("heartbeat timeout after {timeout_ms}ms")]
+      HeartbeatTimeout { timeout_ms: u64 },
+
+      // Overload errors (no immediate retry, trips breaker, shed load)
+      #[error("circuit breaker open for security layer")]
+      CircuitOpen,
+      #[error("validation overloaded (queue depth {queue_depth})")]
+      ValidationOverloaded { queue_depth: usize },
+
+      // Degraded errors (may retry for full result, does NOT trip breaker)
+      #[error("degraded security check: {layer} - {reason}")]
+      Degraded { layer: String, reason: String },
+      #[error("fallback used for security layer: {layer} - {reason}")]
+      FallbackUsed { layer: String, reason: String },
   }
 
   impl ErrorClassifier for SecurityError {
       fn classify(&self) -> ErrorClassification {
           match self {
-              SecurityError::AuthenticationFailed(_) => ErrorClassification::Permanent,
-              SecurityError::AuthorizationFailed(_) => ErrorClassification::Permanent,
-              SecurityError::ValidationFailed(_) => ErrorClassification::Permanent,
+              // Permanent — no retry, no breaker trip
+              SecurityError::LicenseInvalid(_)
+              | SecurityError::LicenseRevoked(_)
+              | SecurityError::HardwareMismatch(_)
+              | SecurityError::BinaryTampered(_)
+              | SecurityError::DebuggerDetected
+              | SecurityError::AnalysisToolDetected(_) => ErrorClassification::Permanent,
+
+              // Transient — safe to retry, counts toward breaker
+              SecurityError::ServerValidationFailed { .. }
+              | SecurityError::RevocationCheckFailed { .. }
+              | SecurityError::HardwareFingerprintFailed { .. } => ErrorClassification::Transient,
+
+              // Timeout — retryable with backoff, counts toward breaker
+              SecurityError::ServerTimeout { .. }
+              | SecurityError::HeartbeatTimeout { .. } => ErrorClassification::Timeout,
+
+              // Overload — do NOT retry immediately, trips breaker
+              SecurityError::CircuitOpen
+              | SecurityError::ValidationOverloaded { .. } => ErrorClassification::Overload,
+
+              // Degraded — partial success, does NOT trip breaker
+              SecurityError::Degraded { .. }
+              | SecurityError::FallbackUsed { .. } => ErrorClassification::Degraded,
+          }
+      }
+
+      fn retry_hint(&self) -> RetryHint {
+          match self {
+              // Permanent errors — no retry
+              SecurityError::LicenseInvalid(_)
+              | SecurityError::LicenseRevoked(_)
+              | SecurityError::HardwareMismatch(_)
+              | SecurityError::BinaryTampered(_)
+              | SecurityError::DebuggerDetected
+              | SecurityError::AnalysisToolDetected(_) => RetryHint::no_retry(),
+
+              // Transient errors — exponential backoff
+              SecurityError::ServerValidationFailed { .. }
+              | SecurityError::RevocationCheckFailed { .. }
+              | SecurityError::HardwareFingerprintFailed { .. } => {
+                  RetryHint::exponential(Duration::from_millis(500))
+              }
+
+              // Timeout errors — longer exponential backoff
+              SecurityError::ServerTimeout { .. }
+              | SecurityError::HeartbeatTimeout { .. } => {
+                  RetryHint::exponential(Duration::from_secs(1))
+              }
+
+              // Overload errors — long backoff
+              SecurityError::CircuitOpen
+              | SecurityError::ValidationOverloaded { .. } => {
+                  RetryHint::exponential(Duration::from_secs(2))
+              }
+
+              // Degraded errors — immediate retry for full result
+              SecurityError::Degraded { .. }
+              | SecurityError::FallbackUsed { .. } => RetryHint::immediate(),
           }
       }
   }

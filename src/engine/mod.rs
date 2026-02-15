@@ -26,7 +26,8 @@ use crate::ml::model_loader::ModelLoader;
 use crate::db::repositories::model_repository::ModelRepository;
 use crate::db::repositories::feature_repository::FeatureRepository;
 use crate::db::repositories::cache_repository::CacheRepository;
-use crate::security::manager::SecurityManager;
+use crate::config::SecurityConfig;
+use crate::security::SecurityManager;
 
 use self::staging_manager::StagingManager;
 use self::staleness_engine::{StalenessEngine, UserEvent};
@@ -58,7 +59,7 @@ pub struct BongasEngine {
     kafka_metrics: Arc<KafkaMetricsRegistry>,
 
     // Security
-    security_manager: Option<Arc<SecurityManager>>,
+    security_manager: Arc<SecurityManager>,
 
     // Resilience
     circuit_breaker_registry: Arc<CircuitBreakerRegistry>,
@@ -84,7 +85,7 @@ impl BongasEngine {
         db_pool: PgPool,
         redis_url: &str,
         model_dir: &str,
-        security_manager: Option<Arc<SecurityManager>>,
+        security_config: SecurityConfig,
         cache_config: CacheConfig,
         circuit_breaker_registry: Arc<CircuitBreakerRegistry>,
     ) -> Result<Arc<Self>> {
@@ -99,6 +100,19 @@ impl BongasEngine {
             ResilientPoolConfig::default(),
             circuit_breaker_registry.clone(),
         )?);
+
+        // Create SecurityManager with Netflix-grade resilience
+        let security_observer: Arc<dyn crate::circuit_breaker::observer::ResilienceObserver> =
+            resilience_metrics.clone();
+        let security_manager = Arc::new(
+            SecurityManager::new(
+                security_config,
+                circuit_breaker_registry.clone(),
+                security_observer,
+                None, // Analytics wired separately when PerformanceStats is available
+            )
+            .context("Failed to create SecurityManager")?,
+        );
 
         let db_pool = Arc::new(db_pool);
 
@@ -509,18 +523,10 @@ impl BongasEngine {
 
     /// Get security status for API endpoint
     pub async fn get_security_status(&self) -> SecurityStatus {
-        if let Some(ref manager) = self.security_manager {
-            SecurityStatus {
-                validated: manager.is_validated().await,
-                security_enabled: true,
-                layers_configured: 8,
-            }
-        } else {
-            SecurityStatus {
-                validated: false,
-                security_enabled: false,
-                layers_configured: 0,
-            }
+        SecurityStatus {
+            validated: self.security_manager.is_validated().await,
+            security_enabled: true,
+            layers_configured: 8,
         }
     }
 

@@ -6,9 +6,7 @@
 pub mod collector;
 pub mod types;
 pub mod uploader;
-pub mod security;
 
 pub use collector::LocalStatsCollector;
 pub use types::{ClientStatsPayload, SecurityDetails};
 pub use uploader::StatsUploader;
-pub use security::SecurityValidator;

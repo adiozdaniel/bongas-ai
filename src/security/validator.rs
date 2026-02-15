@@ -1,37 +1,51 @@
+//! Security configuration validation.
+//!
+//! Validates `SecurityConfig` fields for consistency and correctness
+//! before the SecurityManager is constructed.
 
-  //! Cross-module configuration validation.
+use crate::config::SecurityConfig;
+use crate::error::SecurityError;
 
-//   use super::types::AppConfig;
-  use anyhow::{ Result};
+/// Validate the security configuration for consistency.
+pub fn validate_security_config(config: &SecurityConfig) -> Result<(), SecurityError> {
+    // License key must be present if server validation is enabled
+    if config.license_key.is_empty() {
+        return Err(SecurityError::LicenseInvalid(
+            "Security config: license_key is empty".into(),
+        ));
+    }
 
-  /// Validate the entire application configuration.
-  pub fn validate_app_config() -> Result<()> {
-      // Cross-service validation
-    //   if !config.kafka.brokers.is_empty() && config.kafka.group_id.is_empty() {
-    //       return Err(anyhow!("Kafka configured but missing group_id"));
-    //   }
+    // Server URL must be present
+    if config.license_server_url.is_empty() {
+        return Err(SecurityError::ServerValidationFailed {
+            reason: "Security config: license_server_url is empty".into(),
+        });
+    }
 
-    //   // Resource validation (e.g., file paths exist)
-    //   if !config.ml.model_path.exists() {
-    //       return Err(anyhow!("ML model path does not exist: {:?}", config.ml.model_path));
-    //   }
+    // Circuit breaker failure rates must be 0.0..=1.0
+    if config.circuit_breaker_enabled {
+        for (name, rate) in [
+            ("license_server_failure_rate", config.license_server_failure_rate),
+            ("license_server_slow_call_rate", config.license_server_slow_call_rate),
+            ("revocation_check_failure_rate", config.revocation_check_failure_rate),
+            ("revocation_check_slow_call_rate", config.revocation_check_slow_call_rate),
+            ("heartbeat_failure_rate", config.heartbeat_failure_rate),
+            ("heartbeat_slow_call_rate", config.heartbeat_slow_call_rate),
+        ] {
+            if !(0.0..=1.0).contains(&rate) {
+                return Err(SecurityError::LicenseInvalid(
+                    format!("Security config: {} must be between 0.0 and 1.0, got {}", name, rate),
+                ));
+            }
+        }
+    }
 
-    //   // Circuit breaker validation
-    //   if config.circuit_breaker.enabled && config.circuit_breaker.failure_threshold == 0.0 {
-    //       return Err(anyhow!("Circuit breaker failure threshold must be > 0.0"));
-    //   }
+    // Bulkhead must allow at least 1 concurrent validation
+    if config.max_concurrent_validations == 0 {
+        return Err(SecurityError::ValidationOverloaded {
+            queue_depth: 0,
+        });
+    }
 
-    //   // Analytics validation
-    //   if config.analytics.enabled && !config.circuit_breaker.enabled {
-    //       return Err(anyhow!("Analytics requires circuit breaker to be enabled"));
-    //   }
-
-    //   // Error handling validation
-    //   if config.error.enabled && config.error.max_retries == 0 {
-    //       return Err(anyhow!("Error handling requires max_retries > 0"));
-    //   }
-
-      Ok(())
-  }
-
-
+    Ok(())
+}
