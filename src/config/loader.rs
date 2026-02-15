@@ -8,7 +8,7 @@
   use super::types::{
       AppConfig, CircuitBreakerConfig, ErrorConfig, AnalyticsConfig,
       ServerConfig, DatabaseConfig, RedisConfig, ClickHouseConfig,
-      KafkaConfig, SecurityConfig, MlConfig,
+      KafkaConfig, SecurityConfig, MlConfig, PipelineConfig,
   };
   use std::collections::HashMap;
   use std::path::PathBuf;
@@ -269,6 +269,36 @@
               ml.canary_traffic_percent = v;
           }
 
+          // Parse Pipeline configuration
+          let mut pipeline = PipelineConfig::default();
+          if let Some(v) = config_map.get("pipeline.stage_breaker_enabled").and_then(|s| s.parse().ok()) {
+              pipeline.stage_breaker_enabled = v;
+          }
+          if let Some(v) = config_map.get("pipeline.stage_timeout_default_ms").and_then(|s| s.parse::<u64>().ok()) {
+              pipeline.stage_timeout_default = Duration::from_millis(v);
+          }
+          if let Some(v) = config_map.get("pipeline.fetch_stage_timeout_ms").and_then(|s| s.parse::<u64>().ok()) {
+              pipeline.fetch_stage_timeout = Duration::from_millis(v);
+          }
+          if let Some(v) = config_map.get("pipeline.ml_stage_timeout_ms").and_then(|s| s.parse::<u64>().ok()) {
+              pipeline.ml_stage_timeout = Duration::from_millis(v);
+          }
+          if let Some(v) = config_map.get("pipeline.pipeline_timeout_ms").and_then(|s| s.parse::<u64>().ok()) {
+              pipeline.pipeline_timeout = Duration::from_millis(v);
+          }
+          if let Some(v) = config_map.get("pipeline.stage_max_concurrent").and_then(|s| s.parse().ok()) {
+              pipeline.stage_max_concurrent = v;
+          }
+          if let Some(v) = config_map.get("pipeline.fallback_enabled").and_then(|s| s.parse().ok()) {
+              pipeline.fallback_enabled = v;
+          }
+          if let Some(v) = config_map.get("pipeline.analytics_enabled").and_then(|s| s.parse().ok()) {
+              pipeline.analytics_enabled = v;
+          }
+          if let Some(v) = config_map.get("pipeline.analytics_per_stage").and_then(|s| s.parse().ok()) {
+              pipeline.analytics_per_stage = v;
+          }
+
           // Circuit breaker, error, and analytics configs use defaults
           // These are configured in code, not in TOML
           let circuit_breaker = CircuitBreakerConfig::default();
@@ -283,6 +313,7 @@
               kafka,
               security,
               ml,
+              pipeline,
               circuit_breaker,
               error,
               analytics,

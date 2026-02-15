@@ -5,9 +5,9 @@
 //! Netflix-grade resilience patterns.
 
 use super::{
-    CircuitBreakerConfig, ErrorConfig, AnalyticsConfig, 
+    CircuitBreakerConfig, ErrorConfig, AnalyticsConfig,
     ServerConfig, DatabaseConfig, RedisConfig, ClickHouseConfig,
-    KafkaConfig, SecurityConfig, MlConfig
+    KafkaConfig, SecurityConfig, MlConfig, PipelineConfig,
 };
 
 /// Root application configuration.
@@ -24,6 +24,7 @@ pub struct AppConfig {
     pub kafka: KafkaConfig,
     pub security: SecurityConfig,
     pub ml: MlConfig,
+    pub pipeline: PipelineConfig,
     pub circuit_breaker: CircuitBreakerConfig,
     pub error: ErrorConfig,
     pub analytics: AnalyticsConfig,
@@ -39,6 +40,7 @@ impl AppConfig {
         kafka: KafkaConfig,
         security: SecurityConfig,
         ml: MlConfig,
+        pipeline: PipelineConfig,
         circuit_breaker: CircuitBreakerConfig,
         error: ErrorConfig,
         analytics: AnalyticsConfig,
@@ -51,6 +53,7 @@ impl AppConfig {
             kafka,
             security,
             ml,
+            pipeline,
             circuit_breaker,
             error,
             analytics,

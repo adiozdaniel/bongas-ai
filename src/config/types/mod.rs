@@ -15,6 +15,7 @@ pub mod clickhouse;
 pub mod kafka;
 pub mod security;
 pub mod ml;
+pub mod pipeline;
 
 // Re-export commonly used types
 pub use app::AppConfig;
@@ -28,3 +29,4 @@ pub use clickhouse::ClickHouseConfig;
 pub use kafka::KafkaConfig;
 pub use security::SecurityConfig;
 pub use ml::MlConfig;
+pub use pipeline::PipelineConfig;

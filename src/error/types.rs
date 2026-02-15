@@ -477,22 +477,75 @@
       }
   }
 
+  /// Pipeline error taxonomy for the Composite Resilience Pattern.
+  ///
+  /// Each variant maps to an `ErrorClassification` that drives per-stage
+  /// circuit breaker, retry, and fallback behavior. Analytics are recorded
+  /// at the executor level via `PerformanceMetrics`.
   #[derive(Debug, Error)]
   pub enum PipelineError {
-      #[error("pipeline stage failed: {0}")]
-      StageFailed(String),
+      // ── Permanent (no retry, no breaker trip) ──────────────────────────────
       #[error("pipeline configuration invalid: {0}")]
       InvalidConfig(String),
-      #[error("pipeline operation timed out")]
-      Timeout,
+      #[error("pipeline stage not found in registry: {0}")]
+      StageNotFound(String),
+
+      // ── Transient (retry with backoff, trips breaker) ─────────────────────
+      #[error("pipeline stage failed: {stage} — {reason}")]
+      StageFailed { stage: String, reason: String },
+      #[error("pipeline fetch stage failed: {stage} — {reason}")]
+      FetchFailed { stage: String, reason: String },
+      #[error("pipeline database query failed in stage {stage}: {reason}")]
+      DatabaseError { stage: String, reason: String },
+      #[error("pipeline cache error in stage {stage}: {reason}")]
+      CacheError { stage: String, reason: String },
+
+      // ── Timeout (retry with longer backoff, trips breaker) ────────────────
+      #[error("pipeline stage timed out after {timeout_ms}ms: {stage}")]
+      StageTimeout { stage: String, timeout_ms: u64 },
+      #[error("pipeline execution timed out after {timeout_ms}ms")]
+      PipelineTimeout { timeout_ms: u64 },
+
+      // ── Overload (no immediate retry, trips breaker, shed load) ───────────
+      #[error("pipeline stage overloaded (queue depth {queue_depth}): {stage}")]
+      StageOverloaded { stage: String, queue_depth: usize },
+      #[error("circuit breaker rejected stage execution: {stage}")]
+      CircuitOpen { stage: String },
+
+      // ── Degraded (may retry for full result, does NOT trip breaker) ───────
+      #[error("pipeline stage returned degraded result: {stage} — {reason}")]
+      Degraded { stage: String, reason: String },
+      #[error("pipeline fallback used for stage: {stage} — {reason}")]
+      FallbackUsed { stage: String, reason: String },
+
+      // ── Partial failure (retry only failed items) ─────────────────────────
+      #[error("pipeline partial failure: {succeeded}/{total} stages completed")]
+      PartialExecution { succeeded: usize, total: usize },
   }
 
   impl ErrorClassifier for PipelineError {
       fn classify(&self) -> ErrorClassification {
           match self {
-              PipelineError::StageFailed(_) => ErrorClassification::Transient,
-              PipelineError::InvalidConfig(_) => ErrorClassification::Permanent,
-              PipelineError::Timeout => ErrorClassification::Timeout,
+              // Permanent — caller should not retry
+              PipelineError::InvalidConfig(_) | PipelineError::StageNotFound(_) => {
+                  ErrorClassification::Permanent
+              }
+              // Transient — safe to retry, counts toward breaker
+              PipelineError::StageFailed { .. }
+              | PipelineError::FetchFailed { .. }
+              | PipelineError::DatabaseError { .. }
+              | PipelineError::CacheError { .. } => ErrorClassification::Transient,
+              // Timeout — retryable with backoff, counts toward breaker
+              PipelineError::StageTimeout { .. }
+              | PipelineError::PipelineTimeout { .. } => ErrorClassification::Timeout,
+              // Overload — do NOT retry immediately, trips breaker
+              PipelineError::StageOverloaded { .. }
+              | PipelineError::CircuitOpen { .. } => ErrorClassification::Overload,
+              // Degraded — partial success, does NOT trip breaker
+              PipelineError::Degraded { .. }
+              | PipelineError::FallbackUsed { .. } => ErrorClassification::Degraded,
+              // Partial failure — retry only failed stages
+              PipelineError::PartialExecution { .. } => ErrorClassification::PartialFailure,
           }
       }
   }

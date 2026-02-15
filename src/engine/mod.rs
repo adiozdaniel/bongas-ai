@@ -138,8 +138,16 @@ impl BongasEngine {
         // Create scenario factory
         let scenario_factory = Arc::new(ScenarioFactory::new(resilient_pool.clone(), resilience_metrics.clone()));
 
-        // Create pipeline executor
-        let pipeline_executor = Arc::new(PipelineExecutor::new());
+        // Create pipeline executor with Netflix resilience
+        let pipeline_config = crate::config::PipelineConfig::default();
+        let pipeline_observer: Arc<dyn crate::circuit_breaker::observer::ResilienceObserver> =
+            resilience_metrics.clone();
+        let pipeline_executor = Arc::new(PipelineExecutor::new(
+            pipeline_config,
+            circuit_breaker_registry.clone(),
+            pipeline_observer,
+            None, // Analytics wired separately per-request via ExecutionContext
+        ));
 
         info!(
             registered_stages = pipeline_executor.stage_count(),
