@@ -1,15 +1,30 @@
-use axum::extract::{Extension, Path, Json, Query};
+//! Feature repository endpoints and handlers.
+
+use axum::{
+    extract::{Extension, Path, Json, Query},
+    routing::get,
+    Router,
+};
 use std::sync::Arc;
-use tracing::{info, error};
 use serde::Deserialize;
+use tracing::{info, error};
 
 use crate::engine::BongasEngine;
 use crate::api::models::StandardResponse;
 use crate::error::{AppError, ScenarioError, CacheError};
 
+/// Mount all feature routes.
+pub fn routes() -> Router {
+    Router::new()
+        .route("/user/:user_id", get(get_user_features))
+        .route("/item/:item_id", get(get_item_features))
+        .route("/trending", get(get_trending_items))
+}
+
+// ─── Handlers ───────────────────────────────────────────────────────────────
+
 /// GET /api/v1/features/user/:user_id
-/// Get user features from feature repository
-pub async fn get_user_features(
+async fn get_user_features(
     Extension(engine): Extension<Arc<BongasEngine>>,
     Path(user_id): Path<i32>,
 ) -> Result<Json<StandardResponse<serde_json::Value>>, AppError> {
@@ -32,8 +47,7 @@ pub async fn get_user_features(
 }
 
 /// GET /api/v1/features/item/:item_id
-/// Get item features from feature repository
-pub async fn get_item_features(
+async fn get_item_features(
     Extension(engine): Extension<Arc<BongasEngine>>,
     Path(item_id): Path<i32>,
 ) -> Result<Json<StandardResponse<serde_json::Value>>, AppError> {
@@ -56,8 +70,7 @@ pub async fn get_item_features(
 }
 
 /// GET /api/v1/features/trending
-/// Get trending items from feature repository
-pub async fn get_trending_items(
+async fn get_trending_items(
     Extension(engine): Extension<Arc<BongasEngine>>,
     Query(params): Query<TrendingQuery>,
 ) -> Result<Json<StandardResponse<Vec<serde_json::Value>>>, AppError> {
@@ -87,7 +100,6 @@ pub async fn get_trending_items(
 }
 
 #[derive(Deserialize)]
-pub struct TrendingQuery {
+struct TrendingQuery {
     pub limit: Option<i64>,
 }
-

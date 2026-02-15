@@ -1,6 +1,9 @@
+//! Recommendation endpoints and handlers.
+
 use axum::{
     extract::{Path, Query, Extension},
-    Json,
+    routing::get,
+    Json, Router,
 };
 use std::sync::Arc;
 use tracing::info;
@@ -9,7 +12,21 @@ use crate::engine::BongasEngine;
 use crate::api::models::{StandardResponse, RecommendationItem, PaginationParams};
 use crate::error::AppError;
 
-/// Shared helper: execute a scenario and map engine items to API RecommendationItems.
+/// Mount all recommendation routes.
+pub fn routes() -> Router {
+    Router::new()
+        .route("/home/:user_id", get(get_home_recommendations))
+        .route("/continue-watching/:user_id", get(get_continue_watching))
+        .route("/trending", get(get_trending))
+        .route("/because-you-watched/:user_id/:item_id", get(get_because_you_watched))
+        .route("/genre/:genre/:user_id", get(get_genre_recommendations))
+        .route("/new-releases/:user_id", get(get_new_releases))
+        .route("/live-tv/:user_id", get(get_live_tv))
+}
+
+// ─── Shared Helper ──────────────────────────────────────────────────────────
+
+/// Execute a scenario and map engine items to API RecommendationItems.
 async fn execute_and_map(
     engine: &BongasEngine,
     scenario_slug: &str,
@@ -44,8 +61,9 @@ async fn execute_and_map(
         .collect())
 }
 
-/// GET /api/v1/recommendations/home/:user_id
-pub async fn get_home_recommendations(
+// ─── Handlers ───────────────────────────────────────────────────────────────
+
+async fn get_home_recommendations(
     Path(user_id): Path<i32>,
     Query(params): Query<PaginationParams>,
     Extension(engine): Extension<Arc<BongasEngine>>,
@@ -58,8 +76,7 @@ pub async fn get_home_recommendations(
     Ok(Json(StandardResponse::success(items)))
 }
 
-/// GET /api/v1/recommendations/continue-watching/:user_id
-pub async fn get_continue_watching(
+async fn get_continue_watching(
     Path(user_id): Path<i32>,
     Extension(engine): Extension<Arc<BongasEngine>>,
 ) -> Result<Json<StandardResponse<Vec<RecommendationItem>>>, AppError> {
@@ -69,8 +86,7 @@ pub async fn get_continue_watching(
     Ok(Json(StandardResponse::success(items)))
 }
 
-/// GET /api/v1/recommendations/trending
-pub async fn get_trending(
+async fn get_trending(
     Extension(engine): Extension<Arc<BongasEngine>>,
 ) -> Result<Json<StandardResponse<Vec<RecommendationItem>>>, AppError> {
     let items = execute_and_map(&engine, "trending_now", None, serde_json::json!({}), 0, usize::MAX).await?;
@@ -79,8 +95,7 @@ pub async fn get_trending(
     Ok(Json(StandardResponse::success(items)))
 }
 
-/// GET /api/v1/recommendations/because-you-watched/:user_id/:item_id
-pub async fn get_because_you_watched(
+async fn get_because_you_watched(
     Path((user_id, item_id)): Path<(i32, i32)>,
     Extension(engine): Extension<Arc<BongasEngine>>,
 ) -> Result<Json<StandardResponse<Vec<RecommendationItem>>>, AppError> {
@@ -91,8 +106,7 @@ pub async fn get_because_you_watched(
     Ok(Json(StandardResponse::success(items)))
 }
 
-/// GET /api/v1/recommendations/genre/:genre/:user_id
-pub async fn get_genre_recommendations(
+async fn get_genre_recommendations(
     Path((genre, user_id)): Path<(String, i32)>,
     Extension(engine): Extension<Arc<BongasEngine>>,
 ) -> Result<Json<StandardResponse<Vec<RecommendationItem>>>, AppError> {
@@ -103,8 +117,7 @@ pub async fn get_genre_recommendations(
     Ok(Json(StandardResponse::success(items)))
 }
 
-/// GET /api/v1/recommendations/new-releases/:user_id
-pub async fn get_new_releases(
+async fn get_new_releases(
     Path(user_id): Path<i32>,
     Extension(engine): Extension<Arc<BongasEngine>>,
 ) -> Result<Json<StandardResponse<Vec<RecommendationItem>>>, AppError> {
@@ -114,8 +127,7 @@ pub async fn get_new_releases(
     Ok(Json(StandardResponse::success(items)))
 }
 
-/// GET /api/v1/recommendations/live-tv/:user_id
-pub async fn get_live_tv(
+async fn get_live_tv(
     Path(user_id): Path<i32>,
     Extension(engine): Extension<Arc<BongasEngine>>,
 ) -> Result<Json<StandardResponse<Vec<RecommendationItem>>>, AppError> {

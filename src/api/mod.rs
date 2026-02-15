@@ -1,258 +1,31 @@
+//! API layer — thin composition of versioned routes, middleware, and shared state.
+
 pub mod v1;
-pub mod error;
 pub mod models;
+pub mod middleware;
 
-use axum::{
-    routing::{get, post, put, delete},
-    Router,
-    middleware::from_fn,
-    extract::Request,
-    body::Body,
-    middleware::Next,
-    response::Response,
-    http::StatusCode,
-};
+use axum::Router;
 use std::sync::Arc;
-use tower_http::trace::TraceLayer;
-use serde_json::json;
+
 use crate::engine::BongasEngine;
-  use crate::middlewares::{
-      unified_error::unified_error_middleware,
-      metrics::{MetricsCollector, DurationTracker, EndpointMetrics},
-      rate_limit::RateLimiter,
-      resilience::ResilienceMiddleware,
-      bulkhead::BulkheadMiddleware,
-  };
-  use crate::config::{CompressionConfig, CorsConfig};
-  use crate::circuit_breaker::CircuitBreakerRegistry;
-  use crate::api::models::HealthResponse;
+use crate::middlewares::metrics::MetricsCollector;
+use crate::circuit_breaker::CircuitBreakerRegistry;
 
-
+/// Build the complete API router with routes, shared state, and middleware.
 pub fn create_router(
     engine: Arc<BongasEngine>,
     redis: Arc<redis::Client>,
     metrics_collector: Arc<MetricsCollector>,
     circuit_breaker_registry: Arc<CircuitBreakerRegistry>,
 ) -> Router {
-    // Create endpoint metrics tracker
-    let endpoint_metrics = Arc::new(EndpointMetrics::new());
-    
-    // Create middleware instances outside closures to avoid move issues
-    let resilience_middleware = Arc::new(ResilienceMiddleware::new(circuit_breaker_registry.clone()));
-    let bulkhead_middleware = Arc::new(BulkheadMiddleware::with_defaults());
-    
-    Router::new()
-        // ========== EXISTING V1 ENDPOINTS (PRESERVED) ==========
-
-        // Home recommendations
-        .route(
-            "/api/v1/recommendations/home/:user_id",
-            get(v1::handlers::recommendations::get_home_recommendations),
-        )
-
-        // Continue watching
-        .route(
-            "/api/v1/recommendations/continue-watching/:user_id",
-            get(v1::handlers::recommendations::get_continue_watching),
-        )
-
-        // Trending
-        .route(
-            "/api/v1/recommendations/trending",
-            get(v1::handlers::recommendations::get_trending),
-        )
-
-        // Because you watched
-        .route(
-            "/api/v1/recommendations/because-you-watched/:user_id/:item_id",
-            get(v1::handlers::recommendations::get_because_you_watched),
-        )
-
-        // Genre recommendations
-        .route(
-            "/api/v1/recommendations/genre/:genre/:user_id",
-            get(v1::handlers::recommendations::get_genre_recommendations),
-        )
-
-        // New releases
-        .route(
-            "/api/v1/recommendations/new-releases/:user_id",
-            get(v1::handlers::recommendations::get_new_releases),
-        )
-
-        // Live TV
-        .route(
-            "/api/v1/recommendations/live-tv/:user_id",
-            get(v1::handlers::recommendations::get_live_tv),
-        )
-
-        // ========== SCENARIO MANAGEMENT ==========
-
-        // Create scenario
-        .route(
-            "/api/v1/scenarios",
-            post(v1::handlers::scenarios::create_scenario),
-        )
-
-        // List scenarios
-        .route(
-            "/api/v1/scenarios",
-            get(v1::handlers::scenarios::list_scenarios),
-        )
-
-        // Get scenario details
-        .route(
-            "/api/v1/scenarios/:slug",
-            get(v1::handlers::scenarios::get_scenario),
-        )
-
-        // Update scenario
-        .route(
-            "/api/v1/scenarios/:slug",
-            put(v1::handlers::scenarios::update_scenario),
-        )
-
-        // Delete scenario
-        .route(
-            "/api/v1/scenarios/:slug",
-            delete(v1::handlers::scenarios::delete_scenario),
-        )
-
-        // Hot-reload single scenario
-        .route(
-            "/api/v1/scenarios/:slug/reload",
-            post(v1::handlers::scenarios::reload_scenario),
-        )
-
-        // Hot-reload all scenarios
-        .route(
-            "/api/v1/scenarios/reload-all",
-            post(v1::handlers::scenarios::reload_all_scenarios),
-        )
-
-        // ========== FEATURES ENDPOINTS ==========
-
-        // User features
-        .route(
-            "/api/v1/features/user/:user_id",
-            get(v1::features::get_user_features),
-        )
-
-        // Item features
-        .route(
-            "/api/v1/features/item/:item_id",
-            get(v1::features::get_item_features),
-        )
-
-        // Trending items
-        .route(
-            "/api/v1/features/trending",
-            get(v1::features::get_trending_items),
-        )
-
-        // Health check
-        .route("/health", get(health_check))
-
+    let routes = Router::new()
+        .nest("/api/v1", v1::routes())
+        .nest("/health", v1::health::routes())
         // Inject shared state
         .layer(axum::Extension(engine))
         .layer(axum::Extension(redis))
-        .layer(axum::Extension(circuit_breaker_registry))
-        .layer(axum::Extension(metrics_collector))
+        .layer(axum::Extension(circuit_breaker_registry.clone()))
+        .layer(axum::Extension(metrics_collector));
 
-        // ========== MIDDLEWARE STACK (applied in reverse order) ==========
-        // 1. Unified error handling (outermost - catches all errors)
-        .layer(from_fn(unified_error_middleware))
-        
-        // 2. Resilience middleware (circuit breaker)
-        .layer(from_fn(move |req: Request<Body>, next: Next| {
-            let resilience_middleware = Arc::clone(&resilience_middleware);
-            async move {
-                let state = axum::extract::State(resilience_middleware);
-                ResilienceMiddleware::layer(state, req, next).await
-            }
-        }))
-        
-        // 3. Bulkhead middleware (concurrency limiting)
-        .layer(from_fn(move |req: Request<Body>, next: Next| {
-            let bulkhead_middleware = Arc::clone(&bulkhead_middleware);
-            async move {
-                let state = axum::extract::State(bulkhead_middleware);
-                BulkheadMiddleware::layer(state, req, next).await
-            }
-        }))
-        
-        // 4. Rate limiting
-        .layer(from_fn(|req: Request<Body>, next: Next| async move {
-            let redis = req.extensions().get::<Arc<redis::Client>>().unwrap();
-            let circuit_breaker = req.extensions().get::<Arc<CircuitBreakerRegistry>>().unwrap();
-            let rate_limiter = RateLimiter::new(redis.clone(), circuit_breaker.clone(), 60, 100);
-            
-            // Extract IP from request
-            let ip = req.headers()
-                .get("X-Forwarded-For")
-                .and_then(|h| h.to_str().ok())
-                .unwrap_or("127.0.0.1");
-            
-            // Check rate limit status
-            match rate_limiter.get_status(ip).await {
-                Ok(status) if status.is_limited => {
-                    Response::builder()
-                        .status(StatusCode::TOO_MANY_REQUESTS)
-                        .header("X-RateLimit-Limit", status.limit.to_string())
-                        .header("X-RateLimit-Remaining", "0")
-                        .header("X-RateLimit-Reset", status.window_seconds.to_string())
-                        .header("Retry-After", status.reset_in_seconds.to_string())
-                        .header("Content-Type", "application/json")
-                        .body(Body::from(json!({
-                            "success": false,
-                            "error": "Rate limit exceeded",
-                            "message": format!("Too many requests. Limit: {} requests per {} seconds", status.limit, status.window_seconds),
-                            "limit": status.limit,
-                            "remaining": 0,
-                            "reset_time": status.reset_in_seconds,
-                            "timestamp": chrono::Utc::now().to_rfc3339(),
-                        }).to_string()))
-                        .unwrap()
-                }
-                Ok(_) => next.run(req).await,
-                Err(_) => next.run(req).await,
-            }
-        }))
-        
-        // 5. Request logging with correlation IDs
-        
-        // 6. Response body caching
-        
-        // 7. Response compression (Enhanced)
-        .layer(CompressionConfig::new()
-            .min_size(1024)
-            .enable_gzip(true)
-            .enable_brotli(true)
-            .enable_deflate(false)
-            .build())
-        
-        .layer(CorsConfig::dev())
-
-        // 8. Duration tracking middleware
-        .layer(from_fn(DurationTracker::layer))
-        
-        // 9. HTTP metrics middleware (integrates with AnalyticsManager)
-        
-        // 10. Endpoint metrics tracking
-        .layer(from_fn(move |req: Request<Body>, next: Next| {
-            endpoint_metrics.clone().layer(req, next)
-        }))
-        
-        // 11. Request tracing
-        .layer(TraceLayer::new_for_http())
-}
-
-/// Health check endpoint that returns JSON status
-async fn health_check() -> axum::Json<HealthResponse> {
-    axum::Json(HealthResponse {
-        status: "healthy".to_string(),
-        version: env!("CARGO_PKG_VERSION").to_string(),
-        timestamp: chrono::Utc::now(),
-        uptime_seconds: 0, // TODO: Implement actual uptime tracking
-    })
+    middleware::apply_middleware(routes, circuit_breaker_registry)
 }
