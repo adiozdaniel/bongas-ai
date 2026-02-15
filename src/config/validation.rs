@@ -6,7 +6,7 @@
   /// Validate the entire application configuration.
   pub fn validate_app_config(config: &AppConfig) -> Result<()> {
       // Cross-service validation
-      if !config.kafka.brokers.is_empty() && config.kafka.group_id.is_empty() {
+      if !config.ingestion.kafka.brokers.is_empty() && config.ingestion.kafka.group_id.is_empty() {
           return Err(anyhow!("Kafka configured but missing group_id"));
       }
 

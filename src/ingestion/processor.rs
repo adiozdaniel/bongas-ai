@@ -143,7 +143,7 @@ impl ActivityProcessor {
 
         // Bonus for completion
         if completed {
-            rating = (rating + 0.5).min(5.0);
+            rating = (rating + 0.5_f32).min(5.0_f32);
         }
 
         // Store via resilient repository

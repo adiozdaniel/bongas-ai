@@ -163,7 +163,7 @@ impl BongasEngine {
         );
 
         // Create Ingestion metrics registry
-        let ingestion_metrics = Arc::new(IngestionMetrics::new(resilience_metrics.clone()));
+        let ingestion_metrics = Arc::new(IngestionMetrics::new(Vec::new()));
 
         // Create repositories
         let feature_repo = Arc::new(FeatureRepository::new(resilient_pool.clone(), resilience_metrics.clone()));
@@ -200,17 +200,33 @@ impl BongasEngine {
     ) -> Result<()> {
         info!("Starting activity ingestion...");
 
-        let manager = IngestionManager::new(
-            config.clone(),
-            self.db_pool.clone(),
+        // Convert config to IngestionConfig
+        let ingestion_config = crate::ingestion::IngestionConfig {
+            kafka: crate::ingestion::sources::KafkaSourceConfig {
+                brokers: config.kafka.brokers.clone(),
+                group_id: config.kafka.group_id.clone(),
+                playback_topic: config.kafka.playback_topic.clone(),
+                reaction_topic: config.kafka.reaction_topic.clone(),
+                profile_topic: config.kafka.profile_topic.clone(),
+                notification_topic: config.kafka.notification_topic.clone(),
+            },
+            clickhouse: crate::ingestion::sources::ClickHouseSourceConfig {
+                url: "http://localhost:8123".to_string(), // TODO: use from config
+                poll_interval_secs: config.clickhouse.poll_interval_secs,
+                enabled: config.clickhouse.enabled,
+            },
+            api_enabled: config.api.enabled,
+        };
+
+        // Use the legacy start method that creates everything
+        let manager = IngestionManager::start_legacy(
+            ingestion_config,
             self.resilient_pool.clone(),
+            self.db_pool.clone(),
             self.resilience_metrics.clone(),
             self.staleness_engine.clone(),
             self.circuit_breaker_registry.clone(),
-            self.ingestion_metrics.clone(),
-        );
-
-        manager.start().await?;
+        ).await?;
 
         *self.ingestion_manager.write().await = Some(manager);
 
@@ -233,8 +249,8 @@ impl BongasEngine {
     }
 
     /// Get ingestion health summary
-    pub async fn ingestion_health(&self) -> crate::ingestion::metrics::IngestionHealthSummary {
-        self.ingestion_metrics.health_summary().await
+    pub async fn ingestion_health(&self) -> crate::ingestion::metrics::IngestionHealth {
+        self.ingestion_metrics.health().await
     }
 
 

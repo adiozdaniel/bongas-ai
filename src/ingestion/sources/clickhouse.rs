@@ -64,7 +64,7 @@ impl ClickHouseSource {
     }
 
     /// Poll ClickHouse for recent interactions.
-    async fn poll_interactions(&self, sender: &mpsc::Sender<UserActivity>) -> Result<u64> {
+    async fn poll_interactions(&self, _sender: &mpsc::Sender<UserActivity>) -> Result<u64> {
         let checkpoint = *self.last_checkpoint.read().await;
         let breaker = self.circuit_breaker_registry.get_or_create(
             Self::breaker_id(),
@@ -95,8 +95,6 @@ impl ClickHouseSource {
 
         // Update checkpoint to now
         *self.last_checkpoint.write().await = chrono::Utc::now();
-
-        breaker.record_success();
         Ok(0)
     }
 }

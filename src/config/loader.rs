@@ -4,13 +4,12 @@
   //! TOML defaults → ENV overrides → Spring Cloud Config. Provides immutable
   //! configuration for Netflix-grade resilience patterns.
 
-use crate::config::types::ingestion;
-
 use super::sources::{ConfigSource, ConfigResult, ConfigError, TomlSource, EnvSource, SpringCloudSource};
 use super::types::{
     AppConfig, CircuitBreakerConfig, ErrorConfig, AnalyticsConfig,
     ServerConfig, DatabaseConfig, RedisConfig, ClickHouseConfig,
-    KafkaConfig, SecurityConfig, MlConfig, PipelineConfig,
+    IngestionConfig, KafkaSourceConfig, ApiSourceConfig, ClickHouseSourceConfig,
+    SecurityConfig, MlConfig, PipelineConfig,
 };
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -170,39 +169,101 @@ use std::time::Duration;
                   .unwrap_or(10),
           };
 
-          // Parse Kafka configuration
-          let kafka = KafkaConfig {
-              brokers: config_map.get("kafka.brokers")
-                  .cloned()
-                  .unwrap_or_else(|| "localhost:9092".to_string()),
-              group_id: config_map.get("kafka.group_id")
-                  .cloned()
-                  .unwrap_or_else(|| "bongas-ai-consumers".to_string()),
-              profile_topic: config_map.get("kafka.profile_topic")
-                  .cloned()
-                  .unwrap_or_else(|| "profile.events".to_string()),
-              reaction_topic: config_map.get("kafka.reaction_topic")
-                  .cloned()
-                  .unwrap_or_else(|| "reaction.events".to_string()),
-              notification_topic: config_map.get("kafka.notification_topic")
-                  .cloned()
-                  .unwrap_or_else(|| "notification.events".to_string()),
-              playback_topic: config_map.get("kafka.playback_topic")
-                  .cloned()
-                  .unwrap_or_else(|| "playback.events".to_string()),
-              connection_timeout: config_map.get("kafka.connection_timeout")
-                  .and_then(|s| s.parse().ok())
-                  .unwrap_or(10),
-              request_timeout: config_map.get("kafka.request_timeout")
-                  .and_then(|s| s.parse().ok())
-                  .unwrap_or(30),
-              max_retries: config_map.get("kafka.max_retries")
-                  .and_then(|s| s.parse().ok())
-                  .unwrap_or(3),
-              retry_backoff: config_map.get("kafka.retry_backoff")
-                  .and_then(|s| s.parse().ok())
-                  .unwrap_or(1000),
-          };
+        // Parse Ingestion configuration
+        let kafka_source = KafkaSourceConfig {
+            enabled: config_map
+                .get("ingestion.kafka.enabled")
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(true),
+            brokers: config_map
+                .get("kafka.brokers")
+                .cloned()
+                .unwrap_or_else(|| "localhost:9092".to_string()),
+            group_id: config_map
+                .get("kafka.group_id")
+                .cloned()
+                .unwrap_or_else(|| "bongas-ai-consumers".to_string()),
+            profile_topic: config_map
+                .get("kafka.profile_topic")
+                .cloned()
+                .unwrap_or_else(|| "user.profiles".to_string()),
+            reaction_topic: config_map
+                .get("kafka.reaction_topic")
+                .cloned()
+                .unwrap_or_else(|| "user.reactions".to_string()),
+            notification_topic: config_map
+                .get("kafka.notification_topic")
+                .cloned()
+                .unwrap_or_else(|| "notifications".to_string()),
+            playback_topic: config_map
+                .get("kafka.playback_topic")
+                .cloned()
+                .unwrap_or_else(|| "playback.sessions".to_string()),
+            connection_timeout: config_map
+                .get("kafka.connection_timeout")
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(10),
+            request_timeout: config_map
+                .get("kafka.request_timeout")
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(30),
+            max_retries: config_map
+                .get("kafka.max_retries")
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(3),
+            retry_backoff: config_map
+                .get("kafka.retry_backoff")
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(1000),
+        };
+
+        let api_source = ApiSourceConfig {
+            enabled: config_map
+                .get("ingestion.api.enabled")
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(true),
+            rate_limit_per_second: config_map
+                .get("ingestion.api.rate_limit_per_second")
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(1000),
+            batch_size: config_map
+                .get("ingestion.api.batch_size")
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(100),
+        };
+
+        let clickhouse_source = ClickHouseSourceConfig {
+            enabled: config_map
+                .get("ingestion.clickhouse.enabled")
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(true),
+            poll_interval_secs: config_map
+                .get("ingestion.clickhouse.poll_interval_secs")
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(60),
+            batch_size: config_map
+                .get("ingestion.clickhouse.batch_size")
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(1000),
+            lookback_window_secs: config_map
+                .get("ingestion.clickhouse.lookback_window_secs")
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(300),
+        };
+
+        let ingestion = IngestionConfig {
+            kafka: kafka_source,
+            api: api_source,
+            clickhouse: clickhouse_source,
+            buffer_size: config_map
+                .get("ingestion.buffer_size")
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(10_000),
+            processing_timeout_secs: config_map
+                .get("ingestion.processing_timeout_secs")
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(30),
+        };
 
           // Parse Security configuration
           let mut security = SecurityConfig::default();

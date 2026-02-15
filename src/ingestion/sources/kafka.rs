@@ -6,7 +6,7 @@
 use anyhow::Result;
 use rdkafka::config::ClientConfig;
 use rdkafka::consumer::{Consumer, StreamConsumer};
-use rdkafka::message::Message;
+use rdkafka::Message;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::mpsc;
@@ -91,35 +91,34 @@ impl KafkaSource {
 
         info!(topic, "Kafka consumer started");
 
+
+
         loop {
-            // Check circuit breaker via the global registry
+            // Check if circuit is open before processing
             if breaker.health().state == crate::circuit_breaker::CircuitState::Open {
-                warn!(topic, "Circuit breaker open for Kafka source, backing off");
+                warn!(source = "kafka", "Circuit breaker open, pausing");
                 tokio::time::sleep(Duration::from_secs(5)).await;
                 continue;
             }
 
-            match consumer.recv().await {
-                Ok(message) => {
+            // Use recv() for async message consumption
+            match tokio::time::timeout(Duration::from_millis(100), consumer.recv()).await {
+                Ok(Ok(message)) => {
                     if let Some(payload) = message.payload() {
                         if let Some(activity) = parse(payload) {
-                            if sender.send(activity).await.is_err() {
-                                warn!(topic, "Activity channel closed, stopping consumer");
-                                return;
+                            if sender.send(activity).await.is_ok() {
+                                self.messages_ingested.fetch_add(1, Ordering::Relaxed);
                             }
-                            self.messages_ingested.fetch_add(1, Ordering::Relaxed);
-                            breaker.record_success();
-                        } else {
-                            warn!(topic, "Failed to parse Kafka message");
-                            self.errors.fetch_add(1, Ordering::Relaxed);
                         }
                     }
                 }
-                Err(e) => {
-                    error!(topic, error = %e, "Kafka consumer error");
+                Ok(Err(e)) => {
+                    error!(topic, error = %e, "Kafka receive error");
                     self.errors.fetch_add(1, Ordering::Relaxed);
-                    breaker.record_failure();
-                    tokio::time::sleep(Duration::from_secs(5)).await;
+                    tokio::time::sleep(Duration::from_secs(1)).await;
+                }
+                Err(_) => {
+                    // Timeout - continue loop
                 }
             }
         }

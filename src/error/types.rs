@@ -439,8 +439,8 @@
 
   #[derive(Debug, Error)]
   pub enum IngestionError {
-      #[error("ingestion source unavailable: {source}")]
-      SourceUnavailable { source: String },
+      #[error("ingestion source unavailable: {0}")]
+      SourceUnavailable(String),
       #[error("activity processing failed ({activity_type}): {message}")]
       ProcessingFailed { activity_type: String, message: String },
       #[error("all ingestion sources degraded")]
@@ -452,7 +452,7 @@
   impl ErrorClassifier for IngestionError {
       fn classify(&self) -> ErrorClassification {
           match self {
-              IngestionError::SourceUnavailable { .. } => ErrorClassification::Transient,
+              IngestionError::SourceUnavailable(_) => ErrorClassification::Transient,
               IngestionError::ProcessingFailed { .. } => ErrorClassification::Transient,
               IngestionError::AllSourcesDegraded => ErrorClassification::Degraded,
               IngestionError::Timeout(_) => ErrorClassification::Timeout,
