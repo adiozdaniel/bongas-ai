@@ -26,8 +26,6 @@ CREATE TABLE scenario_configs (
     use_l2_cache BOOLEAN DEFAULT true,
     staleness_rules JSONB,
 
-    -- Experimentation
-    experiment_config JSONB,
 
     -- Status
     enabled BOOLEAN DEFAULT true,

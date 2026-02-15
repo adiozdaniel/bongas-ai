@@ -13,7 +13,6 @@
 //! - **Kafka**: Event streaming with circuit breaker protection
 //! - **Database**: PostgreSQL and ClickHouse integration
 //! - **API**: RESTful API with middleware stack
-//! - **Experiments**: A/B testing and bandit algorithms
 //! - **Scenarios**: Dynamic scenario management
 //! - **Engine**: Core recommendation engine
 //! - **Middlewares**: HTTP middleware stack
@@ -38,7 +37,6 @@ pub mod ml;
 // Business logic modules
 pub mod engine;
 pub mod scenarios;
-pub mod experiments;
 pub mod pipeline;
 
 // API and infrastructure

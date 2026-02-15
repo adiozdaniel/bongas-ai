@@ -49,7 +49,6 @@ pub use types::PipelineError;
 pub use types::ModelError;
 pub use types::ScenarioError;
 pub use types::SecurityError;
-pub use types::ExperimentError;
 pub use types::MiddlewareError;
 pub use types::MetricsError;
 

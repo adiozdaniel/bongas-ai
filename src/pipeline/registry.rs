@@ -22,10 +22,8 @@ pub fn build_stage_registry() -> HashMap<String, Arc<dyn PipelineStage>> {
     // Category 2: ML Inference (7 stages) - WITH ONNX SUPPORT
     registry.insert("onnx_inference".into(), Arc::new(stages::ml::ONNXInferenceStage));
     registry.insert("onnx_inference_similarity".into(), Arc::new(stages::ml::ONNXInferenceSimilarityStage));
-    registry.insert("onnx_inference_bandit".into(), Arc::new(stages::ml::ONNXInferenceBanditStage));
     registry.insert("ml_inference_two_tower".into(), Arc::new(stages::ml::MLInferenceTwoTowerStage));
     registry.insert("ml_inference_bert4rec".into(), Arc::new(stages::ml::MLInferenceBERT4RecStage));
-    registry.insert("ml_inference_bandit".into(), Arc::new(stages::ml::MLInferenceBanditStage));
     registry.insert("ml_inference_similarity".into(), Arc::new(stages::ml::MLInferenceSimilarityStage));
 
     // Category 3: Filtering (12 stages)

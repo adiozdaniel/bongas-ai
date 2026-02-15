@@ -88,15 +88,6 @@ INSERT INTO scenario_configs (slug, name, description, pipeline, cache_ttl_secon
                 "params": {"time_window_hours": 24, "min_views": 100, "limit": 100}
             },
             {
-                "type": "onnx_inference_bandit",
-                "params": {
-                    "model_name": "bandit_linucb",
-                    "model_format": "onnx",
-                    "algorithm": "linucb",
-                    "explore_rate": 0.1
-                }
-            },
-            {
                 "type": "filter_already_watched",
                 "params": {}
             },

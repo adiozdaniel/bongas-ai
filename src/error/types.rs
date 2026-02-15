@@ -1,4 +1,4 @@
-  //! Centralized error taxonomy for the Composite Resilience Pattern.
+//! Centralized error taxonomy for the Composite Resilience Pattern.
   //!
   //! Provides a layered error hierarchy that enables consistent error classification
   //! across all resilience components (circuit breaker, retry, bulkhead). Each domain
@@ -669,22 +669,6 @@
       }
   }
 
-  #[derive(Debug, Error)]
-  pub enum ExperimentError {
-      #[error("experiment not found: {0}")]
-      NotFound(String),
-      #[error("experiment configuration invalid: {0}")]
-      InvalidConfig(String),
-  }
-
-  impl ErrorClassifier for ExperimentError {
-      fn classify(&self) -> ErrorClassification {
-          match self {
-              ExperimentError::NotFound(_) => ErrorClassification::Permanent,
-              ExperimentError::InvalidConfig(_) => ErrorClassification::Permanent,
-          }
-      }
-  }
 
   #[derive(Debug, Error)]
   pub enum MiddlewareError {
@@ -743,8 +727,6 @@
       #[error(transparent)]
       Security(#[from] SecurityError),
       #[error(transparent)]
-      Experiment(#[from] ExperimentError),
-      #[error(transparent)]
       Middleware(#[from] MiddlewareError),
       #[error(transparent)]
       Metrics(#[from] MetricsError),
@@ -764,7 +746,6 @@
               AppError::Model(e) => e.classify(),
               AppError::Scenario(e) => e.classify(),
               AppError::Security(e) => e.classify(),
-              AppError::Experiment(e) => e.classify(),
               AppError::Middleware(e) => e.classify(),
               AppError::Metrics(e) => e.classify(),
               AppError::Internal(_) => ErrorClassification::Transient,

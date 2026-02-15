@@ -22,8 +22,6 @@ pub struct ScenarioConfig {
     pub use_l2_cache: bool,
     pub staleness_rules: Option<JsonValue>,
 
-    // Experimentation
-    pub experiment_config: Option<JsonValue>,
 
     // Status
     pub enabled: bool,

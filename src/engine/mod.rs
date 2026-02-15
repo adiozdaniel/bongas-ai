@@ -25,9 +25,7 @@ use crate::kafka::metrics::KafkaMetricsRegistry;
 use crate::ml::model_loader::ModelLoader;
 use crate::db::repositories::model_repository::ModelRepository;
 use crate::db::repositories::feature_repository::FeatureRepository;
-use crate::db::repositories::experiment_repository::ExperimentRepository;
 use crate::db::repositories::cache_repository::CacheRepository;
-use crate::experiments::manager::ExperimentManager;
 use crate::security::manager::SecurityManager;
 
 use self::staging_manager::StagingManager;
@@ -52,11 +50,8 @@ pub struct BongasEngine {
 
     // Repositories
     feature_repo: Arc<FeatureRepository>,
-    experiment_repo: Arc<ExperimentRepository>,
     cache_repo: Arc<CacheRepository>,
 
-    // Experiments & Bandits
-    experiment_manager: Arc<ExperimentManager>,
 
     // Kafka
     kafka_manager: Arc<RwLock<Option<KafkaConsumerManager>>>,
@@ -157,12 +152,8 @@ impl BongasEngine {
         // Create Kafka metrics registry
         let kafka_metrics = Arc::new(KafkaMetricsRegistry::new());
 
-        // Create experiment manager
-        let experiment_manager = Arc::new(ExperimentManager::new(db_pool.clone()));
-
         // Create repositories
         let feature_repo = Arc::new(FeatureRepository::new(resilient_pool.clone(), resilience_metrics.clone()));
-        let experiment_repo = Arc::new(ExperimentRepository::new((*db_pool).clone()));
         let cache_repo = Arc::new(CacheRepository::new((*db_pool).clone(), resilience_metrics.clone()));
 
         let engine = Arc::new(Self {
@@ -173,9 +164,7 @@ impl BongasEngine {
             staleness_engine,
             model_loader,
             feature_repo,
-            experiment_repo,
             cache_repo,
-            experiment_manager,
             kafka_manager: Arc::new(RwLock::new(None)),
             kafka_metrics,
             security_manager,
@@ -511,111 +500,12 @@ impl BongasEngine {
         self.feature_repo.clone()
     }
 
-    /// Get experiment repository
-    pub fn experiment_repo(&self) -> Arc<ExperimentRepository> {
-        self.experiment_repo.clone()
-    }
 
     /// Get cache repository
     pub fn cache_repo(&self) -> Arc<CacheRepository> {
         self.cache_repo.clone()
     }
 
-    /// ========== EXPERIMENTS & BANDITS ==========
-
-    /// Get experiment manager reference
-    pub fn experiment_manager(&self) -> Arc<ExperimentManager> {
-        self.experiment_manager.clone()
-    }
-
-    /// Execute scenario with bandit-based scenario selection
-    pub async fn execute_scenario_with_experiment(
-        &self,
-        experiment_id: &str,
-        user_id: Option<i32>,
-        context_params: serde_json::Value,
-    ) -> Result<Vec<RecommendationItem>> {
-        // Use bandit to select arm (scenario variant)
-        let selected_scenario = self.experiment_manager
-            .select_arm(experiment_id)
-            .await
-            .unwrap_or_else(|_| "default".to_string());
-
-        info!(
-            experiment_id = experiment_id,
-            selected_scenario = %selected_scenario,
-            "Bandit selected scenario"
-        );
-
-        // Execute selected scenario
-        self.execute_scenario(&selected_scenario, user_id, context_params).await
-    }
-
-    /// Record a reward for experiment tracking (supports all reward types)
-    pub async fn record_experiment_reward(
-        &self,
-        experiment_id: &str,
-        scenario_slug: &str,
-        reward_type: &str,
-        reward_value: f64,
-    ) -> Result<()> {
-        // Calculate combined reward based on type
-        let combined_reward = match reward_type {
-            "completion" => reward_value, // Watch completion rate (0.0 - 1.0)
-            "click" => reward_value * 0.3, // Click-through contribution
-            "like" => 1.0, // Explicit like
-            "dislike" => 0.0, // Explicit dislike
-            _ => reward_value,
-        };
-
-        self.experiment_manager
-            .update_arm(experiment_id, scenario_slug, combined_reward)
-            .await?;
-
-        // Persist to database
-        self.experiment_manager.save_results(experiment_id).await?;
-
-        info!(
-            experiment_id = experiment_id,
-            scenario = %scenario_slug,
-            reward_type = reward_type,
-            reward_value = reward_value,
-            combined_reward = combined_reward,
-            "Experiment reward recorded"
-        );
-
-        Ok(())
-    }
-
-    /// Create a new experiment with arms (scenario variants)
-    pub async fn create_experiment(
-        &self,
-        experiment_id: &str,
-        algorithm: &str,
-        arm_names: Vec<String>,
-    ) -> Result<()> {
-        self.experiment_manager
-            .create_experiment(experiment_id, algorithm, arm_names)
-            .await
-    }
-
-    /// Get experiment status for monitoring (returns serde_json::Value)
-    pub async fn get_experiment_status(&self, experiment_id: &str) -> Result<serde_json::Value> {
-        self.experiment_manager.get_status(experiment_id).await
-    }
-
-    /// List all running experiments
-    pub async fn list_experiments(&self) -> Vec<String> {
-        self.experiment_manager.list_experiments().await
-    }
-
-    /// Load experiments from database configuration
-    pub async fn load_experiments_from_db(&self) -> Result<usize> {
-        info!("Loading experiments from database...");
-        let count = self.experiment_manager.load_from_database().await?;
-        info!(experiment_count = count, "Experiments loaded from database");
-        Ok(count)
-    }
 
     /// Get security status for API endpoint
     pub async fn get_security_status(&self) -> SecurityStatus {
