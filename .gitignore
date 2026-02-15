@@ -12,6 +12,7 @@
 
 # Build files
 /target/
+benches/
 
 # Ignore IDE and editor specific files
 /.idea/
