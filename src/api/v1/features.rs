@@ -4,14 +4,15 @@ use tracing::{info, error};
 use serde::Deserialize;
 
 use crate::engine::BongasEngine;
-use crate::api::models::ApiResponse;
+use crate::api::models::StandardResponse;
+use crate::error::{AppError, ScenarioError, CacheError};
 
 /// GET /api/v1/features/user/:user_id
 /// Get user features from feature repository
 pub async fn get_user_features(
     Extension(engine): Extension<Arc<BongasEngine>>,
     Path(user_id): Path<i32>,
-) -> Result<Json<ApiResponse<serde_json::Value>>, String> {
+) -> Result<Json<StandardResponse<serde_json::Value>>, AppError> {
     info!(user_id = user_id, "Fetching user features");
 
     match engine.feature_repo().get_user_features(user_id).await {
@@ -20,12 +21,12 @@ pub async fn get_user_features(
                 "user_id": user_id,
                 "features": features,
             });
-            Ok(Json(ApiResponse::success(response)))
+            Ok(Json(StandardResponse::success(response)))
         }
-        Ok(None) => Err(format!("User {} not found", user_id)),
+        Ok(None) => Err(AppError::Scenario(ScenarioError::NotFound(format!("User {}", user_id)))),
         Err(e) => {
             error!(error = %e, "Failed to fetch user features");
-            Err(format!("Failed to fetch features: {}", e))
+            Err(AppError::Cache(CacheError::Operation(format!("Failed to fetch features: {}", e))))
         }
     }
 }
@@ -35,7 +36,7 @@ pub async fn get_user_features(
 pub async fn get_item_features(
     Extension(engine): Extension<Arc<BongasEngine>>,
     Path(item_id): Path<i32>,
-) -> Result<Json<ApiResponse<serde_json::Value>>, String> {
+) -> Result<Json<StandardResponse<serde_json::Value>>, AppError> {
     info!(item_id = item_id, "Fetching item features");
 
     match engine.feature_repo().get_item_features(item_id).await {
@@ -44,12 +45,12 @@ pub async fn get_item_features(
                 "item_id": item_id,
                 "features": features,
             });
-            Ok(Json(ApiResponse::success(response)))
+            Ok(Json(StandardResponse::success(response)))
         }
-        Ok(None) => Err(format!("Item {} not found", item_id)),
+        Ok(None) => Err(AppError::Scenario(ScenarioError::NotFound(format!("Item {}", item_id)))),
         Err(e) => {
             error!(error = %e, "Failed to fetch item features");
-            Err(format!("Failed to fetch features: {}", e))
+            Err(AppError::Cache(CacheError::Operation(format!("Failed to fetch features: {}", e))))
         }
     }
 }
@@ -59,7 +60,7 @@ pub async fn get_item_features(
 pub async fn get_trending_items(
     Extension(engine): Extension<Arc<BongasEngine>>,
     Query(params): Query<TrendingQuery>,
-) -> Result<Json<ApiResponse<Vec<serde_json::Value>>>, String> {
+) -> Result<Json<StandardResponse<Vec<serde_json::Value>>>, AppError> {
     let limit = params.limit.unwrap_or(10);
     info!(limit = limit, "Fetching trending items");
 
@@ -76,11 +77,11 @@ pub async fn get_trending_items(
                     "completion_rate": item.completion_rate,
                 }))
                 .collect();
-            Ok(Json(ApiResponse::success(response)))
+            Ok(Json(StandardResponse::success(response)))
         }
         Err(e) => {
             error!(error = %e, "Failed to fetch trending items");
-            Err(format!("Failed to fetch trending: {}", e))
+            Err(AppError::Cache(CacheError::Operation(format!("Failed to fetch trending: {}", e))))
         }
     }
 }

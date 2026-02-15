@@ -27,7 +27,7 @@
   /// The circuit breaker, retry logic, and bulkhead all branch on this enum.
   /// Domain modules never interact with resilience internals directly — they
   /// classify their errors, and the infrastructure acts accordingly.
-  #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+  #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize)]
   pub enum ErrorClassification {
       /// Transient failure — safe to retry, counts toward circuit breaker threshold.
       Transient,
@@ -819,6 +819,8 @@
       Middleware(#[from] MiddlewareError),
       #[error(transparent)]
       Metrics(#[from] MetricsError),
+      #[error(transparent)]
+      Anyhow(#[from] anyhow::Error),
       #[error("internal error: {0}")]
       Internal(String),
   }
@@ -837,9 +839,78 @@
               AppError::Security(e) => e.classify(),
               AppError::Middleware(e) => e.classify(),
               AppError::Metrics(e) => e.classify(),
+              AppError::Anyhow(_) => ErrorClassification::Transient,
               AppError::Internal(_) => ErrorClassification::Transient,
           }
       }
   }
 
   pub type AppResult<T> = Result<T, AppError>;
+
+  // ─── IntoResponse Implementation for AppError ───────────────────────────────
+
+  use axum::{
+      http::StatusCode,
+      response::{IntoResponse, Response},
+      Json,
+  };
+  use serde_json::json;
+  use tracing::error;
+  use chrono::Utc;
+
+  impl IntoResponse for AppError {
+      fn into_response(self) -> Response {
+          let classification = self.classify();
+          let (status, error_code, message) = match classification {
+              ErrorClassification::Permanent => {
+                  match &self {
+                      AppError::Scenario(ScenarioError::NotFound(slug)) => {
+                          (StatusCode::NOT_FOUND, "SCENARIO_NOT_FOUND", format!("Scenario '{}' not found", slug))
+                      }
+                      _ => (StatusCode::BAD_REQUEST, "PERMANENT_ERROR", "Request cannot be processed due to client error".to_string())
+                  }
+              }
+              ErrorClassification::Transient => {
+                  (StatusCode::BAD_GATEWAY, "TRANSIENT_ERROR", "Service temporarily unavailable".to_string())
+              }
+              ErrorClassification::Timeout => {
+                  (StatusCode::GATEWAY_TIMEOUT, "TIMEOUT_ERROR", "Request timed out".to_string())
+              }
+              ErrorClassification::Overload => {
+                  (StatusCode::TOO_MANY_REQUESTS, "OVERLOAD_ERROR", "Service is overloaded".to_string())
+              }
+              ErrorClassification::Degraded => {
+                  (StatusCode::MULTI_STATUS, "DEGRADED_ERROR", "Service returned degraded result".to_string())
+              }
+              ErrorClassification::PartialFailure => {
+                  (StatusCode::MULTI_STATUS, "PARTIAL_FAILURE", "Partial failure occurred".to_string())
+              }
+          };
+
+          error!(
+              error = ?self,
+              classification = ?classification,
+              status_code = %status,
+              error_code = error_code,
+              "AppError converted to HTTP response"
+          );
+
+          let retry_hint = self.retry_hint();
+          let retry_after = retry_hint.retry_after.map(|d| d.as_secs());
+
+          let body = Json(json!({
+              "success": false,
+              "error": {
+                  "message": message,
+                  "code": error_code,
+                  "classification": format!("{:?}", classification),
+                  "retriable": classification.is_retriable(),
+                  "retry_after": retry_after,
+              },
+              "status_code": status.as_u16(),
+              "timestamp": Utc::now().to_rfc3339(),
+          }));
+
+          (status, body).into_response()
+      }
+  }

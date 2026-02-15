@@ -17,12 +17,15 @@ use tower_http::trace::TraceLayer;
 use serde_json::json;
 use crate::engine::BongasEngine;
   use crate::middlewares::{
-      error_handling::{error_handling_middleware, EnhancedErrorMiddleware, validation_error_middleware},
+      unified_error::unified_error_middleware,
       metrics::{MetricsCollector, DurationTracker, EndpointMetrics},
       rate_limit::RateLimiter,
+      resilience::ResilienceMiddleware,
+      bulkhead::BulkheadMiddleware,
   };
   use crate::config::{CompressionConfig, CorsConfig};
   use crate::circuit_breaker::CircuitBreakerRegistry;
+  use crate::api::models::HealthResponse;
 
 
 pub fn create_router(
@@ -33,6 +36,10 @@ pub fn create_router(
 ) -> Router {
     // Create endpoint metrics tracker
     let endpoint_metrics = Arc::new(EndpointMetrics::new());
+    
+    // Create middleware instances outside closures to avoid move issues
+    let resilience_middleware = Arc::new(ResilienceMiddleware::new(circuit_breaker_registry.clone()));
+    let bulkhead_middleware = Arc::new(BulkheadMiddleware::with_defaults());
     
     Router::new()
         // ========== EXISTING V1 ENDPOINTS (PRESERVED) ==========
@@ -79,7 +86,7 @@ pub fn create_router(
             get(v1::handlers::recommendations::get_live_tv),
         )
 
-        // ========== NEW: DYNAMIC SCENARIO MANAGEMENT ==========
+        // ========== SCENARIO MANAGEMENT ==========
 
         // Create scenario
         .route(
@@ -87,7 +94,7 @@ pub fn create_router(
             post(v1::handlers::scenarios::create_scenario),
         )
 
-        // List  scenarios
+        // List scenarios
         .route(
             "/api/v1/scenarios",
             get(v1::handlers::scenarios::list_scenarios),
@@ -143,22 +150,8 @@ pub fn create_router(
             get(v1::features::get_trending_items),
         )
 
-        // Analytics metrics
-        // .route(
-        //     "/api/v1/analytics/metrics",
-        //     get(v1::analytics::get_analytics_metrics),
-        // )
-        // .route(
-        //     "/api/v1/analytics/metrics/summary",
-        //     get(v1::analytics::get_analytics_metrics_summary),
-        // )
-        // .route(
-        //     "/api/v1/analytics/metrics/health",
-        //     get(v1::analytics::get_analytics_health),
-        // )
-
         // Health check
-        .route("/health", get(|| async { "OK" }))
+        .route("/health", get(health_check))
 
         // Inject shared state
         .layer(axum::Extension(engine))
@@ -167,16 +160,28 @@ pub fn create_router(
         .layer(axum::Extension(metrics_collector))
 
         // ========== MIDDLEWARE STACK (applied in reverse order) ==========
-        // 1. Validation error handling (outermost)
-        .layer(from_fn(validation_error_middleware))
+        // 1. Unified error handling (outermost - catches all errors)
+        .layer(from_fn(unified_error_middleware))
         
-        // 2. Enhanced error handling
-        .layer(from_fn(EnhancedErrorMiddleware::layer))
+        // 2. Resilience middleware (circuit breaker)
+        .layer(from_fn(move |req: Request<Body>, next: Next| {
+            let resilience_middleware = Arc::clone(&resilience_middleware);
+            async move {
+                let state = axum::extract::State(resilience_middleware);
+                ResilienceMiddleware::layer(state, req, next).await
+            }
+        }))
         
-        // 3. Error handling
-        .layer(from_fn(error_handling_middleware))
+        // 3. Bulkhead middleware (concurrency limiting)
+        .layer(from_fn(move |req: Request<Body>, next: Next| {
+            let bulkhead_middleware = Arc::clone(&bulkhead_middleware);
+            async move {
+                let state = axum::extract::State(bulkhead_middleware);
+                BulkheadMiddleware::layer(state, req, next).await
+            }
+        }))
         
-        // 2. Rate limiting
+        // 4. Rate limiting
         .layer(from_fn(|req: Request<Body>, next: Next| async move {
             let redis = req.extensions().get::<Arc<redis::Client>>().unwrap();
             let circuit_breaker = req.extensions().get::<Arc<CircuitBreakerRegistry>>().unwrap();
@@ -214,11 +219,11 @@ pub fn create_router(
             }
         }))
         
-        // 3. Request logging with correlation IDs
+        // 5. Request logging with correlation IDs
         
-        // 4. Response body caching
+        // 6. Response body caching
         
-        // 5. Response compression (Enhanced)
+        // 7. Response compression (Enhanced)
         .layer(CompressionConfig::new()
             .min_size(1024)
             .enable_gzip(true)
@@ -228,18 +233,26 @@ pub fn create_router(
         
         .layer(CorsConfig::dev())
 
-        // 6. Duration tracking middleware
+        // 8. Duration tracking middleware
         .layer(from_fn(DurationTracker::layer))
         
-        // 7. HTTP metrics middleware (integrates with AnalyticsManager)
+        // 9. HTTP metrics middleware (integrates with AnalyticsManager)
         
-        // 8. CORS (Enhanced - Development)
-        
-        // 8. Endpoint metrics tracking
+        // 10. Endpoint metrics tracking
         .layer(from_fn(move |req: Request<Body>, next: Next| {
             endpoint_metrics.clone().layer(req, next)
         }))
         
-        // 9. Request tracing
+        // 11. Request tracing
         .layer(TraceLayer::new_for_http())
+}
+
+/// Health check endpoint that returns JSON status
+async fn health_check() -> axum::Json<HealthResponse> {
+    axum::Json(HealthResponse {
+        status: "healthy".to_string(),
+        version: env!("CARGO_PKG_VERSION").to_string(),
+        timestamp: chrono::Utc::now(),
+        uptime_seconds: 0, // TODO: Implement actual uptime tracking
+    })
 }
