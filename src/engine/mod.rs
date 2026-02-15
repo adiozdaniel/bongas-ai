@@ -23,6 +23,7 @@ use crate::circuit_breaker::CircuitBreakerRegistry;
 use crate::ingestion::IngestionManager;
 use crate::ingestion::metrics::IngestionMetrics;
 use crate::ml::model_loader::ModelLoader;
+use crate::ml::FeatureStore;
 use crate::db::repositories::model_repository::ModelRepository;
 use crate::db::repositories::feature_repository::FeatureRepository;
 use crate::db::repositories::cache_repository::CacheRepository;
@@ -52,6 +53,7 @@ pub struct BongasEngine {
 
     // Repositories & services
     item_feature_service: Arc<ItemFeatureService>,
+    feature_store: Arc<FeatureStore>,
     feature_repo: Arc<FeatureRepository>,
     cache_repo: Arc<CacheRepository>,
 
@@ -171,6 +173,12 @@ impl BongasEngine {
         let item_feature_service = Arc::new(ItemFeatureService::new(resilient_pool.clone(), resilience_metrics.clone()));
         let feature_repo = Arc::new(FeatureRepository::new(resilient_pool.clone(), resilience_metrics.clone()));
         let cache_repo = Arc::new(CacheRepository::new((*db_pool).clone(), resilience_metrics.clone()));
+        let feature_store = Arc::new(crate::ml::feature_store::FeatureStore::new(
+            db_pool.clone(),
+            cache_manager.clone(),
+            crate::config::MlConfig::default(), // Assuming default is fine for now
+            None, // Analytics wired separately when PerformanceStats is available
+        ));
 
         let engine = Arc::new(Self {
             scenarios: Arc::new(RwLock::new(HashMap::new())),
@@ -179,6 +187,8 @@ impl BongasEngine {
             staging_manager,
             staleness_engine,
             model_loader,
+            item_feature_service,
+            feature_store,
             feature_repo,
             cache_repo,
             ingestion_manager: Arc::new(RwLock::new(None)),
@@ -203,27 +213,8 @@ impl BongasEngine {
     ) -> Result<()> {
         info!("Starting activity ingestion...");
 
-        // Convert config to IngestionConfig
-        let ingestion_config = crate::ingestion::IngestionConfig {
-            kafka: crate::ingestion::sources::KafkaSourceConfig {
-                brokers: config.kafka.brokers.clone(),
-                group_id: config.kafka.group_id.clone(),
-                playback_topic: config.kafka.playback_topic.clone(),
-                reaction_topic: config.kafka.reaction_topic.clone(),
-                profile_topic: config.kafka.profile_topic.clone(),
-                notification_topic: config.kafka.notification_topic.clone(),
-            },
-            clickhouse: crate::ingestion::sources::ClickHouseSourceConfig {
-                url: "http://localhost:8123".to_string(), // TODO: use from config
-                poll_interval_secs: config.clickhouse.poll_interval_secs,
-                enabled: config.clickhouse.enabled,
-            },
-            api_enabled: config.api.enabled,
-        };
-
-        // Use the legacy start method that creates everything
         let manager = IngestionManager::start_legacy(
-            ingestion_config,
+            config.clone(),
             self.resilient_pool.clone(),
             self.db_pool.clone(),
             self.resilience_metrics.clone(),
@@ -329,6 +320,8 @@ impl BongasEngine {
             self.db_pool.clone(),
             self.cache_manager.clone(),
             self.model_loader.clone(),
+            self.item_feature_service.clone(),
+            self.feature_store.clone(),
             request_id.clone(),
         )
         .with_device_type(
@@ -419,6 +412,8 @@ impl BongasEngine {
             self.db_pool.clone(),
             self.cache_manager.clone(),
             self.model_loader.clone(),
+            self.item_feature_service.clone(),
+            self.feature_store.clone(),
             request_id,
         )
         .with_device_type(

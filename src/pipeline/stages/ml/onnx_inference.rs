@@ -101,18 +101,18 @@ impl PipelineStage for ONNXInferenceStage {
             }
         };
 
-        // Step 2: Get user features from database
-        let user_features = self
-            .get_user_features(context, user_id, params.user_feature_dim)
+        // Step 2: Get user features from FeatureStore
+        let user_features = context.feature_store
+            .get_user_features(user_id, params.user_feature_dim)
             .await
-            .context("Failed to get user features")?;
+            .context("Failed to get user features from FeatureStore")?;
 
         // Step 3: Get item features for all candidates
         let item_ids: Vec<i32> = input.iter().map(|item| item.item_id).collect();
-        let item_features_map = self
-            .get_item_features(context, &item_ids, params.item_feature_dim)
+        let item_features_map = context.feature_store
+            .get_item_features(&item_ids, params.item_feature_dim)
             .await
-            .context("Failed to get item features")?;
+            .context("Failed to get item features from FeatureStore")?;
 
         // Step 4: Prepare batch inputs for ONNX model
         let mut user_batch: Vec<Vec<f32>> = Vec::new();
@@ -197,152 +197,4 @@ impl PipelineStage for ONNXInferenceStage {
     }
 }
 
-impl ONNXInferenceStage {
-    /// Get user features from database with caching
-    async fn get_user_features(
-        &self,
-        context: &ExecutionContext,
-        user_id: i32,
-        feature_dim: usize,
-    ) -> Result<Vec<f32>> {
-        // Try cache first
-        let cache_key = format!("user_features:{}", user_id);
-        if let Ok(Some(features)) = context.cache_manager.get::<Vec<f32>>(&cache_key).await {
-            debug!(user_id = user_id, "User features from cache");
-            return Ok(Self::pad_or_truncate(features, feature_dim));
-        }
 
-        // Query database
-        #[derive(sqlx::FromRow)]
-        struct Row {
-            genre_affinity: Option<JsonValue>,
-            embedding: Option<Vec<f32>>,
-            total_watch_time_minutes: Option<i32>,
-            avg_completion_rate: Option<f32>,
-        }
-
-        let row: Option<Row> = sqlx::query_as(
-            r#"
-            SELECT genre_affinity, embedding, total_watch_time_minutes, avg_completion_rate
-            FROM user_features
-            WHERE user_id = $1
-            "#,
-        )
-        .bind(user_id)
-        .fetch_optional(context.db_pool.as_ref())
-        .await?;
-
-        let features = match row {
-            Some(row) => {
-                // Prefer pre-computed embedding if available
-                if let Some(embedding) = row.embedding {
-                    embedding
-                } else {
-                    // Build features from components
-                    let mut features = Vec::new();
-
-                    if let Some(genre_affinity) = row.genre_affinity {
-                        if let Ok(affinity) = serde_json::from_value::<Vec<f32>>(genre_affinity) {
-                            features.extend(affinity);
-                        }
-                    }
-
-                    // Normalize numeric features
-                    features.push(row.total_watch_time_minutes.unwrap_or(0) as f32 / 10000.0);
-                    features.push(row.avg_completion_rate.unwrap_or(0.0));
-
-                    features
-                }
-            }
-            None => {
-                // Cold start: return default embedding
-                warn!(user_id = user_id, "No user features found, using cold start defaults");
-                vec![0.0; feature_dim]
-            }
-        };
-
-        // Cache for future requests
-        let _ = context.cache_manager.set(&cache_key, &features).await;
-
-        Ok(Self::pad_or_truncate(features, feature_dim))
-    }
-
-    /// Get item features for multiple items
-    async fn get_item_features(
-        &self,
-        context: &ExecutionContext,
-        item_ids: &[i32],
-        feature_dim: usize,
-    ) -> Result<std::collections::HashMap<i32, Vec<f32>>> {
-        use std::collections::HashMap;
-
-        if item_ids.is_empty() {
-            return Ok(HashMap::new());
-        }
-
-        #[derive(sqlx::FromRow)]
-        struct Row {
-            item_id: i32,
-            embedding: Option<Vec<f32>>,
-            tfidf_vector: Option<JsonValue>,
-            view_count: Option<i32>,
-            trending_score: Option<f32>,
-            completion_rate: Option<f32>,
-        }
-
-        let rows: Vec<Row> = sqlx::query_as(
-            r#"
-            SELECT item_id, embedding, tfidf_vector, view_count, trending_score, completion_rate
-            FROM item_features
-            WHERE item_id = ANY($1)
-            "#,
-        )
-        .bind(item_ids)
-        .fetch_all(context.db_pool.as_ref())
-        .await?;
-
-        let mut result = HashMap::new();
-
-        for row in rows {
-            let features = if let Some(embedding) = row.embedding {
-                // Use pre-computed embedding
-                embedding
-            } else {
-                // Build features from components
-                let mut features = Vec::new();
-
-                if let Some(tfidf) = row.tfidf_vector {
-                    if let Ok(vec) = serde_json::from_value::<Vec<f32>>(tfidf) {
-                        features.extend(vec);
-                    }
-                }
-
-                // Normalize numeric features
-                features.push(row.view_count.unwrap_or(0) as f32 / 100000.0);
-                features.push(row.trending_score.unwrap_or(0.0));
-                features.push(row.completion_rate.unwrap_or(0.0));
-
-                features
-            };
-
-            result.insert(row.item_id, Self::pad_or_truncate(features, feature_dim));
-        }
-
-        // Fill missing items with zeros (cold start)
-        for &item_id in item_ids {
-            result.entry(item_id).or_insert_with(|| vec![0.0; feature_dim]);
-        }
-
-        Ok(result)
-    }
-
-    /// Pad or truncate feature vector to exact dimension
-    fn pad_or_truncate(mut features: Vec<f32>, target_dim: usize) -> Vec<f32> {
-        if features.len() < target_dim {
-            features.resize(target_dim, 0.0);
-        } else if features.len() > target_dim {
-            features.truncate(target_dim);
-        }
-        features
-    }
-}

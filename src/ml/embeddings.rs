@@ -21,6 +21,7 @@ use crate::cache::CacheManager;
 use crate::config::MlConfig;
 use crate::error::ModelError;
 
+
 /// Embedding manager for user and item embeddings.
 pub struct EmbeddingManager {
     db_pool: Arc<PgPool>,
@@ -124,7 +125,7 @@ impl EmbeddingManager {
             if let Some(ref a) = self.analytics {
                 a.increment_throughput(&format!("{}.cache_hit", metric_key));
             }
-            return Ok(Self::pad_or_truncate(embedding, embedding_dim));
+            return Ok(crate::ml::utils::pad_or_truncate(embedding, embedding_dim));
         }
 
         // DB fetch
@@ -139,7 +140,7 @@ impl EmbeddingManager {
         match result {
             Ok(embedding) => {
                 let _ = self.cache_manager.set(&cache_key, &embedding).await;
-                Ok(Self::pad_or_truncate(embedding, embedding_dim))
+                Ok(crate::ml::utils::pad_or_truncate(embedding, embedding_dim))
             }
             Err(e) => {
                 warn!(user_id = user_id, error = %e, "User embedding fetch failed, using zero fallback");
@@ -203,7 +204,7 @@ impl EmbeddingManager {
             } else {
                 vec![0.0; embedding_dim]
             };
-            found.insert(row.item_id, Self::pad_or_truncate(emb, embedding_dim));
+            found.insert(row.item_id, crate::ml::utils::pad_or_truncate(emb, embedding_dim));
         }
 
         // Fill missing with zeros
@@ -237,8 +238,5 @@ impl EmbeddingManager {
             .unwrap_or_else(|| vec![0.0; embedding_dim]))
     }
 
-    fn pad_or_truncate(mut v: Vec<f32>, dim: usize) -> Vec<f32> {
-        v.resize(dim, 0.0);
-        v
-    }
+
 }

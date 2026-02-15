@@ -6,6 +6,7 @@ use crate::pipeline::{PipelineStage, ScoredItem};
 use crate::pipeline::context::ExecutionContext;
 use std::collections::HashMap;
 
+
 #[derive(Deserialize)]
 struct Params {
     max_same_genre: usize,
@@ -28,29 +29,16 @@ impl PipelineStage for DiversifyGenresStage {
         let params: Params = serde_json::from_value(params.clone())?;
         let item_ids: Vec<i32> = input.iter().map(|item| item.item_id).collect();
 
-        #[derive(sqlx::FromRow)]
-        struct Row {
-            item_id: i32,
-            genres: Option<JsonValue>,
-        }
+        let item_features_map = context.item_feature_service
+            .get_item_features_batch(item_ids.as_slice())
+            .await?;
 
-        let rows: Vec<Row> = sqlx::query_as(
-            r#"
-            SELECT item_id, genres
-            FROM item_features
-            WHERE item_id = ANY($1)
-            "#,
-        )
-        .bind(&item_ids)
-        .fetch_all(context.db_pool.as_ref())
-        .await?;
-
-        let genre_map: HashMap<i32, Vec<String>> = rows
+        let genre_map: HashMap<i32, Vec<String>> = item_features_map
             .into_iter()
-            .filter_map(|row| {
-                let genres: Option<Vec<String>> = row.genres
+            .filter_map(|(item_id, features)| {
+                let genres: Option<Vec<String>> = features.genres
                     .and_then(|g| serde_json::from_value(g).ok());
-                genres.map(|g| (row.item_id, g))
+                genres.map(|g| (item_id, g))
             })
             .collect();
 

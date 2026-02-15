@@ -21,25 +21,11 @@ impl PipelineStage for FilterAlreadyWatchedStage {
     ) -> Result<Vec<ScoredItem>> {
         let user_id = context.user_id.ok_or_else(|| anyhow::anyhow!("user_id required"))?;
 
-        #[derive(sqlx::FromRow)]
-        struct Row {
-            item_id: i32,
-        }
-
-        let rows: Vec<Row> = sqlx::query_as(
-            r#"
-            SELECT DISTINCT item_id
-            FROM user_interactions
-            WHERE user_id = $1
-                AND interaction_type = 'view'
-                AND completion_percentage > 0.9
-            "#,
-        )
-        .bind(user_id)
-        .fetch_all(context.db_pool.as_ref())
-        .await?;
-
-        let watched_ids: HashSet<i32> = rows.into_iter().map(|r| r.item_id).collect();
+        let watched_ids: HashSet<i32> = context.item_feature_service
+            .get_watched_item_ids(user_id)
+            .await?
+            .into_iter()
+            .collect();
 
         let filtered: Vec<ScoredItem> = input.into_iter()
             .filter(|item| !watched_ids.contains(&item.item_id))

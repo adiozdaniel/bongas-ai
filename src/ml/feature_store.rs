@@ -21,6 +21,7 @@ use crate::cache::CacheManager;
 use crate::config::MlConfig;
 use crate::error::ModelError;
 
+
 /// Centralized feature store for user and item features.
 pub struct FeatureStore {
     db_pool: Arc<PgPool>,
@@ -80,7 +81,7 @@ impl FeatureStore {
             if let Some(ref a) = self.analytics {
                 a.increment_throughput(&format!("{}.cache_hit", metric_key));
             }
-            return Ok(Self::pad_or_truncate(features, feature_dim));
+            return Ok(crate::ml::utils::pad_or_truncate(features, feature_dim));
         }
 
         // L2: Database
@@ -96,7 +97,7 @@ impl FeatureStore {
             Ok(feats) => {
                 // Write-back to cache (fire-and-forget)
                 let _ = self.cache_manager.set(&cache_key, &feats).await;
-                Ok(Self::pad_or_truncate(feats, feature_dim))
+                Ok(crate::ml::utils::pad_or_truncate(feats, feature_dim))
             }
             Err(e) => {
                 warn!(user_id = user_id, error = %e, "Feature fetch failed, using cold-start defaults");
@@ -248,7 +249,7 @@ impl FeatureStore {
                 features.push(row.completion_rate.unwrap_or(0.0));
                 features
             };
-            map.insert(row.item_id, Self::pad_or_truncate(features, feature_dim));
+            map.insert(row.item_id, crate::ml::utils::pad_or_truncate(features, feature_dim));
         }
 
         // Fill missing items with zero vectors
@@ -261,8 +262,5 @@ impl FeatureStore {
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    pub fn pad_or_truncate(mut features: Vec<f32>, dim: usize) -> Vec<f32> {
-        features.resize(dim, 0.0);
-        features
-    }
+
 }

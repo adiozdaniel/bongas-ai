@@ -16,6 +16,7 @@ pub mod embeddings;
 pub mod model_registry;
 pub mod worker_queue;
 pub mod online_learning;
+pub mod utils;
 
 pub use onnx_runtime::OnnxInferenceEngine;
 pub use model_loader::ModelLoader;

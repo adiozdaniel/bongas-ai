@@ -5,6 +5,7 @@ use serde::Deserialize;
 use crate::pipeline::{PipelineStage, ScoredItem};
 use crate::pipeline::context::ExecutionContext;
 
+
 #[derive(Deserialize)]
 struct Params {
     limit: usize,
@@ -40,29 +41,11 @@ impl PipelineStage for FetchPopularContentStage {
         //     None
         // };
 
-        #[derive(sqlx::FromRow)]
-        struct Row {
-            item_id: i32,
-            view_count: i32,
-            trending_score: f32,
-            completion_rate: f32,
-        }
+        let popular_items = context.item_feature_service
+            .get_popular_content(min_views, params.limit as i64)
+            .await?;
 
-        let rows: Vec<Row> = sqlx::query_as(
-            r#"
-            SELECT item_id, view_count, trending_score, completion_rate
-            FROM item_features
-            WHERE view_count >= $1
-            ORDER BY view_count DESC
-            LIMIT $2
-            "#,
-        )
-        .bind(min_views)
-        .bind(params.limit as i64)
-        .fetch_all(context.db_pool.as_ref())
-        .await?;
-
-        let items: Vec<ScoredItem> = rows.into_iter().map(|row| {
+        let items: Vec<ScoredItem> = popular_items.into_iter().map(|row| {
             ScoredItem {
                 item_id: row.item_id,
                 score: row.trending_score,

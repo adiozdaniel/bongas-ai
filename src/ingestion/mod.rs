@@ -29,21 +29,13 @@ use crate::resilience::ResilienceMetricsCollector;
 use self::types::{ActivitySource, UserActivity};
 use self::processor::ActivityProcessor;
 use self::metrics::{IngestionMetrics, IngestionHealth};
-use self::sources::{KafkaSource, KafkaSourceConfig, ApiSource, ClickHouseSource, ClickHouseSourceConfig};
+use self::sources::{KafkaSource, ApiSource, ClickHouseSource};
+
 
 /// Channel buffer size for the activity pipeline.
 const ACTIVITY_CHANNEL_BUFFER: usize = 10_000;
 
-/// Configuration for the ingestion layer.
-#[derive(Debug, Clone)]
-pub struct IngestionConfig {
-    /// Kafka source config (empty brokers = disabled).
-    pub kafka: KafkaSourceConfig,
-    /// ClickHouse source config.
-    pub clickhouse: ClickHouseSourceConfig,
-    /// Whether to enable the API source.
-    pub api_enabled: bool,
-}
+
 
 /// Manages all activity sources and the processor.
 ///
@@ -57,7 +49,7 @@ pub struct IngestionManager {
 impl IngestionManager {
     /// Create a new IngestionManager and start all sources.
     pub fn new(
-        config: crate::config::IngestionConfig,
+        _config: crate::config::IngestionConfig,
         _db_pool: Arc<PgPool>,
         _resilient_pool: Arc<ResilientPool>,
         _metrics_collector: Arc<ResilienceMetricsCollector>,
@@ -65,27 +57,7 @@ impl IngestionManager {
         _circuit_breaker_registry: Arc<CircuitBreakerRegistry>,
         ingestion_metrics: Arc<IngestionMetrics>,
     ) -> Self {
-        // Convert config types
-        let kafka_config = KafkaSourceConfig {
-            brokers: config.kafka.brokers.clone(),
-            group_id: config.kafka.group_id.clone(),
-            playback_topic: config.kafka.playback_topic.clone(),
-            reaction_topic: config.kafka.reaction_topic.clone(),
-            profile_topic: config.kafka.profile_topic.clone(),
-            notification_topic: config.kafka.notification_topic.clone(),
-        };
 
-        let clickhouse_config = ClickHouseSourceConfig {
-            url: "http://localhost:8123".to_string(), // TODO: use from config
-            poll_interval_secs: config.clickhouse.poll_interval_secs,
-            enabled: config.clickhouse.enabled,
-        };
-
-        let _ingestion_config = IngestionConfig {
-            kafka: kafka_config,
-            clickhouse: clickhouse_config,
-            api_enabled: config.api.enabled,
-        };
 
         // Store for later start()
         Self {
@@ -104,7 +76,7 @@ impl IngestionManager {
 
     /// Legacy start method that creates everything.
     pub async fn start_legacy(
-        config: IngestionConfig,
+        config: crate::config::types::ingestion::IngestionConfig,
         resilient_pool: Arc<ResilientPool>,
         db_pool: Arc<PgPool>,
         metrics_collector: Arc<ResilienceMetricsCollector>,
@@ -120,7 +92,7 @@ impl IngestionManager {
         // 1. Kafka source (if brokers configured)
         if !config.kafka.brokers.is_empty() {
             let kafka = Arc::new(KafkaSource::new(
-                config.kafka,
+                config.kafka.clone().into(),
                 circuit_breaker_registry.clone(),
             ));
             all_sources.push(kafka.clone());
@@ -139,7 +111,7 @@ impl IngestionManager {
 
         // 2. API source (always created — handlers may call ingest())
         let api_source = Arc::new(ApiSource::new());
-        if config.api_enabled {
+        if config.api.enabled {
             all_sources.push(api_source.clone());
 
             let tx = sender.clone();
@@ -155,7 +127,7 @@ impl IngestionManager {
 
         // 3. ClickHouse polling source
         let clickhouse = Arc::new(ClickHouseSource::new(
-            config.clickhouse,
+            config.clickhouse.clone().into(),
             circuit_breaker_registry,
         ));
         all_sources.push(clickhouse.clone());

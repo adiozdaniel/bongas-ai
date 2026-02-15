@@ -41,7 +41,9 @@ impl PipelineStage for MLInferenceTwoTowerStage {
         );
 
         // Get user embedding from features
-        let user_features = self.get_user_features(context, user_id).await?;
+        let user_features = context.feature_store
+            .get_user_features(user_id, 3) // Assuming feature_dim is 3 for this model
+            .await?;
 
         // Score all input items using Two-Tower dot product
         let mut scored: Vec<ScoredItem> = input.into_iter().map(|mut item| {
@@ -63,33 +65,4 @@ impl PipelineStage for MLInferenceTwoTowerStage {
     }
 }
 
-impl MLInferenceTwoTowerStage {
-    async fn get_user_features(
-        &self,
-        context: &ExecutionContext,
-        user_id: i32,
-    ) -> Result<Vec<f32>> {
-        #[derive(sqlx::FromRow)]
-        struct Row {
-            total_watch_time_minutes: i32,
-            avg_completion_rate: f32,
-            total_videos_watched: i32,
-        }
 
-        let row: Option<Row> = sqlx::query_as(
-            "SELECT total_watch_time_minutes, avg_completion_rate, total_videos_watched FROM user_features WHERE user_id = $1",
-        )
-        .bind(user_id)
-        .fetch_optional(context.db_pool.as_ref())
-        .await?;
-
-        match row {
-            Some(r) => Ok(vec![
-                r.total_watch_time_minutes as f32,
-                r.avg_completion_rate,
-                r.total_videos_watched as f32,
-            ]),
-            None => Ok(vec![0.0; 3]),
-        }
-    }
-}

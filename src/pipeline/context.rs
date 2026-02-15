@@ -39,7 +39,7 @@ pub struct ExecutionContext {
     pub item_feature_service: Arc<ItemFeatureService>,
 
     // ── ML infrastructure (resilient) ───────────────────────────────────
-    pub feature_store: Option<Arc<FeatureStore>>,
+    pub feature_store: Arc<FeatureStore>,
     pub embedding_manager: Option<Arc<EmbeddingManager>>,
 
     // ── Analytics ───────────────────────────────────────────────────────
@@ -57,6 +57,7 @@ impl ExecutionContext {
         cache_manager: Arc<CacheManager>,
         model_loader: Arc<ModelLoader>,
         item_feature_service: Arc<ItemFeatureService>,
+        feature_store: Arc<FeatureStore>,
         request_id: String,
     ) -> Self {
         Self {
@@ -68,7 +69,7 @@ impl ExecutionContext {
             cache_manager,
             model_loader,
             item_feature_service,
-            feature_store: None,
+            feature_store,
             embedding_manager: None,
             analytics: None,
             pipeline_config: Arc::new(PipelineConfig::default()),
@@ -87,10 +88,7 @@ impl ExecutionContext {
         self
     }
 
-    pub fn with_feature_store(mut self, feature_store: Arc<FeatureStore>) -> Self {
-        self.feature_store = Some(feature_store);
-        self
-    }
+
 
     pub fn with_embedding_manager(mut self, embedding_manager: Arc<EmbeddingManager>) -> Self {
         self.embedding_manager = Some(embedding_manager);

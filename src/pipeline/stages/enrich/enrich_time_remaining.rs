@@ -5,6 +5,7 @@ use crate::pipeline::{PipelineStage, ScoredItem};
 use crate::pipeline::context::ExecutionContext;
 use std::collections::HashMap;
 
+
 pub struct EnrichTimeRemainingStage;
 
 #[async_trait]
@@ -21,26 +22,13 @@ impl PipelineStage for EnrichTimeRemainingStage {
     ) -> Result<Vec<ScoredItem>> {
         let item_ids: Vec<i32> = input.iter().map(|item| item.item_id).collect();
 
-        #[derive(sqlx::FromRow)]
-        struct Row {
-            item_id: i32,
-            duration_seconds: Option<i32>,
-        }
+        let item_features_map = context.item_feature_service
+            .get_item_features_batch(item_ids.as_slice())
+            .await?;
 
-        let rows: Vec<Row> = sqlx::query_as(
-            r#"
-            SELECT item_id, duration_seconds
-            FROM item_features
-            WHERE item_id = ANY($1)
-            "#,
-        )
-        .bind(&item_ids)
-        .fetch_all(context.db_pool.as_ref())
-        .await?;
-
-        let duration_map: HashMap<i32, i32> = rows
+        let duration_map: HashMap<i32, i32> = item_features_map
             .into_iter()
-            .filter_map(|row| row.duration_seconds.map(|d| (row.item_id, d)))
+            .filter_map(|(item_id, features)| features.duration_seconds.map(|d| (item_id, d)))
             .collect();
 
         let enriched: Vec<ScoredItem> = input.into_iter().map(|mut item| {

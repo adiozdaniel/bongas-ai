@@ -2,7 +2,7 @@
 
   use crate::cache::config::CacheConfig;
   use crate::cache::metrics::{CacheMetrics, CacheMetricsSnapshot};
-  use crate::cache::strategies::{LruCache, RedisCache};
+  use crate::cache::strategies::{LruCache, RedisCache, CacheLayer};
   use crate::cache::traits::CacheStrategy;
   use anyhow::Result;
   use serde::{Deserialize, Serialize};
@@ -14,20 +14,19 @@
   /// - L1: In-memory LRU (fast, local)
   /// - L2: Redis (distributed, circuit breaker protected)
   /// - Fallback: Compute function
-  pub struct CacheManager {
-      l1: Option<Arc<LruCache>>,
-      l2: Option<Arc<RedisCache>>,
-      config: CacheConfig,
-      metrics: Arc<CacheMetrics>,
-  }
-
+      pub struct CacheManager {
+          l1: Option<CacheLayer>,
+          l2: Option<CacheLayer>,
+          config: CacheConfig,
+          metrics: Arc<CacheMetrics>,
+      }
   impl CacheManager {
       /// Create a new cache manager.
       pub async fn new(redis_url: &str, config: CacheConfig) -> Result<Self> {
           let metrics = Arc::new(CacheMetrics::new());
 
-          let l1 = if config.l1_enabled {
-              Some(Arc::new(LruCache::new(
+          let l1: Option<CacheLayer> = if config.l1_enabled {
+              Some(CacheLayer::Lru(LruCache::new(
                   config.l1_max_entries,
                   Arc::clone(&metrics),
               )))
@@ -35,9 +34,9 @@
               None
           };
 
-          let l2 = if config.l2_enabled {
+          let l2: Option<CacheLayer> = if config.l2_enabled {
               match RedisCache::new(redis_url, Arc::clone(&metrics)).await {
-                  Ok(cache) => Some(Arc::new(cache)),
+                  Ok(cache) => Some(CacheLayer::Redis(cache)),
                   Err(e) => {
                       tracing::warn!("Failed to initialize Redis cache: {}", e);
                       None
@@ -67,17 +66,17 @@
           Fut: std::future::Future<Output = Result<T>> + Send,
       {
           // Try L1 cache
-          if let Some(l1) = &self.l1 {
+          if let Some(ref l1) = self.l1 {
               if let Some(value) = l1.get::<T>(key).await? {
                   return Ok(value);
               }
           }
 
           // Try L2 cache
-          if let Some(l2) = &self.l2 {
+          if let Some(ref l2) = self.l2 {
               if let Some(value) = l2.get::<T>(key).await? {
                   // Backfill L1
-                  if let Some(l1) = &self.l1 {
+                  if let Some(ref l1) = self.l1 {
                       let _ = l1.set(key, &value, self.config.l1_ttl).await;
                   }
                   return Ok(value);
@@ -104,17 +103,17 @@
           T: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone,
       {
           // Try L1
-          if let Some(l1) = &self.l1 {
+          if let Some(ref l1) = self.l1 {
               if let Some(value) = l1.get::<T>(key).await? {
                   return Ok(Some(value));
               }
           }
 
           // Try L2
-          if let Some(l2) = &self.l2 {
+          if let Some(ref l2) = self.l2 {
               if let Some(value) = l2.get::<T>(key).await? {
                   // Backfill L1
-                  if let Some(l1) = &self.l1 {
+                  if let Some(ref l1) = self.l1 {
                       let _ = l1.set(key, &value, self.config.l1_ttl).await;
                   }
                   return Ok(Some(value));
@@ -129,10 +128,10 @@
       where
           T: Serialize + Send + Sync,
       {
-          if let Some(l2) = &self.l2 {
+          if let Some(ref l2) = self.l2 {
               let _ = l2.set(key, value, self.config.l2_ttl).await;
           }
-          if let Some(l1) = &self.l1 {
+          if let Some(ref l1) = self.l1 {
               let _ = l1.set(key, value, self.config.l1_ttl).await;
           }
           Ok(())
@@ -140,10 +139,10 @@
 
       /// Delete a value from all cache tiers.
       pub async fn delete(&self, key: &str) -> Result<()> {
-          if let Some(l1) = &self.l1 {
+          if let Some(ref l1) = self.l1 {
               let _ = l1.delete(key).await;
           }
-          if let Some(l2) = &self.l2 {
+          if let Some(ref l2) = self.l2 {
               let _ = l2.delete(key).await;
           }
           Ok(())
@@ -156,10 +155,10 @@
 
       /// Clear all caches.
       pub async fn clear(&self) -> Result<()> {
-          if let Some(l1) = &self.l1 {
+          if let Some(ref l1) = self.l1 {
               l1.clear().await?;
           }
-          if let Some(l2) = &self.l2 {
+          if let Some(ref l2) = self.l2 {
               l2.clear().await?;
           }
           Ok(())

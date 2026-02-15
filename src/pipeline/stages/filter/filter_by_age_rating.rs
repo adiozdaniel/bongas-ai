@@ -6,6 +6,7 @@ use crate::pipeline::{PipelineStage, ScoredItem};
 use crate::pipeline::context::ExecutionContext;
 use std::collections::HashMap;
 
+
 #[derive(Deserialize)]
 struct Params {
     /// Maximum allowed age rating (e.g., "G", "PG", "PG-13", "R", "NC-17")
@@ -50,26 +51,13 @@ impl PipelineStage for FilterByAgeRatingStage {
         let max_level = Self::rating_to_level(&params.max_rating);
         let item_ids: Vec<i32> = input.iter().map(|item| item.item_id).collect();
 
-        #[derive(sqlx::FromRow)]
-        struct Row {
-            item_id: i32,
-            age_rating: Option<String>,
-        }
+        let item_features_map = context.item_feature_service
+            .get_item_features_batch(item_ids.as_slice())
+            .await?;
 
-        let rows: Vec<Row> = sqlx::query_as(
-            r#"
-            SELECT item_id, age_rating
-            FROM item_features
-            WHERE item_id = ANY($1)
-            "#,
-        )
-        .bind(&item_ids)
-        .fetch_all(context.db_pool.as_ref())
-        .await?;
-
-        let rating_map: HashMap<i32, Option<String>> = rows
+        let rating_map: HashMap<i32, Option<String>> = item_features_map
             .into_iter()
-            .map(|row| (row.item_id, row.age_rating))
+            .map(|(item_id, features)| (item_id, features.age_rating))
             .collect();
 
         let filtered: Vec<ScoredItem> = input

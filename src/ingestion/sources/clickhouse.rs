@@ -13,6 +13,7 @@ use tracing::{info, error, debug, warn};
 
 use crate::circuit_breaker::{CircuitBreakerRegistry, CircuitBreakerId, CircuitBreakerConfig, CircuitState};
 use super::super::types::{ActivitySource, SourceHealth, UserActivity};
+use crate::config::types::ingestion as config_ingestion;
 
 /// Configuration for the ClickHouse polling source.
 #[derive(Debug, Clone)]
@@ -31,6 +32,16 @@ impl Default for ClickHouseSourceConfig {
             url: "http://localhost:8123".to_string(),
             poll_interval_secs: 60,
             enabled: true,
+        }
+    }
+}
+
+impl From<config_ingestion::ClickHouseSourceConfig> for ClickHouseSourceConfig {
+    fn from(config: config_ingestion::ClickHouseSourceConfig) -> Self {
+        ClickHouseSourceConfig {
+            url: "http://localhost:8123".to_string(), // Keep hardcoded for now
+            poll_interval_secs: config.poll_interval_secs,
+            enabled: config.enabled,
         }
     }
 }
