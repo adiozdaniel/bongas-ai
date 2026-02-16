@@ -45,17 +45,9 @@ impl PipelineStage for FetchUserPreferencesStage {
         "fetch_user_preferences"
     }
 
-    fn input_type(&self) -> StageDataKind {
-        StageDataKind::Empty
-    }
-
-    fn output_type(&self) -> StageDataKind {
-        StageDataKind::ScoredItems
-    }
-
-    fn can_parallelize(&self) -> bool {
-        true
-    }
+    fn input_type(&self) -> StageDataKind { StageDataKind::Empty }
+    fn output_type(&self) -> StageDataKind { StageDataKind::ScoredItems }
+    fn can_parallelize(&self) -> bool { true }
 
     async fn execute(
         &self,
@@ -100,16 +92,16 @@ impl PipelineStage for FetchUserPreferencesStage {
 
             for item in genre_items {
                 let base_score = item.popularity_score.unwrap_or(0.5);
-                items.push(ScoredItem {
-                    item_id: item.item_id,
-                    score: base_score * affinity,
-                    metadata: json!({
+                items.push(ScoredItem::new(
+                    item.item_id,
+                    base_score * affinity,
+                    json!({
                         "source": "user_preferences",
                         "matched_genre": genre,
                         "genre_affinity": affinity,
                         "title": item.title,
                     }),
-                });
+                ));
             }
         }
 
@@ -119,14 +111,14 @@ impl PipelineStage for FetchUserPreferencesStage {
                 .unwrap_or_default();
 
             for wl_item in watchlist {
-                items.push(ScoredItem {
-                    item_id: wl_item.item_id,
-                    score: 1.0, // High score for watchlist items
-                    metadata: json!({
+                items.push(ScoredItem::new(
+                    wl_item.item_id,
+                    1.0, // High score for watchlist items
+                    json!({
                         "source": "watchlist",
                         "added_at": wl_item.added_at.to_rfc3339(),
                     }),
-                });
+                ));
             }
         }
 

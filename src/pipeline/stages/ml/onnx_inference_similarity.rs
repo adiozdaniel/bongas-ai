@@ -114,15 +114,15 @@ impl PipelineStage for ONNXInferenceSimilarityStage {
                         "euclidean" => crate::ml::utils::euclidean_similarity(seed_vec, cand_vec),
                         _ => crate::ml::utils::cosine_similarity(seed_vec, cand_vec),
                     };
-                    ScoredItem {
-                        item_id: *cid,
+                    ScoredItem::new(
+                        *cid,
                         score,
-                        metadata: json!({
+                        json!({
                             "seed_item_id": seed_id,
                             "similarity_method": params.method,
                             "inference_engine": "onnx_similarity"
                         }),
-                    }
+                    )
                 })
                 .collect();
 

@@ -20,17 +20,9 @@ impl PipelineStage for FetchPopularContentStage {
         "fetch_popular_content"
     }
 
-    fn input_type(&self) -> StageDataKind {
-        StageDataKind::Empty
-    }
-
-    fn output_type(&self) -> StageDataKind {
-        StageDataKind::ScoredItems
-    }
-
-    fn can_parallelize(&self) -> bool {
-        true
-    }
+    fn input_type(&self) -> StageDataKind { StageDataKind::Empty }
+    fn output_type(&self) -> StageDataKind { StageDataKind::ScoredItems }
+    fn can_parallelize(&self) -> bool { true }
 
     async fn execute(
         &self,
@@ -51,11 +43,11 @@ impl PipelineStage for FetchPopularContentStage {
             if !hot_items.is_empty() {
                 // tracing::info!(count = hot_items.len(), "Hot Registry hit (Thunder-Lite)");
                 return Ok(hot_items.into_iter().map(|item| {
-                    ScoredItem {
-                        item_id: item.item_id,
-                        score: item.score,
-                        metadata: item.metadata,
-                    }
+                    ScoredItem::new(
+                        item.item_id,
+                        item.score,
+                        item.metadata,
+                    )
                 }).collect());
             }
         }
@@ -77,14 +69,14 @@ impl PipelineStage for FetchPopularContentStage {
             .await?;
 
         let items: Vec<ScoredItem> = popular_items.into_iter().map(|row| {
-            ScoredItem {
-                item_id: row.item_id,
-                score: row.trending_score,
-                metadata: json!({
+            ScoredItem::new(
+                row.item_id,
+                row.trending_score,
+                json!({
                     "view_count": row.view_count,
                     "completion_rate": row.completion_rate,
                 }),
-            }
+            )
         }).collect();
 
         Ok(items)

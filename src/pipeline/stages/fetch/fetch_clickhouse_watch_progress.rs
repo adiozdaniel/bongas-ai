@@ -20,17 +20,9 @@ impl PipelineStage for FetchClickHouseWatchProgressStage {
         "fetch_clickhouse_watch_progress"
     }
 
-    fn input_type(&self) -> StageDataKind {
-        StageDataKind::Empty
-    }
-
-    fn output_type(&self) -> StageDataKind {
-        StageDataKind::ScoredItems
-    }
-
-    fn can_parallelize(&self) -> bool {
-        true
-    }
+    fn input_type(&self) -> StageDataKind { StageDataKind::Empty }
+    fn output_type(&self) -> StageDataKind { StageDataKind::ScoredItems }
+    fn can_parallelize(&self) -> bool { true }
 
     async fn execute(
         &self,
@@ -76,15 +68,15 @@ impl PipelineStage for FetchClickHouseWatchProgressStage {
             .await?;
 
         let items: Vec<ScoredItem> = rows.into_iter().map(|row| {
-            ScoredItem {
-                item_id: row.video_id,
-                score: row.completion,
-                metadata: json!({
+            ScoredItem::new(
+                row.video_id,
+                row.completion,
+                json!({
                     "last_watched_at": row.last_watched_at,
                     "total_watch_time": row.total_watch_time,
                     "completion": row.completion,
                 }),
-            }
+            )
         }).collect();
 
         Ok(items)

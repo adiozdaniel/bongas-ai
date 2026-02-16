@@ -70,17 +70,9 @@ impl PipelineStage for FetchSeasonalContentStage {
         "fetch_seasonal_content"
     }
 
-    fn input_type(&self) -> StageDataKind {
-        StageDataKind::Empty
-    }
-
-    fn output_type(&self) -> StageDataKind {
-        StageDataKind::ScoredItems
-    }
-
-    fn can_parallelize(&self) -> bool {
-        true
-    }
+    fn input_type(&self) -> StageDataKind { StageDataKind::Empty }
+    fn output_type(&self) -> StageDataKind { StageDataKind::ScoredItems }
+    fn can_parallelize(&self) -> bool { true }
 
     async fn execute(
         &self,
@@ -135,10 +127,10 @@ impl PipelineStage for FetchSeasonalContentStage {
                 let popularity = row.popularity_score.unwrap_or(0.5);
                 let score = relevance * 0.6 + popularity * 0.4;
 
-                ScoredItem {
-                    item_id: row.item_id,
+                ScoredItem::new(
+                    row.item_id,
                     score,
-                    metadata: json!({
+                    json!({
                         "source": "seasonal_content",
                         "title": row.title,
                         "current_season": current_season,
@@ -147,7 +139,7 @@ impl PipelineStage for FetchSeasonalContentStage {
                         "seasonal_tags": seasonal_tags,
                         "holiday_tags": holiday_tags,
                     }),
-                }
+                )
             })
             .collect();
 

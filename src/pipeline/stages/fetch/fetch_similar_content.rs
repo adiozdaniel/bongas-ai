@@ -41,17 +41,9 @@ impl PipelineStage for FetchSimilarContentStage {
         "fetch_similar_content"
     }
 
-    fn input_type(&self) -> StageDataKind {
-        StageDataKind::Empty
-    }
-
-    fn output_type(&self) -> StageDataKind {
-        StageDataKind::ScoredItems
-    }
-
-    fn can_parallelize(&self) -> bool {
-        true
-    }
+    fn input_type(&self) -> StageDataKind { StageDataKind::Empty }
+    fn output_type(&self) -> StageDataKind { StageDataKind::ScoredItems }
+    fn can_parallelize(&self) -> bool { true }
 
     async fn execute(
         &self,
@@ -97,16 +89,16 @@ impl PipelineStage for FetchSimilarContentStage {
 
                 for row in similar {
                     if row.similarity_score >= params.min_similarity {
-                        items.push(ScoredItem {
-                            item_id: row.similar_item_id,
-                            score: row.similarity_score,
-                            metadata: json!({
+                        items.push(ScoredItem::new(
+                            row.similar_item_id,
+                            row.similarity_score,
+                            json!({
                                 "source": "similar_content",
                                 "method": "embedding",
                                 "source_item_id": params.source_item_id,
                                 "similarity": row.similarity_score,
                             }),
-                        });
+                        ));
                     }
                 }
             }
@@ -122,16 +114,16 @@ impl PipelineStage for FetchSimilarContentStage {
                 for (item_id, co_watch_count) in co_watched {
                     let similarity = co_watch_count as f32 / max_count;
                     if similarity >= params.min_similarity {
-                        items.push(ScoredItem {
+                        items.push(ScoredItem::new(
                             item_id,
-                            score: similarity,
-                            metadata: json!({
+                            similarity,
+                            json!({
                                 "source": "similar_content",
                                 "method": "collaborative",
                                 "source_item_id": params.source_item_id,
                                 "co_watch_count": co_watch_count,
                             }),
-                        });
+                        ));
                     }
                 }
             }
@@ -178,17 +170,17 @@ impl PipelineStage for FetchSimilarContentStage {
                     let similarity = genre_sim * 0.7 + creator_sim * 0.3;
 
                     if similarity >= params.min_similarity {
-                        items.push(ScoredItem {
-                            item_id: row.item_id,
-                            score: similarity * row.popularity_score.unwrap_or(0.5),
-                            metadata: json!({
+                        items.push(ScoredItem::new(
+                            row.item_id,
+                            similarity * row.popularity_score.unwrap_or(0.5),
+                            json!({
                                 "source": "similar_content",
                                 "method": params.method,
                                 "source_item_id": params.source_item_id,
                                 "genre_similarity": genre_sim,
                                 "creator_similarity": creator_sim,
                             }),
-                        });
+                        ));
                     }
                 }
 

@@ -20,17 +20,9 @@ impl PipelineStage for FetchClickHouseTrendingStage {
         "fetch_clickhouse_trending"
     }
 
-    fn input_type(&self) -> StageDataKind {
-        StageDataKind::Empty
-    }
-
-    fn output_type(&self) -> StageDataKind {
-        StageDataKind::ScoredItems
-    }
-
-    fn can_parallelize(&self) -> bool {
-        true
-    }
+    fn input_type(&self) -> StageDataKind { StageDataKind::Empty }
+    fn output_type(&self) -> StageDataKind { StageDataKind::ScoredItems }
+    fn can_parallelize(&self) -> bool { true }
 
     async fn execute(
         &self,
@@ -93,16 +85,16 @@ impl PipelineStage for FetchClickHouseTrendingStage {
         let items: Vec<ScoredItem> = rows.into_iter().map(|row| {
             let score = row.views_per_hour * row.avg_completion * (row.unique_viewers as f32 + 1.0).ln();
 
-            ScoredItem {
-                item_id: row.video_id,
+            ScoredItem::new(
+                row.video_id,
                 score,
-                metadata: json!({
+                json!({
                     "view_count": row.view_count,
                     "unique_viewers": row.unique_viewers,
                     "avg_completion": row.avg_completion,
                     "views_per_hour": row.views_per_hour,
                 }),
-            }
+            )
         }).collect();
 
         Ok(items)

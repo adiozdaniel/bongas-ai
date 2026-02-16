@@ -28,11 +28,11 @@ impl PipelineStage for MockFetchStage {
 
 fn create_test_items(count: usize) -> Vec<ScoredItem> {
     (0..count)
-        .map(|i| ScoredItem {
-            item_id: i as i32,
-            score: (i as f32) / (count as f32),
-            metadata: json!({}),
-        })
+        .map(|i| ScoredItem::new(
+            i as i32,
+            (i as f32) / (count as f32),
+            json!({}),
+        ))
         .collect()
 }
 

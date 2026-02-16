@@ -69,15 +69,15 @@ impl PipelineStage for MLInferenceBERT4RecStage {
         candidates_features.truncate(params.top_k);
 
         let items: Vec<ScoredItem> = candidates_features.into_iter().map(|row| {
-            ScoredItem {
-                item_id: row.item_id,
-                score: row.trending_score,
-                metadata: json!({
+            ScoredItem::new(
+                row.item_id,
+                row.trending_score,
+                json!({
                     "model": "bert4rec",
                     "inference_engine": if use_onnx { "onnx" } else { "fallback" },
                     "sequence_length": sequence.len(),
                 }),
-            }
+            )
         }).collect();
 
         Ok(items)

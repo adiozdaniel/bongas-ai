@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use anyhow::{Result, Context};
 use serde_json::{Value as JsonValue, json};
 use serde::Deserialize;
-use crate::pipeline::{PipelineStage, ScoredItem, StageDataKind};
+use crate::pipeline::{PipelineStage, ScoredItem, StageDataKind, CompactMetadata};
 use crate::pipeline::context::ExecutionContext;
 use tracing::warn;
 
@@ -56,10 +56,17 @@ impl PipelineStage for MetaScorerStage {
         // 2. Prepare features (batch items)
         let mut feature_batch: Vec<Vec<f32>> = Vec::with_capacity(input.len());
         for item in &input {
-            let vector = item.metadata.get("heuristic_vector")
-                .and_then(|v| serde_json::from_value::<Vec<f32>>(v.clone()).ok())
-                .unwrap_or_default();
-            feature_batch.push(vector);
+            // Phase 6: Zero-Copy Fast Path
+            if let Some(bytes) = &item.fast_metadata {
+                let archived = unsafe { rkyv::archived_root::<CompactMetadata>(bytes) };
+                feature_batch.push(archived.features.to_vec());
+            } else {
+                // Fallback to legacy JSON
+                let vector = item.metadata.get("heuristic_vector")
+                    .and_then(|v| serde_json::from_value::<Vec<f32>>(v.clone()).ok())
+                    .unwrap_or_default();
+                feature_batch.push(vector);
+            }
         }
 
         if feature_batch.is_empty() || feature_batch[0].is_empty() {
@@ -76,10 +83,8 @@ impl PipelineStage for MetaScorerStage {
                 let end = std::cmp::min(chunk_idx + params.batch_size, feature_batch.len());
                 let chunk = feature_batch[chunk_idx..end].to_vec();
                 
-                // Meta-scorer uses a simplified model (usually 1 input: the feature vector)
-                // We adapt predict_batch or use a generic inference method if available.
-                // Assuming our ONNX Engine supports single-input batching.
-                let chunk_scores = engine.predict_batch(chunk.clone(), chunk) // Mocking dual input for now if engine requires it
+                // Meta-scorer uses a simplified model
+                let chunk_scores = engine.predict_batch(chunk.clone(), chunk)
                     .context("Meta-scorer ONNX inference failed")?;
                 
                 final_scores.extend(chunk_scores);

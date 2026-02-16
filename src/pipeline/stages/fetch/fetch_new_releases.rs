@@ -49,17 +49,9 @@ impl PipelineStage for FetchNewReleasesStage {
         "fetch_new_releases"
     }
 
-    fn input_type(&self) -> StageDataKind {
-        StageDataKind::Empty
-    }
-
-    fn output_type(&self) -> StageDataKind {
-        StageDataKind::ScoredItems
-    }
-
-    fn can_parallelize(&self) -> bool {
-        true
-    }
+    fn input_type(&self) -> StageDataKind { StageDataKind::Empty }
+    fn output_type(&self) -> StageDataKind { StageDataKind::ScoredItems }
+    fn can_parallelize(&self) -> bool { true }
 
     async fn execute(
         &self,
@@ -93,10 +85,10 @@ impl PipelineStage for FetchNewReleasesStage {
                 let popularity = row.popularity_score.unwrap_or(0.5);
                 let score = recency_score * 0.6 + popularity * 0.4;
 
-                ScoredItem {
-                    item_id: row.item_id,
+                ScoredItem::new(
+                    row.item_id,
                     score,
-                    metadata: json!({
+                    json!({
                         "source": "new_releases",
                         "title": row.title,
                         "release_date": row.release_date.map(|d| d.to_rfc3339()),
@@ -105,7 +97,7 @@ impl PipelineStage for FetchNewReleasesStage {
                         "genres": row.genres,
                         "recency_score": recency_score,
                     }),
-                }
+                )
             })
             .collect();
 

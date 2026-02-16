@@ -164,17 +164,17 @@ impl PipelineStage for ONNXInferenceStage {
             .iter()
             .zip(scores.iter())
             .map(|(&item_id, &score)| {
-                ScoredItem {
+                ScoredItem::new(
                     item_id,
                     score,
-                    metadata: json!({
+                    json!({
                         "inference_engine": "onnx",
                         "model_name": params.model_name,
                         "model_format": params.model_format,
                         "model_version": params.model_version.as_deref().unwrap_or("latest"),
                         "inference_time_ms": inference_time.as_millis() as u64
                     }),
-                }
+                )
             })
             .collect();
 

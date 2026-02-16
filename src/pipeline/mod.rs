@@ -11,6 +11,7 @@ use crate::pipeline::context::ExecutionContext;
 use std::sync::Arc;
 use std::time::Duration;
 use crate::circuit_breaker::CircuitBreaker;
+use rkyv::{Archive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize};
 
 /// The type of data that a stage expects or produces.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -47,23 +48,43 @@ pub trait PipelineStage: Send + Sync {
         input: Vec<ScoredItem>,
     ) -> Result<Vec<ScoredItem>>;
 
-    /// Returns true if this stage can be executed in parallel with other similar stages
-    /// (e.g. multiple fetchers or multiple enrichers).
+    /// Returns true if this stage can be executed in parallel with other similar stages.
     fn can_parallelize(&self) -> bool {
         false
     }
 }
 
-/// Item with relevance score
+/// Item with relevance score and dual-mode metadata.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ScoredItem {
     pub item_id: i32,
     pub score: f32,
     pub metadata: JsonValue,
+    #[serde(skip)]
+    pub fast_metadata: Option<Vec<u8>>,
+}
+
+impl ScoredItem {
+    pub fn new(item_id: i32, score: f32, metadata: JsonValue) -> Self {
+        Self {
+            item_id,
+            score,
+            metadata,
+            fast_metadata: None,
+        }
+    }
+}
+
+/// Zero-copy metadata schema for the hot path.
+#[derive(Archive, RkyvDeserialize, RkyvSerialize, Debug, PartialEq)]
+#[archive(check_bytes)]
+pub struct CompactMetadata {
+    pub features: Vec<f32>,
+    pub flags: u64,
+    pub category_id: i32,
 }
 
 /// A stage that has been pre-linked with its implementation and circuit breaker.
-/// This eliminates HashMap lookups during the request hot path.
 pub struct BoundStage {
     pub implementation: Arc<dyn PipelineStage>,
     pub breaker: Option<Arc<CircuitBreaker>>,
@@ -81,23 +102,21 @@ impl std::fmt::Debug for BoundStage {
     }
 }
 
-/// A node in the execution graph. Can be a single stage or a group of parallel stages.
+/// A node in the execution graph.
 #[derive(Debug)]
 pub enum ExecutionNode {
-    /// A single stage that must run in sequence (a sync barrier).
     Single(BoundStage),
-    /// A group of stages that can run in parallel.
     Parallel(Vec<BoundStage>),
 }
 
-/// An executable pipeline where all stages have been pre-linked and grouped into execution nodes.
+/// An executable pipeline where all stages have been pre-linked.
 #[derive(Debug)]
 pub struct ExecutablePipeline {
     pub nodes: Vec<ExecutionNode>,
     pub fallback_nodes: Option<Vec<ExecutionNode>>,
 }
 
-/// Specialized error for pipeline execution to aid in resilience routing.
+/// Specialized error for pipeline execution.
 #[derive(Debug, thiserror::Error)]
 pub enum PipelineError {
     #[error("Stage '{stage_type}' failed: {source}")]

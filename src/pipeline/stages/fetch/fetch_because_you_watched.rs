@@ -43,17 +43,9 @@ impl PipelineStage for FetchBecauseYouWatchedStage {
         "fetch_because_you_watched"
     }
 
-    fn input_type(&self) -> StageDataKind {
-        StageDataKind::Empty
-    }
-
-    fn output_type(&self) -> StageDataKind {
-        StageDataKind::ScoredItems
-    }
-
-    fn can_parallelize(&self) -> bool {
-        true
-    }
+    fn input_type(&self) -> StageDataKind { StageDataKind::Empty }
+    fn output_type(&self) -> StageDataKind { StageDataKind::ScoredItems }
+    fn can_parallelize(&self) -> bool { true }
 
     async fn execute(
         &self,
@@ -156,10 +148,10 @@ impl PipelineStage for FetchBecauseYouWatchedStage {
                 let popularity = row.popularity_score.unwrap_or(0.5);
                 let score = similarity * 0.7 + popularity * 0.3;
 
-                ScoredItem {
-                    item_id: row.item_id,
+                ScoredItem::new(
+                    row.item_id,
                     score,
-                    metadata: json!({
+                    json!({
                         "source": "because_you_watched",
                         "source_item_id": source_item_id,
                         "source_title": source.title,
@@ -167,7 +159,7 @@ impl PipelineStage for FetchBecauseYouWatchedStage {
                         "genre_similarity": genre_sim,
                         "creator_similarity": creator_sim,
                     }),
-                }
+                )
             })
             .collect();
 

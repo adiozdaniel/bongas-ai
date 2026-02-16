@@ -20,17 +20,9 @@ impl PipelineStage for FetchRecentWatchesStage {
         "fetch_recent_watches"
     }
 
-    fn input_type(&self) -> StageDataKind {
-        StageDataKind::Empty
-    }
-
-    fn output_type(&self) -> StageDataKind {
-        StageDataKind::ScoredItems
-    }
-
-    fn can_parallelize(&self) -> bool {
-        true
-    }
+    fn input_type(&self) -> StageDataKind { StageDataKind::Empty }
+    fn output_type(&self) -> StageDataKind { StageDataKind::ScoredItems }
+    fn can_parallelize(&self) -> bool { true }
 
     async fn execute(
         &self,
@@ -46,13 +38,13 @@ impl PipelineStage for FetchRecentWatchesStage {
             .await?;
 
         let items: Vec<ScoredItem> = recent_watches.into_iter().map(|row| {
-            ScoredItem {
-                item_id: row.item_id,
-                score: 1.0,
-                metadata: json!({
+            ScoredItem::new(
+                row.item_id,
+                1.0,
+                json!({
                     "last_watched": row.last_watched.map(|t| t.to_rfc3339()),
                 }),
-            }
+            )
         }).collect();
 
         Ok(items)

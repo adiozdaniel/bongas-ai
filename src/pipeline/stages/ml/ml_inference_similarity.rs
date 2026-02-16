@@ -82,14 +82,14 @@ impl PipelineStage for MLInferenceSimilarityStage {
                 })
                 .sum::<f32>() / seed_embeddings.len().max(1) as f32;
 
-            results.push(ScoredItem {
-                item_id: cand_feature.item_id,
-                score: avg_sim,
-                metadata: json!({
+            results.push(ScoredItem::new(
+                cand_feature.item_id,
+                avg_sim,
+                json!({
                     "similarity_method": params.method,
                     "inference_engine": "native",
                 }),
-            });
+            ));
         }
 
         results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));

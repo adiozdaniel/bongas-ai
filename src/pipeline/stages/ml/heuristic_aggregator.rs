@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use anyhow::{Result, Context};
 use serde_json::{Value as JsonValue, json};
 use serde::Deserialize;
-use crate::pipeline::{PipelineStage, ScoredItem, StageDataKind};
+use crate::pipeline::{PipelineStage, ScoredItem, StageDataKind, CompactMetadata};
 use crate::pipeline::context::ExecutionContext;
 
 #[derive(Deserialize)]
@@ -74,6 +74,18 @@ impl PipelineStage for HeuristicAggregatorStage {
 
             // Pack into metadata
             item.metadata["heuristic_vector"] = json!(feature_vector);
+
+            // Phase 6: Zero-Copy Fast Path
+            let compact = CompactMetadata {
+                features: feature_vector,
+                flags: 0,
+                category_id: 0,
+            };
+
+            if let Ok(bytes) = rkyv::to_bytes::<_, 256>(&compact) {
+                item.fast_metadata = Some(bytes.to_vec());
+            }
+
             item
         }).collect();
 
