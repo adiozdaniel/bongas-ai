@@ -1,7 +1,7 @@
 use criterion::{criterion_group, criterion_main, Criterion, BenchmarkId, black_box};
 use bongas_ai::pipeline::executor::PipelineExecutor;
 use bongas_ai::pipeline::context::ExecutionContext;
-use bongas_ai::pipeline::{ScoredItem, PipelineStage};
+use bongas_ai::pipeline::{ScoredItem, PipelineStage, StageDataKind};
 use bongas_ai::db::models::{PipelineDefinition, PipelineStageConfig};
 use bongas_ai::circuit_breaker::CircuitBreakerRegistry;
 use bongas_ai::resilience::{ResilienceMetricsCollector, MetricsRegistry, ResilienceConfig};
@@ -19,6 +19,8 @@ struct MockFetchStage {
 #[async_trait]
 impl PipelineStage for MockFetchStage {
     fn name(&self) -> &str { "mock_fetch" }
+    fn input_type(&self) -> StageDataKind { StageDataKind::Empty }
+    fn output_type(&self) -> StageDataKind { StageDataKind::ScoredItems }
     async fn execute(&self, _: &ExecutionContext, _: &serde_json::Value, _: Vec<ScoredItem>) -> anyhow::Result<Vec<ScoredItem>> {
         Ok(self.items.clone())
     }
@@ -85,9 +87,18 @@ fn bench_pipeline_executor(c: &mut Criterion) {
             fallback_stages: None,
         };
 
-        group.bench_with_input(BenchmarkId::new("end_to_end", size), &size, |b, _| {
+        let linked = executor.link(&pipeline).unwrap();
+
+        group.bench_with_input(BenchmarkId::new("slow_path_dynamic", size), &size, |b, _| {
             b.to_async(&rt).iter(|| async {
                 let res = executor.execute(&pipeline, &context).await.unwrap();
+                black_box(res)
+            })
+        });
+
+        group.bench_with_input(BenchmarkId::new("fast_path_linked", size), &size, |b, _| {
+            b.to_async(&rt).iter(|| async {
+                let res = executor.execute_linked(&linked, &context).await.unwrap();
                 black_box(res)
             })
         });

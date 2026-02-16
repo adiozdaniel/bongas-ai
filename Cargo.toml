@@ -90,6 +90,10 @@ name = "engine_bench"
 harness = false
 
 [[bench]]
+name = "thunder_killer_bench"
+harness = false
+
+[[bench]]
 name = "logic_bench"
 harness = false
 

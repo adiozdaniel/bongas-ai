@@ -14,7 +14,6 @@ use tokio::sync::Semaphore;
 
 // Mock concurrent workload generator
 struct ConcurrentWorkload {
-    max_concurrent: usize,
     semaphore: Arc<Semaphore>,
     completed: Arc<AtomicU64>,
     failed: Arc<AtomicU64>,
@@ -23,7 +22,6 @@ struct ConcurrentWorkload {
 impl ConcurrentWorkload {
     fn new(max_concurrent: usize) -> Self {
         Self {
-            max_concurrent,
             semaphore: Arc::new(Semaphore::new(max_concurrent)),
             completed: Arc::new(AtomicU64::new(0)),
             failed: Arc::new(AtomicU64::new(0)),

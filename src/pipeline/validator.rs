@@ -137,7 +137,12 @@ impl PipelineValidator {
 
     /// Helper to check if two data kinds are compatible.
     fn are_types_compatible(&self, output: StageDataKind, input: StageDataKind) -> bool {
-        // Strict matching for now. In future, could allow ItemIds -> ScoredItems promotion.
+        // If a stage expects Empty, it can run regardless of previous output (it just ignores it)
+        if input == StageDataKind::Empty {
+            return true;
+        }
+        
+        // Otherwise, types must match exactly
         output == input
     }
 }
