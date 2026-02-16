@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use anyhow::Result;
 use serde_json::{Value as JsonValue, json};
 use serde::Deserialize;
-use crate::pipeline::{PipelineStage, ScoredItem};
+use crate::pipeline::{PipelineStage, ScoredItem, StageDataKind};
 use crate::pipeline::context::ExecutionContext;
 use chrono::Utc;
 
@@ -47,6 +47,14 @@ pub struct FetchNewReleasesStage;
 impl PipelineStage for FetchNewReleasesStage {
     fn name(&self) -> &str {
         "fetch_new_releases"
+    }
+
+    fn input_type(&self) -> StageDataKind {
+        StageDataKind::Empty
+    }
+
+    fn output_type(&self) -> StageDataKind {
+        StageDataKind::ScoredItems
     }
 
     async fn execute(

@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use anyhow::Result;
 use serde_json::{Value as JsonValue, json};
 use serde::Deserialize;
-use crate::pipeline::{PipelineStage, ScoredItem};
+use crate::pipeline::{PipelineStage, ScoredItem, StageDataKind};
 use crate::pipeline::context::ExecutionContext;
 use chrono::{Utc, Datelike};
 use crate::db::repositories::item_feature_service::SeasonalItemRowExtended;
@@ -68,6 +68,14 @@ impl FetchSeasonalContentStage {
 impl PipelineStage for FetchSeasonalContentStage {
     fn name(&self) -> &str {
         "fetch_seasonal_content"
+    }
+
+    fn input_type(&self) -> StageDataKind {
+        StageDataKind::Empty
+    }
+
+    fn output_type(&self) -> StageDataKind {
+        StageDataKind::ScoredItems
     }
 
     async fn execute(

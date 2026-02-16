@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use anyhow::Result;
 use serde_json::{Value as JsonValue, json};
 use serde::Deserialize;
-use crate::pipeline::{PipelineStage, ScoredItem};
+use crate::pipeline::{PipelineStage, ScoredItem, StageDataKind};
 use crate::pipeline::context::ExecutionContext;
 
 #[derive(Deserialize)]
@@ -18,6 +18,14 @@ pub struct FetchClickHouseTrendingStage;
 impl PipelineStage for FetchClickHouseTrendingStage {
     fn name(&self) -> &str {
         "fetch_clickhouse_trending"
+    }
+
+    fn input_type(&self) -> StageDataKind {
+        StageDataKind::Empty
+    }
+
+    fn output_type(&self) -> StageDataKind {
+        StageDataKind::ScoredItems
     }
 
     async fn execute(

@@ -2,6 +2,7 @@ pub mod executor;
 pub mod stages;
 pub mod context;
 pub mod registry;
+pub mod validator;
 
 use async_trait::async_trait;
 use anyhow::Result;
@@ -11,11 +12,32 @@ use std::sync::Arc;
 use std::time::Duration;
 use crate::circuit_breaker::CircuitBreaker;
 
+/// The type of data that a stage expects or produces.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum StageDataKind {
+    /// No input required (typical for the first stage)
+    Empty,
+    /// A list of raw item IDs (e.g., from a database fetch)
+    ItemIds,
+    /// A list of ScoredItems (items that have been ranked or filtered)
+    ScoredItems,
+}
+
 /// Core trait for all pipeline stages
 #[async_trait]
 pub trait PipelineStage: Send + Sync {
     /// Stage name (must match JSONB "type" field)
     fn name(&self) -> &str;
+
+    /// The type of data this stage expects as input.
+    fn input_type(&self) -> StageDataKind {
+        StageDataKind::ScoredItems
+    }
+
+    /// The type of data this stage produces as output.
+    fn output_type(&self) -> StageDataKind {
+        StageDataKind::ScoredItems
+    }
 
     /// Execute stage logic
     async fn execute(
@@ -80,4 +102,13 @@ pub enum PipelineError {
     },
     #[error("Pipeline execution timed out")]
     PipelineTimeout,
+    #[error("Type mismatch in pipeline: stage '{stage_index}' ({stage_type}) outputs {output:?}, but stage '{next_stage_index}' ({next_stage_type}) expects {input:?}")]
+    TypeMismatch {
+        stage_index: usize,
+        stage_type: String,
+        output: StageDataKind,
+        next_stage_index: usize,
+        next_stage_type: String,
+        input: StageDataKind,
+    },
 }

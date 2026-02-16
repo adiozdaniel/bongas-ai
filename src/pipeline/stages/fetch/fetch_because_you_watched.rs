@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use anyhow::Result;
 use serde_json::{Value as JsonValue, json};
 use serde::Deserialize;
-use crate::pipeline::{PipelineStage, ScoredItem};
+use crate::pipeline::{PipelineStage, ScoredItem, StageDataKind};
 use crate::pipeline::context::ExecutionContext;
 use std::collections::HashSet;
 
@@ -41,6 +41,14 @@ pub struct FetchBecauseYouWatchedStage;
 impl PipelineStage for FetchBecauseYouWatchedStage {
     fn name(&self) -> &str {
         "fetch_because_you_watched"
+    }
+
+    fn input_type(&self) -> StageDataKind {
+        StageDataKind::Empty
+    }
+
+    fn output_type(&self) -> StageDataKind {
+        StageDataKind::ScoredItems
     }
 
     async fn execute(

@@ -22,6 +22,7 @@ use crate::circuit_breaker::{
 use crate::circuit_breaker::observer::{CircuitState, ResilienceObserver};
 use crate::config::PipelineConfig;
 use crate::pipeline::{PipelineStage, ScoredItem, BoundStage, ExecutablePipeline, PipelineError};
+use crate::pipeline::validator::PipelineValidator;
 use crate::pipeline::context::ExecutionContext;
 use crate::pipeline::registry::build_stage_registry;
 use crate::db::models::PipelineDefinition;
@@ -33,6 +34,9 @@ pub struct PipelineExecutor {
 
     /// Per-stage circuit breakers keyed by stage type name.
     stage_breakers: HashMap<String, Arc<CircuitBreaker>>,
+
+    /// Structural validator for pipelines.
+    validator: PipelineValidator,
 
     /// Pipeline resilience configuration.
     config: PipelineConfig,
@@ -60,6 +64,7 @@ impl PipelineExecutor {
         analytics: Option<Arc<PerformanceStats>>,
         registry: HashMap<String, Arc<dyn PipelineStage>>,
     ) -> Self {
+        let validator = PipelineValidator::new(registry.clone());
         // Build per-stage circuit breakers
         let mut stage_breakers = HashMap::new();
         if config.stage_breaker_enabled {
@@ -108,14 +113,19 @@ impl PipelineExecutor {
         Self {
             stage_registry: registry,
             stage_breakers,
+            validator,
             config,
             analytics,
         }
     }
 
     /// Link a pipeline definition into an executable version.
-    /// This performs all registry lookups and pre-calculates circuit breakers and timeouts.
+    /// This performs structural validation, registry lookups, and pre-calculates circuit breakers and timeouts.
     pub fn link(&self, definition: &PipelineDefinition) -> Result<ExecutablePipeline> {
+        // Step 1: Structural Validation (Safety Gate)
+        self.validator.validate_definition(definition)?;
+
+        // Step 2: Linking
         let stages = self.link_stages(&definition.stages)?;
         let fallback_stages = if let Some(ref fallback) = definition.fallback_stages {
             Some(self.link_stages(fallback)?)
