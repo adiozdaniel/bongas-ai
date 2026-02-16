@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use anyhow::Result;
 use serde_json::Value as JsonValue;
 use serde::Deserialize;
-use crate::pipeline::{PipelineStage, ScoredItem};
+use crate::pipeline::{PipelineStage, ScoredItem, StageDataKind};
 use crate::pipeline::context::ExecutionContext;
 use std::collections::HashMap;
 
@@ -71,6 +71,9 @@ impl PipelineStage for DiversifyMMRStage {
     fn name(&self) -> &str {
         "diversify_mmr"
     }
+
+    fn input_type(&self) -> StageDataKind { StageDataKind::ScoredItems }
+    fn output_type(&self) -> StageDataKind { StageDataKind::ScoredItems }
 
     async fn execute(
         &self,

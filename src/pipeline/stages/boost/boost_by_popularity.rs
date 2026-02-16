@@ -2,10 +2,9 @@ use async_trait::async_trait;
 use anyhow::Result;
 use serde_json::Value as JsonValue;
 use serde::Deserialize;
-use crate::pipeline::{PipelineStage, ScoredItem};
+use crate::pipeline::{PipelineStage, ScoredItem, StageDataKind};
 use crate::pipeline::context::ExecutionContext;
-use std::collections::HashMap;
-
+use crate::ml::utils::apply_weights_simd;
 
 #[derive(Deserialize)]
 struct Params {
@@ -20,6 +19,9 @@ impl PipelineStage for BoostByPopularityStage {
         "boost_by_popularity"
     }
 
+    fn input_type(&self) -> StageDataKind { StageDataKind::ScoredItems }
+    fn output_type(&self) -> StageDataKind { StageDataKind::ScoredItems }
+
     async fn execute(
         &self,
         context: &ExecutionContext,
@@ -27,23 +29,30 @@ impl PipelineStage for BoostByPopularityStage {
         input: Vec<ScoredItem>,
     ) -> Result<Vec<ScoredItem>> {
         let params: Params = serde_json::from_value(params.clone())?;
-        let item_ids: Vec<i32> = input.iter().map(|item| item.item_id).collect();
+        if input.is_empty() { return Ok(input); }
 
+        let item_ids: Vec<i32> = input.iter().map(|item| item.item_id).collect();
         let item_features_map = context.item_feature_service
             .get_item_features_batch(item_ids.as_slice())
             .await?;
 
-        let pop_map: HashMap<i32, f32> = item_features_map
-            .into_iter()
-            .map(|(item_id, features)| (item_id, features.trending_score))
-            .collect();
-
-        let boosted: Vec<ScoredItem> = input.into_iter().map(|mut item| {
-            if let Some(&pop_score) = pop_map.get(&item.item_id) {
-                item.score = item.score * (1.0 - params.weight) + pop_score * params.weight;
-            }
-            item
+        // 1. Prepare vectors for SIMD
+        let mut current_scores: Vec<f32> = input.iter().map(|i| i.score).collect();
+        let boosts: Vec<f32> = input.iter().map(|item| {
+            item_features_map.get(&item.item_id)
+                .map(|f| f.trending_score)
+                .unwrap_or(0.0)
         }).collect();
+
+        // 2. Hardware-level vectorization
+        apply_weights_simd(&mut current_scores, &boosts, params.weight);
+
+        // 3. Re-inject scores
+        let boosted: Vec<ScoredItem> = input.into_iter().zip(current_scores.into_iter())
+            .map(|(mut item, new_score)| {
+                item.score = new_score;
+                item
+            }).collect();
 
         Ok(boosted)
     }
