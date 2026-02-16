@@ -638,7 +638,7 @@ impl ItemFeatureService {
             .execute(|pool| async move {
                 sqlx::query_as::<_, PopularItemRow>(
                     r#"
-                    SELECT item_id, view_count, trending_score, completion_rate
+                    SELECT item_id, title, is_explicit, view_count, trending_score, completion_rate
                     FROM item_features
                     WHERE view_count >= $1
                     ORDER BY view_count DESC
@@ -1127,6 +1127,8 @@ pub struct RecentWatchRow {
 #[derive(Debug, Clone, FromRow)]
 pub struct PopularItemRow {
     pub item_id: i32,
+    pub title: Option<String>,
+    pub is_explicit: Option<bool>,
     pub view_count: i32,
     pub trending_score: f32,
     pub completion_rate: f32,

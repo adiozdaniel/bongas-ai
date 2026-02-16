@@ -41,6 +41,25 @@ impl PipelineStage for FetchPopularContentStage {
         let params: Params = serde_json::from_value(params.clone())?;
         let min_views = params.min_views.unwrap_or(0);
 
+        // Thunder-Lite: Check Hot Registry first
+        if let Some(registry) = &context.hot_registry {
+            // If we don't have a strict min_views filter (or if hot items satisfy it implicitly),
+            // we can serve directly from RAM.
+            // HotRegistry stores top-k by trending score, which usually correlates with views.
+            let hot_items = registry.get_top_k(params.limit);
+            
+            if !hot_items.is_empty() {
+                // tracing::info!(count = hot_items.len(), "Hot Registry hit (Thunder-Lite)");
+                return Ok(hot_items.into_iter().map(|item| {
+                    ScoredItem {
+                        item_id: item.item_id,
+                        score: item.score,
+                        metadata: item.metadata,
+                    }
+                }).collect());
+            }
+        }
+
         // Record ClickHouse query
         // if let Some(analytics) = context.analytics() {
         //     analytics.record_clickhouse_query("fetch_popular_content", "item_features");

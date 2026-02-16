@@ -22,6 +22,7 @@
   pub mod strategies;
   pub mod traits;
   pub mod warming;
+  pub mod hot_registry;
 
   pub use config::CacheConfig;
   pub use manager::CacheManager;
@@ -29,3 +30,4 @@
   pub use strategies::{LruCache, NoOpCache, RedisCache};
   pub use traits::{CacheStrategy, CacheTier};
   pub use warming::CacheWarmer;
+  pub use hot_registry::{HotRegistrySafe, HotItem};

@@ -9,7 +9,7 @@
 
 use std::sync::Arc;
 use crate::analytics::types::PerformanceStats;
-use crate::cache::CacheManager;
+use crate::cache::{CacheManager, HotRegistrySafe};
 use crate::config::PipelineConfig;
 use crate::db::repositories::item_feature_service::ItemFeatureService;
 use crate::ml::model_loader::ModelLoader;
@@ -31,6 +31,7 @@ pub struct ExecutionContext {
     // ── Core dependencies ───────────────────────────────────────────────
     pub cache_manager: Arc<CacheManager>,
     pub model_loader: Arc<ModelLoader>,
+    pub hot_registry: Option<Arc<HotRegistrySafe>>,
 
     // ── Resilient data access ───────────────────────────────────────────
     /// Unified item/user feature service — pipeline stages should use this
@@ -79,6 +80,7 @@ impl ExecutionContext {
             request_id,
             cache_manager,
             model_loader,
+            hot_registry: None,
             item_feature_service,
             clickhouse_client: None,
             feature_store,
@@ -146,6 +148,11 @@ impl ExecutionContext {
     }
 
     // ── Builder methods ─────────────────────────────────────────────────
+
+    pub fn with_hot_registry(mut self, hot_registry: Arc<HotRegistrySafe>) -> Self {
+        self.hot_registry = Some(hot_registry);
+        self
+    }
 
     pub fn with_clickhouse_client(mut self, client: Arc<clickhouse::Client>) -> Self {
         self.clickhouse_client = Some(client);

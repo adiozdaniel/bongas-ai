@@ -12,7 +12,7 @@ use crate::AppConfig;
 use crate::pipeline::executor::PipelineExecutor;
 use crate::pipeline::context::ExecutionContext;
 use crate::pipeline::{ScoredItem, ExecutablePipeline};
-use crate::cache::{CacheManager, CacheConfig, CacheWarmer, CacheMetricsSnapshot};
+use crate::cache::{CacheManager, CacheConfig, CacheWarmer, CacheMetricsSnapshot, HotRegistrySafe, HotItem};
 use crate::circuit_breaker::CircuitBreakerRegistry;
 use crate::ingestion::IngestionManager;
 use crate::ingestion::metrics::IngestionMetrics;
@@ -46,6 +46,7 @@ pub struct BongasEngine {
     // Caching & staging
     pub(crate) staging_manager: Arc<StagingManager>,
     pub(crate) staleness_engine: Arc<StalenessEngine>,
+    pub(crate) hot_registry: Arc<HotRegistrySafe>,
 
     // ML Model Management
     pub(crate) model_loader: Arc<ModelLoader>,
@@ -148,6 +149,7 @@ impl BongasEngine {
         // Create Netflix-grade cache manager
         let cache_config = CacheConfig::default();
         let cache_manager = Arc::new(CacheManager::new(&config.redis.url, cache_config.clone()).await?);
+        let hot_registry = Arc::new(HotRegistrySafe::new());
 
         // Create model repository and loader
         let model_repo = Arc::new(ModelRepository::new(resilient_pool.clone(), resilience_metrics.clone()));
@@ -239,6 +241,7 @@ impl BongasEngine {
             pipeline_executor,
             staging_manager,
             staleness_engine,
+            hot_registry: hot_registry.clone(),
             model_loader,
             item_feature_service,
             feature_store,
@@ -255,7 +258,40 @@ impl BongasEngine {
 
         info!("BongasEngine initialized successfully");
 
+        // Start hot registry pulse
+        let engine_clone = engine.clone();
+        tokio::spawn(async move {
+            engine_clone.start_hot_registry_pulse().await;
+        });
+
         Ok(engine)
+    }
+
+    async fn start_hot_registry_pulse(&self) {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(60));
+        loop {
+            interval.tick().await;
+            
+            match self.item_feature_service.get_popular_content(100, 10000).await {
+                Ok(items) => {
+                    let hot_items: Vec<HotItem> = items.into_iter().map(|item| HotItem {
+                        item_id: item.item_id,
+                        score: item.trending_score,
+                        metadata: serde_json::json!({
+                            "title": item.title,
+                            "view_count": item.view_count,
+                            "completion_rate": item.completion_rate,
+                            "is_explicit": item.is_explicit,
+                        }),
+                    }).collect();
+                    
+                    self.hot_registry.refresh(hot_items);
+                }
+                Err(e) => {
+                    warn!(error = %e, "Failed to refresh Hot Registry");
+                }
+            }
+        }
     }
 
     /// Start activity ingestion from all configured sources
@@ -450,6 +486,7 @@ impl BongasEngine {
             self.feature_store.clone(),
             request_id,
         )
+        .with_hot_registry(self.hot_registry.clone())
         .with_device_type(
             context_params.get("device_type")
                 .and_then(|v| v.as_str())
