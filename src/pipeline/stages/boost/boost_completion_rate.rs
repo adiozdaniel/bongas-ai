@@ -56,6 +56,19 @@ impl PipelineStage for BoostCompletionRateStage {
         let item_ids: Vec<i32> = input.iter().map(|item| item.item_id).collect();
 
         // Query ClickHouse for completion rates
+        let query = format!(
+            r#"
+            SELECT
+                video_id,
+                avg(watch_percentage) as avg_completion,
+                count() as total_views,
+                countIf(watch_percentage >= 0.9) as completed_views
+            FROM playback_sessions
+            WHERE video_id IN ({})
+            GROUP BY video_id
+            "#,
+            item_ids.iter().map(|id| id.to_string()).collect::<Vec<_>>().join(",")
+        );
 
         #[derive(clickhouse::Row, Deserialize)]
         struct CompletionRow {
@@ -65,15 +78,13 @@ impl PipelineStage for BoostCompletionRateStage {
             completed_views: u64,
         }
 
-        let rows: Vec<CompletionRow> = item_ids.iter().map(|&id| {
-            // Mocking CompletionRow for demonstration
-            CompletionRow {
-                video_id: id,
-                avg_completion: 0.8,
-                total_views: 20,
-                completed_views: 15,
-            }
-        }).collect();
+        let client = _context.clickhouse_client.as_ref()
+            .ok_or_else(|| anyhow::anyhow!("ClickHouse client not configured"))?;
+
+        let rows: Vec<CompletionRow> = client
+            .query(&query)
+            .fetch_all()
+            .await?;
 
         let completion_map: HashMap<i32, (f32, u64, u64)> = rows
             .into_iter()

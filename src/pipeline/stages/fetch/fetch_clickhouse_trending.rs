@@ -40,7 +40,7 @@ impl PipelineStage for FetchClickHouseTrendingStage {
         //     None
         // };
 
-        let _query = format!(
+        let query = format!(
             r#"
             SELECT
                 video_id,
@@ -70,19 +70,13 @@ impl PipelineStage for FetchClickHouseTrendingStage {
             views_per_hour: f32,
         }
 
-        // Mock a list of video IDs for demonstration purposes
-        let video_ids = vec![1, 2, 3, 4, 5];
+        let client = _context.clickhouse_client.as_ref()
+            .ok_or_else(|| anyhow::anyhow!("ClickHouse client not configured"))?;
 
-        let rows: Vec<TrendingItem> = video_ids.iter().map(|&id| {
-            // Mocking TrendingItem for demonstration
-            TrendingItem {
-                video_id: id,
-                view_count: rand::random::<u64>() % 1000 + 1,
-                unique_viewers: rand::random::<u64>() % 500 + 1,
-                avg_completion: rand::random::<f32>(),
-                views_per_hour: rand::random::<f32>() * 10.0, // Mock views per hour
-            }
-        }).collect();
+        let rows: Vec<TrendingItem> = client
+            .query(&query)
+            .fetch_all()
+            .await?;
 
         let items: Vec<ScoredItem> = rows.into_iter().map(|row| {
             let score = row.views_per_hour * row.avg_completion * (row.unique_viewers as f32 + 1.0).ln();

@@ -45,7 +45,7 @@ impl PipelineStage for BoostTrendingStage {
         let item_ids: Vec<i32> = input.iter().map(|item| item.item_id).collect();
 
         // Query ClickHouse for trending scores
-        let _query = format!(
+        let query = format!(
             r#"
             SELECT
                 video_id,
@@ -69,15 +69,13 @@ impl PipelineStage for BoostTrendingStage {
             avg_completion: f32,
         }
 
-        let rows: Vec<TrendingRow> = item_ids.iter().map(|&id| {
-            // Mocking TrendingRow for demonstration
-            TrendingRow {
-                video_id: id,
-                view_count: rand::random::<u64>() % 1000 + 1,
-                unique_viewers: rand::random::<u64>() % 500 + 1,
-                avg_completion: rand::random::<f32>(),
-            }
-        }).collect();
+        let client = _context.clickhouse_client.as_ref()
+            .ok_or_else(|| anyhow::anyhow!("ClickHouse client not configured"))?;
+
+        let rows: Vec<TrendingRow> = client
+            .query(&query)
+            .fetch_all()
+            .await?;
 
         // Calculate trending scores
         let trending_map: HashMap<i32, f32> = rows

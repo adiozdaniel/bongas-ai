@@ -36,6 +36,9 @@ pub struct ExecutionContext {
     /// instead of querying db_pool directly.
     pub item_feature_service: Arc<ItemFeatureService>,
 
+    /// ClickHouse client for analytics-heavy retrieval stages.
+    pub clickhouse_client: Option<Arc<clickhouse::Client>>,
+
     // ── ML infrastructure (resilient) ───────────────────────────────────
     pub feature_store: Arc<FeatureStore>,
     pub embedding_manager: Option<Arc<EmbeddingManager>>,
@@ -65,6 +68,7 @@ impl ExecutionContext {
             cache_manager,
             model_loader,
             item_feature_service,
+            clickhouse_client: None,
             feature_store,
             embedding_manager: None,
             analytics: None,
@@ -73,6 +77,11 @@ impl ExecutionContext {
     }
 
     // ── Builder methods ─────────────────────────────────────────────────
+
+    pub fn with_clickhouse_client(mut self, client: Arc<clickhouse::Client>) -> Self {
+        self.clickhouse_client = Some(client);
+        self
+    }
 
     pub fn with_device_type(mut self, device_type: String) -> Self {
         self.device_type = Some(device_type);

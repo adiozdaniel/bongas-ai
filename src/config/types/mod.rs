@@ -17,6 +17,8 @@ pub mod security;
 pub mod ml;
 pub mod pipeline;
 pub mod ingestion;
+pub mod observability;
+pub mod resilience;
 
 // Re-export commonly used types
 pub use app::AppConfig;
@@ -32,3 +34,5 @@ pub use security::SecurityConfig;
 pub use ml::MlConfig;
 pub use pipeline::PipelineConfig;
 pub use ingestion::{IngestionConfig, KafkaSourceConfig, ApiSourceConfig, ClickHouseSourceConfig};
+pub use observability::ObservabilityConfig;
+pub use resilience::ResilienceConfig as ResilienceTypesConfig;

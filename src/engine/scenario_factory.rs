@@ -20,6 +20,10 @@ impl ScenarioFactory {
         }
     }
 
+    pub fn repo(&self) -> &ScenarioRepository {
+        &self.repo
+    }
+
     /// Load all enabled scenarios from database
     pub async fn load_all_from_db(&self) -> Result<HashMap<String, ScenarioDefinition>> {
         info!("Loading scenarios from database...");

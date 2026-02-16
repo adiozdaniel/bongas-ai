@@ -584,14 +584,19 @@ impl ItemFeatureService {
                 sqlx::query_as::<_, ItemFeatureRow>(
                     r#"
                     SELECT item_id, title, description, genres, tags, creators,
+                           directors, studios, actors,
                            content_type, language, audio_languages, subtitle_languages,
-                           age_rating, duration_seconds, release_year, published_at, is_active,
+                           age_rating, duration_seconds, release_year, release_date,
+                           published_at, added_date, available_from, available_until,
+                           is_active,
                            max_resolution, has_hdr, has_dolby_vision, has_dolby_atmos,
                            is_explicit, has_violence, has_strong_language, has_drug_content,
                            available_countries, blocked_countries,
                            seasonal_tags, holiday_tags, themes,
+                           is_award_winner, required_tier, is_free,
                            view_count, like_count, comment_count, share_count, save_count,
                            completion_rate, trending_score, popularity_score,
+                           user_rating, user_rating_count, critic_rating, critic_rating_count,
                            embedding, tfidf_vector
                     FROM item_features
                     WHERE item_id != $1
@@ -955,14 +960,16 @@ impl ItemFeatureService {
                    i.directors, i.studios, i.actors,
                    i.content_type, i.language, i.audio_languages, i.subtitle_languages,
                    i.age_rating, i.duration_seconds, i.release_year, i.release_date,
-                   i.published_at, i.added_date, i.is_active,
+                   i.published_at, i.added_date, i.available_from, i.available_until,
+                   i.is_active,
                    i.max_resolution, i.has_hdr, i.has_dolby_vision, i.has_dolby_atmos,
                    i.is_explicit, i.has_violence, i.has_strong_language, i.has_drug_content,
                    i.available_countries, i.blocked_countries,
-                   i.seasonal_tags, i.holiday_tags, i.themes, i.is_award_winner,
+                   i.seasonal_tags, i.holiday_tags, i.themes,
+                   i.is_award_winner, i.required_tier, i.is_free,
                    i.view_count, i.like_count, i.comment_count, i.share_count, i.save_count,
                    i.completion_rate, i.trending_score, i.popularity_score,
-                   i.user_rating, i.critic_rating,
+                   i.user_rating, i.user_rating_count, i.critic_rating, i.critic_rating_count,
                    i.embedding, i.tfidf_vector
             FROM item_features i
             JOIN item_categories ic ON i.item_id = ic.item_id
@@ -1023,14 +1030,16 @@ impl ItemFeatureService {
                    directors, studios, actors,
                    content_type, language, audio_languages, subtitle_languages,
                    age_rating, duration_seconds, release_year, release_date,
-                   published_at, added_date, is_active,
+                   published_at, added_date, available_from, available_until,
+                   is_active,
                    max_resolution, has_hdr, has_dolby_vision, has_dolby_atmos,
                    is_explicit, has_violence, has_strong_language, has_drug_content,
                    available_countries, blocked_countries,
-                   seasonal_tags, holiday_tags, themes, is_award_winner,
+                   seasonal_tags, holiday_tags, themes,
+                   is_award_winner, required_tier, is_free,
                    view_count, like_count, comment_count, share_count, save_count,
                    completion_rate, trending_score, popularity_score,
-                   user_rating, critic_rating,
+                   user_rating, user_rating_count, critic_rating, critic_rating_count,
                    embedding, tfidf_vector
             FROM item_features
             WHERE is_active = true

@@ -8,6 +8,7 @@ use super::{
     CircuitBreakerConfig, ErrorConfig, AnalyticsConfig,
     ServerConfig, DatabaseConfig, RedisConfig, ClickHouseConfig,
     IngestionConfig, SecurityConfig, MlConfig, PipelineConfig,
+    ObservabilityConfig, ResilienceConfig,
 };
 
 /// Root application configuration.
@@ -28,6 +29,8 @@ pub struct AppConfig {
     pub circuit_breaker: CircuitBreakerConfig,
     pub error: ErrorConfig,
     pub analytics: AnalyticsConfig,
+    pub observability: ObservabilityConfig,
+    pub resilience: ResilienceConfig,
 }
 
 impl AppConfig {
@@ -44,6 +47,8 @@ impl AppConfig {
         circuit_breaker: CircuitBreakerConfig,
         error: ErrorConfig,
         analytics: AnalyticsConfig,
+        observability: ObservabilityConfig,
+        resilience: ResilienceConfig,
     ) -> Self {
         Self {
             server,
@@ -57,6 +62,8 @@ impl AppConfig {
             circuit_breaker,
             error,
             analytics,
+            observability,
+            resilience,
         }
     }
 
