@@ -8,7 +8,6 @@ use crate::db::repositories::item_feature_service::ItemFeatureRow;
 use tracing::info;
 
 #[derive(Deserialize)]
-#[allow(dead_code)]
 struct Params {
     sequence_length: usize,
     top_k: usize,
@@ -32,11 +31,13 @@ impl PipelineStage for MLInferenceBERT4RecStage {
     ) -> Result<Vec<ScoredItem>> {
         let params: Params = serde_json::from_value(params.clone())?;
         let user_id = context.user_id.ok_or_else(|| anyhow::anyhow!("user_id required"))?;
+        let use_onnx = params.use_onnx.unwrap_or(true);
 
         info!(
             request_id = %context.request_id,
             user_id = user_id,
             sequence_length = params.sequence_length,
+            use_onnx = use_onnx,
             "Running BERT4Rec inference"
         );
 
@@ -73,7 +74,7 @@ impl PipelineStage for MLInferenceBERT4RecStage {
                 score: row.trending_score,
                 metadata: json!({
                     "model": "bert4rec",
-                    "inference_engine": "onnx",
+                    "inference_engine": if use_onnx { "onnx" } else { "fallback" },
                     "sequence_length": sequence.len(),
                 }),
             }

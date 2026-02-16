@@ -4,12 +4,12 @@ pub mod staleness_engine;
 pub mod context;
 pub mod config;
 pub mod scenario_factory;
+pub mod runtime;
 
 use anyhow::{Result, Context};
 use std::sync::Arc;
 use std::collections::HashMap;
 use tokio::sync::RwLock;
-use sqlx::PgPool;
 use tracing::info;
 
 use crate::resilience::{ResilienceMetricsCollector, MetricsRegistry, ResilienceConfig};
@@ -30,15 +30,17 @@ use crate::db::repositories::feature_repository::FeatureRepository;
 use crate::db::repositories::cache_repository::CacheRepository;
 use crate::db::repositories::item_feature_service::ItemFeatureService;
 use crate::security::SecurityManager;
+use crate::middlewares::MetricsCollector;
 
 use self::staging_manager::StagingManager;
 use self::staleness_engine::{StalenessEngine, UserEvent};
 use self::scenario_factory::ScenarioFactory;
+use self::config::EngineDependencies;
 
 /// Central orchestrator for BONGAS-AI
 pub struct BongasEngine {
     // Configuration
-    _config: Arc<AppConfig>,
+    config: Arc<AppConfig>,
 
     // Scenario management
     scenarios: Arc<RwLock<HashMap<String, ScenarioDefinition>>>,
@@ -74,6 +76,7 @@ pub struct BongasEngine {
 
     // Dependencies
     cache_manager: Arc<CacheManager>,
+    metrics_collector: Arc<MetricsCollector>,
 }
 
 #[derive(Debug, Clone)]
@@ -85,13 +88,45 @@ pub struct ScenarioDefinition {
 }
 
 impl BongasEngine {
+    /// Bootstrap the engine with all its dependencies
+    pub async fn bootstrap(deps: EngineDependencies) -> Result<Arc<Self>> {
+        info!("Bootstrapping BongasEngine...");
+
+        let engine = Self::new(deps).await?;
+        
+        // Load initial scenarios
+        engine.reload_scenarios().await?;
+
+        // Start ingestion if enabled
+        if engine.config.ingestion.kafka.enabled || 
+           engine.config.ingestion.api.enabled || 
+           engine.config.ingestion.clickhouse.enabled {
+            engine.start_ingestion(&engine.config.ingestion).await?;
+        }
+
+        // Start cache warming if enabled
+        let cache_config = CacheConfig::default();
+        if cache_config.warming_enabled {
+            engine.clone().start_cache_warming(
+                cache_config.warm_scenarios.clone(),
+                cache_config.warming_interval,
+            );
+        }
+
+        info!("BongasEngine bootstrapped successfully");
+        Ok(engine)
+    }
+
     /// Create new BongasEngine
-    pub async fn new(
-        config: Arc<AppConfig>,
-        db_pool: PgPool,
-        circuit_breaker_registry: Arc<CircuitBreakerRegistry>,
-    ) -> Result<Arc<Self>> {
-        info!("Initializing BongasEngine...");
+    async fn new(deps: EngineDependencies) -> Result<Arc<Self>> {
+        let EngineDependencies {
+            config,
+            db_pool,
+            circuit_breaker_registry,
+            metrics_collector,
+        } = deps;
+
+        info!("Initializing BongasEngine components...");
 
         // Create shared resilience infrastructure
         let resilience_metrics = Arc::new(ResilienceMetricsCollector::new(
@@ -180,7 +215,7 @@ impl BongasEngine {
         ));
 
         let engine = Arc::new(Self {
-            _config: config.clone(),
+            config: config.clone(),
             scenarios: Arc::new(RwLock::new(HashMap::new())),
             scenario_factory,
             pipeline_executor,
@@ -198,6 +233,7 @@ impl BongasEngine {
             resilient_pool,
             resilience_metrics,
             cache_manager,
+            metrics_collector,
         });
 
         info!("BongasEngine initialized successfully");
@@ -278,85 +314,8 @@ impl BongasEngine {
         user_id: Option<i32>,
         context_params: serde_json::Value,
     ) -> Result<Vec<RecommendationItem>> {
-        let request_id = uuid::Uuid::new_v4().to_string();
-
-        info!(
-            request_id = %request_id,
-            scenario_slug = %scenario_slug,
-            user_id = ?user_id,
-            "Executing scenario"
-        );
-
-        // Start recommendation timer
-        // let _timer = self.analytics.start_recommendation_timer(scenario_slug);
-
-        // Load scenario definition
-        let scenario = {
-            let scenarios = self.scenarios.read().await;
-            scenarios.get(scenario_slug)
-                .cloned()
-                .ok_or_else(|| anyhow::anyhow!("Scenario '{}' not found", scenario_slug))?
-        };
-
-        // Build context hash
-        let context_hash = StagingManager::hash_context(&context_params);
-
-        // Try to get from cache
-        if scenario.use_l2_cache {
-            if let Some(cached_items) = self.staging_manager
-                .get_cached(scenario_slug, user_id, &context_hash)
-                .await?
-            {
-                info!(request_id = %request_id, "Returning cached recommendations");
-                return Ok(Self::convert_to_recommendation_items(cached_items));
-            }
-        }
-
-        // Execute pipeline
-        let context = ExecutionContext::new(
-            user_id,
-            self.cache_manager.clone(),
-            self.model_loader.clone(),
-            self.item_feature_service.clone(),
-            self.feature_store.clone(),
-            request_id.clone(),
-        )
-        .with_device_type(
-            context_params.get("device_type")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string())
-                .unwrap_or_default()
-        )
-        .with_location(
-            context_params.get("location")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string())
-                .unwrap_or_default()
-        );
-
-        let scored_items = self.pipeline_executor
-            .execute(&scenario.pipeline, &context)
-            .await
-            .with_context(|| format!("Pipeline execution failed for scenario '{}'", scenario_slug))?;
-
-        // Save to cache
-        if scenario.use_l2_cache {
-            self.staging_manager.save_cached(
-                scenario_slug,
-                user_id,
-                &context_hash,
-                &scored_items,
-                scenario.cache_ttl_seconds,
-            ).await?;
-        }
-
-        info!(
-            request_id = %request_id,
-            result_count = scored_items.len(),
-            "Scenario executed successfully"
-        );
-
-        Ok(Self::convert_to_recommendation_items(scored_items))
+        let (items, _stats) = self.execute_scenario_with_stats(scenario_slug, user_id, context_params).await?;
+        Ok(items)
     }
 
     /// Execute scenario with execution stats
@@ -398,6 +357,14 @@ impl BongasEngine {
             {
                 stats.cached_result = true;
                 stats.execution_time_ms = start_time.elapsed().as_millis() as u64;
+                
+                // Track cache hit in metrics
+                self.metrics_collector.record_scenario_execution(
+                    scenario_slug,
+                    stats.execution_time_ms,
+                    true
+                );
+
                 return Ok((Self::convert_to_recommendation_items(cached_items), stats));
             }
         }
@@ -430,6 +397,13 @@ impl BongasEngine {
             .await?;
 
         stats.execution_time_ms = start_time.elapsed().as_millis() as u64;
+
+        // Record metrics for cache miss execution
+        self.metrics_collector.record_scenario_execution(
+            scenario_slug,
+            stats.execution_time_ms,
+            false
+        );
 
         // Save to cache
         if scenario.use_l2_cache {

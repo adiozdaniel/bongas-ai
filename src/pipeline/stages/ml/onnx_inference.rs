@@ -7,7 +7,6 @@ use crate::pipeline::context::ExecutionContext;
 use tracing::{info, warn, debug};
 
 #[derive(Deserialize)]
-#[allow(dead_code)]
 struct Params {
     /// Model name to use (e.g., "two_tower", "bert4rec")
     model_name: String,
@@ -130,17 +129,32 @@ impl PipelineStage for ONNXInferenceStage {
             batch_item_ids.push(item.item_id);
         }
 
-        // Step 5: Run ONNX inference
-        let scores = if !user_batch.is_empty() {
+        // Step 5: Run ONNX inference in batches
+        let mut scores: Vec<f32> = Vec::with_capacity(batch_item_ids.len());
+        
+        if !user_batch.is_empty() {
             let mut engine = model.write().await;
-            engine.predict_batch(user_batch, item_batch)
-                .context("ONNX batch inference failed")?
+            
+            // Chunk the batch according to params.batch_size
+            for chunk_idx in (0..user_batch.len()).step_by(params.batch_size) {
+                let end = std::cmp::min(chunk_idx + params.batch_size, user_batch.len());
+                let user_chunk = user_batch[chunk_idx..end].to_vec();
+                let item_chunk = item_batch[chunk_idx..end].to_vec();
+                
+                let chunk_scores = engine.predict_batch(user_chunk, item_chunk)
+                    .with_context(|| format!(
+                        "ONNX batch inference failed for chunk {}-{}",
+                        chunk_idx, end
+                    ))?;
+                
+                scores.extend(chunk_scores);
+            }
         } else {
             warn!(
                 request_id = %context.request_id,
                 "No valid features found for ONNX inference"
             );
-            vec![0.5; input.len()] // Fallback neutral scores
+            scores = vec![0.5; input.len()]; // Fallback neutral scores
         };
 
         let inference_time = start.elapsed();

@@ -9,11 +9,37 @@
   use chrono::Utc;
 
   /// Metrics collector for tracking API performance and usage
-  pub struct MetricsCollector;
+  pub struct MetricsCollector {
+      scenario_stats: Arc<std::sync::Mutex<std::collections::HashMap<String, ScenarioStats>>>,
+  }
+
+  #[derive(Debug, Clone, Default)]
+  pub struct ScenarioStats {
+      pub total_executions: u64,
+      pub cache_hits: u64,
+      pub total_latency_ms: u64,
+  }
 
   impl MetricsCollector {
       pub fn new() -> Self {
-          Self
+          Self {
+              scenario_stats: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
+          }
+      }
+
+      pub fn record_scenario_execution(&self, scenario: &str, latency_ms: u64, cache_hit: bool) {
+          let mut stats_map = self.scenario_stats.lock().unwrap();
+          let stats = stats_map.entry(scenario.to_string()).or_default();
+          stats.total_executions += 1;
+          if cache_hit {
+              stats.cache_hits += 1;
+          }
+          stats.total_latency_ms += latency_ms;
+      }
+
+      pub fn get_scenario_stats(&self) -> Vec<(String, ScenarioStats)> {
+          let stats_map = self.scenario_stats.lock().unwrap();
+          stats_map.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
       }
   }
 

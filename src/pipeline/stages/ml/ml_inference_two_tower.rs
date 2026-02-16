@@ -7,7 +7,6 @@ use crate::pipeline::context::ExecutionContext;
 use tracing::info;
 
 #[derive(Deserialize)]
-#[allow(dead_code)]
 struct Params {
 
     model_name: Option<String>,
@@ -32,10 +31,15 @@ impl PipelineStage for MLInferenceTwoTowerStage {
     ) -> Result<Vec<ScoredItem>> {
         let params: Params = serde_json::from_value(params.clone())?;
         let user_id = context.user_id.ok_or_else(|| anyhow::anyhow!("user_id required"))?;
+        
+        let model_name = params.model_name.unwrap_or_else(|| "two_tower_default".to_string());
+        let use_onnx = params.use_onnx.unwrap_or(true);
 
         info!(
             request_id = %context.request_id,
             user_id = user_id,
+            model_name = %model_name,
+            use_onnx = use_onnx,
             input_count = input.len(),
             "Running Two-Tower ML inference"
         );
@@ -53,8 +57,8 @@ impl PipelineStage for MLInferenceTwoTowerStage {
                 .take(3)
                 .sum::<f32>()
                 * (item.score + 0.1);
-            item.metadata["model"] = json!("two_tower");
-            item.metadata["inference_engine"] = json!("onnx");
+            item.metadata["model"] = json!(model_name);
+            item.metadata["inference_engine"] = if use_onnx { json!("onnx") } else { json!("fallback") };
             item
         }).collect();
 
