@@ -216,30 +216,6 @@ impl OnnxInferenceEngine {
         result
     }
 
-    /// Raw two-tower execution (no resilience wrappers — called inside breaker).
-    fn execute_two_tower(
-        &mut self,
-        user_features: Array2<f32>,
-        item_features: Array2<f32>,
-    ) -> Result<Vec<f32>, ModelError> {
-        let user_input = TensorRef::from_array_view(user_features.view())
-            .map_err(|e| ModelError::InferenceFailed(format!("user tensor: {e}")))?;
-        let item_input = TensorRef::from_array_view(item_features.view())
-            .map_err(|e| ModelError::InferenceFailed(format!("item tensor: {e}")))?;
-
-        let outputs = self.session.run(ort::inputs![
-            self.input_names[0].clone() => user_input,
-            self.input_names[1].clone() => item_input,
-        ])
-        .map_err(|e| ModelError::InferenceFailed(format!("session run: {e}")))?;
-
-        let (_shape, scores_slice) = outputs[0]
-            .try_extract_tensor::<f32>()
-            .map_err(|e| ModelError::InferenceFailed(format!("extract tensor: {e}")))?;
-
-        Ok(scores_slice.to_vec())
-    }
-
     /// Batch inference with resilience: circuit breaker + bulkhead + analytics.
     pub fn predict_batch(
         &mut self,
@@ -276,5 +252,82 @@ impl OnnxInferenceEngine {
         }
 
         self.predict_two_tower(user_array, item_array)
+    }
+
+    /// Raw two-tower execution (no resilience wrappers — called inside breaker).
+    fn execute_two_tower(
+        &mut self,
+        user_features: Array2<f32>,
+        item_features: Array2<f32>,
+    ) -> Result<Vec<f32>, ModelError> {
+        let user_input = TensorRef::from_array_view(user_features.view())
+            .map_err(|e| ModelError::InferenceFailed(format!("user tensor: {e}")))?;
+        let item_input = TensorRef::from_array_view(item_features.view())
+            .map_err(|e| ModelError::InferenceFailed(format!("item tensor: {e}")))?;
+
+        let outputs = self.session.run(ort::inputs![
+            self.input_names[0].clone() => user_input,
+            self.input_names[1].clone() => item_input,
+        ])
+        .map_err(|e| ModelError::InferenceFailed(format!("session run: {e}")))?;
+
+        let (_shape, scores_slice) = outputs[0]
+            .try_extract_tensor::<f32>()
+            .map_err(|e| ModelError::InferenceFailed(format!("extract tensor: {e}")))?;
+
+        Ok(scores_slice.to_vec())
+    }
+
+    /// Batch inference with resilience: circuit breaker + bulkhead + analytics.
+    /// Run multi-action inference (multi-head output).
+    /// Returns a Vec of Vecs, where each inner vec contains all predicted action probabilities for an item.
+    pub fn predict_multi_action(
+        &mut self,
+        user_features: Array2<f32>,
+        item_features: Array2<f32>,
+    ) -> Result<Vec<Vec<f32>>, ModelError> {
+        let start = Instant::now();
+        let batch_size = user_features.nrows();
+        let metric_key = format!("ml.inference.multi.{}", self.model_name);
+
+        let _permit = self.bulkhead.clone().try_acquire_owned()
+            .map_err(|_| ModelError::Overloaded {
+                model: self.model_name.clone(),
+                queue_depth: self.bulkhead.available_permits(),
+            })?;
+
+        // Run raw inference
+        let user_input = TensorRef::from_array_view(user_features.view())
+            .map_err(|e| ModelError::InferenceFailed(format!("user tensor: {e}")))?;
+        let item_input = TensorRef::from_array_view(item_features.view())
+            .map_err(|e| ModelError::InferenceFailed(format!("item tensor: {e}")))?;
+
+        let outputs = self.session.run(ort::inputs![
+            self.input_names[0].clone() => user_input,
+            self.input_names[1].clone() => item_input,
+        ])
+        .map_err(|e| ModelError::InferenceFailed(format!("session run: {e}")))?;
+
+        // Extract multi-dimensional output (Batch x Actions)
+        let (shape, flat_scores) = outputs[0]
+            .try_extract_tensor::<f32>()
+            .map_err(|e| ModelError::InferenceFailed(format!("extract tensor: {e}")))?;
+
+        let actions_dim = shape[1] as usize;
+        let mut results = Vec::with_capacity(batch_size);
+        
+        for i in 0..batch_size {
+            let start = i * actions_dim;
+            let end = start + actions_dim;
+            results.push(flat_scores[start..end].to_vec());
+        }
+
+        let latency = start.elapsed();
+        if let Some(ref analytics) = self.analytics {
+            analytics.record_response_time(&metric_key, latency.as_millis() as u64);
+            analytics.increment_throughput(&metric_key);
+        }
+
+        Ok(results)
     }
 }
