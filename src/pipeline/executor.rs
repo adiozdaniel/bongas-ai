@@ -342,15 +342,26 @@ impl PipelineExecutor {
 
                     let results = join_all(futures).await;
                     
-                    let mut merged_items = Vec::new();
-                    let mut seen_ids = std::collections::HashSet::new();
+                    let mut merged_map: std::collections::HashMap<i32, ScoredItem> = std::collections::HashMap::new();
 
                     for res in results {
                         match res {
                             Ok(stage_items) => {
                                 for item in stage_items {
-                                    if seen_ids.insert(item.item_id) {
-                                        merged_items.push(item);
+                                    match merged_map.entry(item.item_id) {
+                                        std::collections::hash_map::Entry::Occupied(mut entry) => {
+                                            // Merge metadata if it's an object
+                                            if let (Some(dest), Some(src)) = (entry.get_mut().metadata.as_object_mut(), item.metadata.as_object()) {
+                                                for (k, v) in src {
+                                                    dest.insert(k.clone(), v.clone());
+                                                }
+                                            }
+                                            // Optional: update score if needed (taking max or avg), 
+                                            // but for enrichment, scores are usually stable.
+                                        }
+                                        std::collections::hash_map::Entry::Vacant(entry) => {
+                                            entry.insert(item);
+                                        }
                                     }
                                 }
                             }
@@ -360,12 +371,10 @@ impl PipelineExecutor {
                                     error = %e,
                                     "Parallel stage failed, continuing with other results"
                                 );
-                                // In parallel mode, we are more lenient with failures
-                                // unless all stages fail.
                             }
                         }
                     }
-                    items = merged_items;
+                    items = merged_map.into_values().collect();
                 }
             }
 

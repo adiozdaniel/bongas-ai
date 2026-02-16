@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use anyhow::Result;
 use serde_json::{Value as JsonValue, json};
-use crate::pipeline::{PipelineStage, ScoredItem};
+use crate::pipeline::{PipelineStage, ScoredItem, StageDataKind};
 use crate::pipeline::context::ExecutionContext;
 use std::collections::HashMap;
 
@@ -12,6 +12,18 @@ pub struct EnrichTimeRemainingStage;
 impl PipelineStage for EnrichTimeRemainingStage {
     fn name(&self) -> &str {
         "enrich_time_remaining"
+    }
+
+    fn input_type(&self) -> StageDataKind {
+        StageDataKind::ScoredItems
+    }
+
+    fn output_type(&self) -> StageDataKind {
+        StageDataKind::ScoredItems
+    }
+
+    fn can_parallelize(&self) -> bool {
+        true
     }
 
     async fn execute(

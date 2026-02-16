@@ -24,6 +24,7 @@ use crate::db::repositories::cache_repository::CacheRepository;
 use crate::db::repositories::item_feature_service::ItemFeatureService;
 use crate::security::SecurityManager;
 use crate::middlewares::MetricsCollector;
+use crate::analytics::types::PerformanceStats;
 
 use super::staging_manager::StagingManager;
 use super::staleness_engine::{StalenessEngine, UserEvent};
@@ -71,6 +72,7 @@ pub struct BongasEngine {
     // Dependencies
     pub(crate) cache_manager: Arc<CacheManager>,
     pub(crate) metrics_collector: Arc<MetricsCollector>,
+    pub(crate) performance_stats: Arc<PerformanceStats>,
 }
 
 #[derive(Debug, Clone)]
@@ -150,6 +152,7 @@ impl BongasEngine {
         let cache_config = CacheConfig::default();
         let cache_manager = Arc::new(CacheManager::new(&config.redis.url, cache_config.clone()).await?);
         let hot_registry = Arc::new(HotRegistrySafe::new());
+        let performance_stats = Arc::new(PerformanceStats::new());
 
         // Create model repository and loader
         let model_repo = Arc::new(ModelRepository::new(resilient_pool.clone(), resilience_metrics.clone()));
@@ -188,7 +191,7 @@ impl BongasEngine {
             config.pipeline.clone(),
             circuit_breaker_registry.clone(),
             pipeline_observer,
-            None, // Analytics wired separately per-request via ExecutionContext
+            Some(performance_stats.clone()),
         ));
 
         info!(
@@ -254,6 +257,7 @@ impl BongasEngine {
             circuit_breaker_registry,
             cache_manager,
             metrics_collector,
+            performance_stats,
         });
 
         info!("BongasEngine initialized successfully");
@@ -487,6 +491,7 @@ impl BongasEngine {
             request_id,
         )
         .with_hot_registry(self.hot_registry.clone())
+        .with_analytics(self.performance_stats.clone())
         .with_device_type(
             context_params.get("device_type")
                 .and_then(|v| v.as_str())
