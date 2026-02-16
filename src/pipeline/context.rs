@@ -88,6 +88,63 @@ impl ExecutionContext {
         }
     }
 
+    /// Create a test context with minimal valid dependencies for benchmarks.
+    pub async fn test_context() -> Self {
+        use crate::resilience::{ResilienceMetricsCollector, MetricsRegistry, ResilienceConfig};
+        use crate::db::{ResilientPool, ResilientPoolConfig};
+        use crate::cache::{CacheManager, CacheConfig};
+        use crate::ml::model_loader::ModelLoader;
+        use crate::db::repositories::model_repository::ModelRepository;
+        use crate::circuit_breaker::CircuitBreakerRegistry;
+        
+        let resilience_metrics = Arc::new(ResilienceMetricsCollector::new(
+            Arc::new(MetricsRegistry::new(ResilienceConfig::default())),
+        ));
+        
+        // Use a dummy pool that won't connect unless used
+        let db_pool = sqlx::PgPool::connect_lazy("postgres://localhost/dummy").unwrap();
+        let circuit_breaker_registry = Arc::new(CircuitBreakerRegistry::default());
+        
+        let resilient_pool = Arc::new(ResilientPool::from_pool(
+            db_pool,
+            ResilientPoolConfig::default(),
+            circuit_breaker_registry.clone(),
+        ).unwrap());
+
+        let cache_config = CacheConfig {
+            l1_enabled: true,
+            l2_enabled: false, // Disable Redis for benchmarks
+            ..Default::default()
+        };
+        let cache_manager = Arc::new(CacheManager::new("redis://localhost", cache_config).await.unwrap());
+        
+        let model_repo = Arc::new(ModelRepository::new(resilient_pool.clone(), resilience_metrics.clone()));
+        let model_loader = Arc::new(ModelLoader::new(
+            "models",
+            model_repo,
+            crate::config::MlConfig::default(),
+            resilience_metrics.clone(),
+            None,
+        ));
+
+        let item_feature_service = Arc::new(ItemFeatureService::new(resilient_pool.clone(), resilience_metrics.clone()));
+        let feature_store = Arc::new(crate::ml::FeatureStore::new(
+            resilient_pool.clone(),
+            cache_manager.clone(),
+            crate::config::MlConfig::default(),
+            None,
+        ));
+
+        Self::new(
+            Some(123),
+            cache_manager,
+            model_loader,
+            item_feature_service,
+            feature_store,
+            "bench-request".to_string(),
+        )
+    }
+
     // ── Builder methods ─────────────────────────────────────────────────
 
     pub fn with_clickhouse_client(mut self, client: Arc<clickhouse::Client>) -> Self {

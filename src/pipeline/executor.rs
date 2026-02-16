@@ -49,8 +49,17 @@ impl PipelineExecutor {
         observer: Arc<dyn ResilienceObserver>,
         analytics: Option<Arc<PerformanceStats>>,
     ) -> Self {
-        let registry = build_stage_registry();
+        Self::with_registry(config, breaker_registry, observer, analytics, build_stage_registry())
+    }
 
+    /// Create new pipeline executor with a custom registry (useful for tests/benches).
+    pub fn with_registry(
+        config: PipelineConfig,
+        breaker_registry: Arc<CircuitBreakerRegistry>,
+        observer: Arc<dyn ResilienceObserver>,
+        analytics: Option<Arc<PerformanceStats>>,
+        registry: HashMap<String, Arc<dyn PipelineStage>>,
+    ) -> Self {
         // Build per-stage circuit breakers
         let mut stage_breakers = HashMap::new();
         if config.stage_breaker_enabled {

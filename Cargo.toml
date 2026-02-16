@@ -78,6 +78,23 @@ httpdate = "1.0"
 [dev-dependencies]
 mockall = "0.13"
 tokio-test = "0.4"
+criterion = { version = "0.5", features = ["async_tokio"] }
+
+[[bench]]
+name = "pipeline_bench"
+harness = false
+
+[[bench]]
+name = "engine_bench"
+harness = false
+
+[[bench]]
+name = "logic_bench"
+harness = false
+
+[[bench]]
+name = "cache_bench"
+harness = false
 
 [profile.release]
 opt-level = 3
