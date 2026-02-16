@@ -2,7 +2,8 @@ use anyhow::{Result, Context};
 use std::sync::Arc;
 use std::collections::HashMap;
 use tokio::sync::RwLock;
-use tracing::{info, warn};
+use tracing::{info, warn, debug};
+use arc_swap::ArcSwap;
 
 use crate::resilience::{ResilienceMetricsCollector, MetricsRegistry, ResilienceConfig};
 use crate::db::{ResilientPool, ResilientPoolConfig};
@@ -10,7 +11,7 @@ use crate::db::models::PipelineDefinition;
 use crate::AppConfig;
 use crate::pipeline::executor::PipelineExecutor;
 use crate::pipeline::context::ExecutionContext;
-use crate::pipeline::ScoredItem;
+use crate::pipeline::{ScoredItem, ExecutablePipeline};
 use crate::cache::{CacheManager, CacheConfig, CacheWarmer, CacheMetricsSnapshot};
 use crate::circuit_breaker::CircuitBreakerRegistry;
 use crate::ingestion::IngestionManager;
@@ -36,6 +37,7 @@ pub struct BongasEngine {
 
     // Scenario management
     pub(crate) scenarios: Arc<RwLock<HashMap<String, ScenarioDefinition>>>,
+    pub(crate) linked_scenarios: Arc<ArcSwap<HashMap<String, Arc<ExecutablePipeline>>>>,
     pub(crate) scenario_factory: Arc<ScenarioFactory>,
 
     // Pipeline execution
@@ -76,6 +78,7 @@ pub struct ScenarioDefinition {
     pub pipeline: PipelineDefinition,
     pub cache_ttl_seconds: i32,
     pub use_l2_cache: bool,
+    pub linked_pipeline: Option<Arc<ExecutablePipeline>>,
 }
 
 impl BongasEngine {
@@ -231,6 +234,7 @@ impl BongasEngine {
         let engine = Arc::new(Self {
             config: config.clone(),
             scenarios: Arc::new(RwLock::new(HashMap::new())),
+            linked_scenarios: Arc::new(ArcSwap::new(Arc::new(HashMap::new()))),
             scenario_factory,
             pipeline_executor,
             staging_manager,
@@ -291,11 +295,27 @@ impl BongasEngine {
     pub async fn reload_scenarios(&self) -> Result<usize> {
         info!("Reloading scenarios from database...");
 
-        let new_scenarios = self.scenario_factory.load_all_from_db().await?;
+        let mut new_scenarios = self.scenario_factory.load_all_from_db().await?;
+        let mut linked_map = HashMap::new();
+
+        for scenario in new_scenarios.values_mut() {
+            match self.pipeline_executor.link(&scenario.pipeline) {
+                Ok(executable) => {
+                    let arc_executable = Arc::new(executable);
+                    scenario.linked_pipeline = Some(arc_executable.clone());
+                    linked_map.insert(scenario.slug.clone(), arc_executable);
+                }
+                Err(e) => {
+                    warn!(slug = %scenario.slug, error = %e, "Failed to link pipeline for scenario");
+                }
+            }
+        }
 
         let mut scenarios = self.scenarios.write().await;
         scenarios.clear();
         scenarios.extend(new_scenarios);
+
+        self.linked_scenarios.store(Arc::new(linked_map));
 
         let count = scenarios.len();
 
@@ -306,7 +326,7 @@ impl BongasEngine {
         info!(
             total = count,
             onnx_enabled = onnx_scenarios,
-            "Scenarios reloaded"
+            "Scenarios reloaded and linked"
         );
 
         Ok(count)
@@ -316,10 +336,25 @@ impl BongasEngine {
     pub async fn reload_scenario(&self, slug: &str) -> Result<bool> {
         info!(slug = %slug, "Reloading scenario from database...");
 
-        if let Some(new_scenario) = self.scenario_factory.load_one_from_db(slug).await? {
+        if let Some(mut new_scenario) = self.scenario_factory.load_one_from_db(slug).await? {
+            match self.pipeline_executor.link(&new_scenario.pipeline) {
+                Ok(executable) => {
+                    let arc_executable = Arc::new(executable);
+                    new_scenario.linked_pipeline = Some(arc_executable.clone());
+                    
+                    // Update linked scenarios map
+                    let mut linked_map = (**self.linked_scenarios.load()).clone();
+                    linked_map.insert(slug.to_string(), arc_executable);
+                    self.linked_scenarios.store(Arc::new(linked_map));
+                }
+                Err(e) => {
+                    warn!(slug = %slug, error = %e, "Failed to link pipeline for scenario during reload");
+                }
+            }
+
             let mut scenarios = self.scenarios.write().await;
             scenarios.insert(slug.to_string(), new_scenario);
-            info!(slug = %slug, "Scenario reloaded");
+            info!(slug = %slug, "Scenario reloaded and re-linked");
             Ok(true)
         } else {
             warn!(slug = %slug, "Scenario not found in database during reload");
@@ -332,6 +367,11 @@ impl BongasEngine {
         let mut scenarios = self.scenarios.write().await;
         if scenarios.remove(slug).is_some() {
             info!(slug = %slug, "Scenario removed from active engine");
+            
+            // Update linked scenarios map
+            let mut linked_map = (**self.linked_scenarios.load()).clone();
+            linked_map.remove(slug);
+            self.linked_scenarios.store(Arc::new(linked_map));
         }
     }
 
@@ -355,6 +395,9 @@ impl BongasEngine {
     ) -> Result<(Vec<RecommendationItem>, ScenarioExecutionStats)> {
         let start_time = std::time::Instant::now();
 
+        // Check for linked scenario first (Fast Path)
+        let linked_pipeline = self.linked_scenarios.load().get(scenario_slug).cloned();
+        
         let scenario = {
             let scenarios = self.scenarios.read().await;
             scenarios.get(scenario_slug)
@@ -424,9 +467,13 @@ impl BongasEngine {
             context = context.with_clickhouse_client(ch.clone());
         }
 
-        let scored_items = self.pipeline_executor
-            .execute(&scenario.pipeline, &context)
-            .await?;
+        let scored_items = if let Some(linked) = linked_pipeline {
+            debug!(scenario = %scenario_slug, "Using Fast Path (linked pipeline)");
+            self.pipeline_executor.execute_linked(&linked, &context).await?
+        } else {
+            warn!(scenario = %scenario_slug, "Fast Path not available, falling back to dynamic execution");
+            self.pipeline_executor.execute(&scenario.pipeline, &context).await?
+        };
 
         stats.execution_time_ms = start_time.elapsed().as_millis() as u64;
 

@@ -43,6 +43,7 @@ bcrypt = "0.15"
 # Async & Concurrency
 async-trait = "0.1"
 futures = "0.3"
+arc-swap = "1.7"
 
 # Logging & Observability
 tracing = "0.1"

@@ -82,6 +82,7 @@ impl ScenarioFactory {
             pipeline,
             cache_ttl_seconds: config.cache_ttl_seconds.unwrap_or(300),
             use_l2_cache: config.use_l2_cache,
+            linked_pipeline: None,
         })
     }
 }

@@ -21,7 +21,7 @@ use crate::circuit_breaker::{
 };
 use crate::circuit_breaker::observer::{CircuitState, ResilienceObserver};
 use crate::config::PipelineConfig;
-use crate::pipeline::{PipelineStage, ScoredItem};
+use crate::pipeline::{PipelineStage, ScoredItem, BoundStage, ExecutablePipeline, PipelineError};
 use crate::pipeline::context::ExecutionContext;
 use crate::pipeline::registry::build_stage_registry;
 use crate::db::models::PipelineDefinition;
@@ -113,6 +113,46 @@ impl PipelineExecutor {
         }
     }
 
+    /// Link a pipeline definition into an executable version.
+    /// This performs all registry lookups and pre-calculates circuit breakers and timeouts.
+    pub fn link(&self, definition: &PipelineDefinition) -> Result<ExecutablePipeline> {
+        let stages = self.link_stages(&definition.stages)?;
+        let fallback_stages = if let Some(ref fallback) = definition.fallback_stages {
+            Some(self.link_stages(fallback)?)
+        } else {
+            None
+        };
+
+        Ok(ExecutablePipeline {
+            stages,
+            fallback_stages,
+        })
+    }
+
+    fn link_stages(&self, stages: &[crate::db::models::PipelineStageConfig]) -> Result<Vec<BoundStage>> {
+        let mut bound_stages = Vec::with_capacity(stages.len());
+
+        for stage_config in stages {
+            let implementation = self.stage_registry
+                .get(&stage_config.r#type)
+                .cloned()
+                .with_context(|| format!("Stage '{}' not found in registry", stage_config.r#type))?;
+
+            let breaker = self.stage_breakers.get(&stage_config.r#type).cloned();
+            let timeout = Self::timeout_for_stage(&stage_config.r#type, &self.config);
+
+            bound_stages.push(BoundStage {
+                implementation,
+                breaker,
+                params: stage_config.params.clone(),
+                stage_type: stage_config.r#type.clone(),
+                timeout,
+            });
+        }
+
+        Ok(bound_stages)
+    }
+
     /// Get the number of registered stages.
     pub fn stage_count(&self) -> usize {
         self.stage_registry.len()
@@ -129,33 +169,30 @@ impl PipelineExecutor {
         pipeline: &PipelineDefinition,
         context: &ExecutionContext,
     ) -> Result<Vec<ScoredItem>> {
+        let linked = self.link(pipeline)?;
+        self.execute_linked(&linked, context).await
+    }
+
+    /// Execute a pre-linked pipeline with full resilience.
+    pub async fn execute_linked(
+        &self,
+        pipeline: &ExecutablePipeline,
+        context: &ExecutionContext,
+    ) -> Result<Vec<ScoredItem>> {
         let pipeline_start = std::time::Instant::now();
         let metric_key = "pipeline.execute";
 
         info!(
             request_id = %context.request_id,
             stage_count = pipeline.stages.len(),
-            "Executing pipeline"
+            "Executing linked pipeline"
         );
-
-        // Log ONNX inference stages
-        let onnx_stages = pipeline.stages.iter()
-            .filter(|stage| stage.r#type.starts_with("onnx_"))
-            .count();
-
-        if onnx_stages > 0 {
-            info!(
-                request_id = %context.request_id,
-                onnx_stage_count = onnx_stages,
-                "Pipeline contains ONNX inference stages"
-            );
-        }
 
         // Execute main pipeline with pipeline-level timeout
         let pipeline_timeout = self.config.pipeline_timeout;
         let result = tokio::time::timeout(
             pipeline_timeout,
-            self.execute_stages(&pipeline.stages, context),
+            self.execute_bound_stages(&pipeline.stages, context),
         ).await;
 
         let pipeline_latency = pipeline_start.elapsed();
@@ -201,7 +238,7 @@ impl PipelineExecutor {
                         if let Some(ref a) = self.analytics {
                             a.increment_throughput("pipeline.fallback");
                         }
-                        self.execute_stages(fallback_stages, context).await
+                        self.execute_bound_stages(fallback_stages, context).await
                     } else {
                         Err(e)
                     }
@@ -228,69 +265,64 @@ impl PipelineExecutor {
                             request_id = %context.request_id,
                             "Pipeline timed out, executing fallback"
                         );
-                        self.execute_stages(fallback_stages, context).await
+                        self.execute_bound_stages(fallback_stages, context).await
                     } else {
-                        Err(anyhow::anyhow!("Pipeline execution timed out after {}ms", pipeline_timeout.as_millis()))
+                        Err(PipelineError::PipelineTimeout.into())
                     }
                 } else {
-                    Err(anyhow::anyhow!("Pipeline execution timed out after {}ms", pipeline_timeout.as_millis()))
+                    Err(PipelineError::PipelineTimeout.into())
                 }
             }
         }
     }
 
-    /// Execute a sequence of stages with per-stage resilience.
-    async fn execute_stages(
+    /// Execute a sequence of bound stages with per-stage resilience.
+    async fn execute_bound_stages(
         &self,
-        stages: &[crate::db::models::PipelineStageConfig],
+        stages: &[BoundStage],
         context: &ExecutionContext,
     ) -> Result<Vec<ScoredItem>> {
         let mut items: Vec<ScoredItem> = Vec::new();
 
-        for (idx, stage_config) in stages.iter().enumerate() {
-            let stage_impl = self.stage_registry
-                .get(&stage_config.r#type)
-                .with_context(|| format!("Stage '{}' not found in registry", stage_config.r#type))?;
-
+        for (idx, bound_stage) in stages.iter().enumerate() {
+            let stage_impl = &bound_stage.implementation;
             let stage_name = stage_impl.name();
             let stage_start = std::time::Instant::now();
-            let stage_timeout = Self::timeout_for_stage(&stage_config.r#type, &self.config);
+            let stage_timeout = bound_stage.timeout;
 
             debug!(
                 request_id = %context.request_id,
                 stage_idx = idx,
-                stage_type = %stage_config.r#type,
+                stage_type = %bound_stage.stage_type,
                 stage_name = stage_name,
                 input_count = items.len(),
                 timeout_ms = stage_timeout.as_millis() as u64,
-                "Executing stage"
+                "Executing bound stage"
             );
 
             // Check circuit breaker state before executing
-            if let Some(breaker) = self.stage_breakers.get(&stage_config.r#type) {
+            if let Some(ref breaker) = bound_stage.breaker {
                 if breaker.current_state() == CircuitState::Open {
                     warn!(
                         request_id = %context.request_id,
-                        stage = %stage_config.r#type,
+                        stage = %bound_stage.stage_type,
                         "Circuit breaker open, skipping stage"
                     );
                     if let Some(ref a) = self.analytics {
-                        a.increment_error(&format!("pipeline.stage.{}.circuit_open", stage_config.r#type));
+                        a.increment_error(&format!("pipeline.stage.{}.circuit_open", bound_stage.stage_type));
                     }
                     // Fallback: pass-through input on circuit open
                     if self.config.fallback_pass_through_input {
                         continue;
                     }
-                    return Err(anyhow::anyhow!(
-                        "Circuit breaker open for stage '{}'", stage_config.r#type
-                    ));
+                    return Err(PipelineError::CircuitOpen { stage_type: bound_stage.stage_type.clone() }.into());
                 }
             }
 
             // Execute stage with timeout
             let stage_result = tokio::time::timeout(
                 stage_timeout,
-                stage_impl.execute(context, &stage_config.params, items.clone()),
+                stage_impl.execute(context, &bound_stage.params, items.clone()),
             ).await;
 
             let stage_latency = stage_start.elapsed();
@@ -304,7 +336,7 @@ impl PipelineExecutor {
                     info!(
                         request_id = %context.request_id,
                         stage_idx = idx,
-                        stage_type = %stage_config.r#type,
+                        stage_type = %bound_stage.stage_type,
                         output_count = result_items.len(),
                         duration_ms = stage_latency.as_millis() as u64,
                         "Stage completed"
@@ -320,7 +352,7 @@ impl PipelineExecutor {
                     warn!(
                         request_id = %context.request_id,
                         stage_idx = idx,
-                        stage_type = %stage_config.r#type,
+                        stage_type = %bound_stage.stage_type,
                         error = %e,
                         duration_ms = stage_latency.as_millis() as u64,
                         "Stage failed"
@@ -330,30 +362,31 @@ impl PipelineExecutor {
                     if self.config.fallback_on_stage_error && self.config.fallback_pass_through_input {
                         warn!(
                             request_id = %context.request_id,
-                            stage = %stage_config.r#type,
+                            stage = %bound_stage.stage_type,
                             "Using pass-through fallback for failed stage"
                         );
                         if let Some(ref a) = self.analytics {
-                            a.increment_throughput(&format!("pipeline.stage.{}.fallback", stage_config.r#type));
+                            a.increment_throughput(&format!("pipeline.stage.{}.fallback", bound_stage.stage_type));
                         }
                         continue; // items unchanged, skip failed stage
                     }
 
-                    return Err(e).with_context(|| format!(
-                        "Stage '{}' (index {}) failed", stage_config.r#type, idx
-                    ));
+                    return Err(PipelineError::StageFailure { 
+                        stage_type: bound_stage.stage_type.clone(), 
+                        source: e 
+                    }.into());
                 }
                 Err(_elapsed) => {
                     // Record timeout analytics
                     context.record_stage_error(stage_name);
                     if let Some(ref a) = self.analytics {
-                        a.increment_error(&format!("pipeline.stage.{}.timeout", stage_config.r#type));
+                        a.increment_error(&format!("pipeline.stage.{}.timeout", bound_stage.stage_type));
                     }
 
                     warn!(
                         request_id = %context.request_id,
                         stage_idx = idx,
-                        stage_type = %stage_config.r#type,
+                        stage_type = %bound_stage.stage_type,
                         timeout_ms = stage_timeout.as_millis() as u64,
                         "Stage timed out"
                     );
@@ -362,19 +395,19 @@ impl PipelineExecutor {
                     if self.config.fallback_on_stage_timeout && self.config.fallback_pass_through_input {
                         warn!(
                             request_id = %context.request_id,
-                            stage = %stage_config.r#type,
+                            stage = %bound_stage.stage_type,
                             "Using pass-through fallback for timed-out stage"
                         );
                         if let Some(ref a) = self.analytics {
-                            a.increment_throughput(&format!("pipeline.stage.{}.timeout_fallback", stage_config.r#type));
+                            a.increment_throughput(&format!("pipeline.stage.{}.timeout_fallback", bound_stage.stage_type));
                         }
                         continue;
                     }
 
-                    return Err(anyhow::anyhow!(
-                        "Stage '{}' (index {}) timed out after {}ms",
-                        stage_config.r#type, idx, stage_timeout.as_millis()
-                    ));
+                    return Err(PipelineError::StageTimeout { 
+                        stage_type: bound_stage.stage_type.clone(), 
+                        timeout_ms: stage_timeout.as_millis() as u64 
+                    }.into());
                 }
             }
 
@@ -383,7 +416,7 @@ impl PipelineExecutor {
                 warn!(
                     request_id = %context.request_id,
                     stage_idx = idx,
-                    stage_type = %stage_config.r#type,
+                    stage_type = %bound_stage.stage_type,
                     "Pipeline terminated early: no items remaining"
                 );
                 break;

@@ -270,6 +270,7 @@ name = "bongas-ai"
 version = "1.0.0"
 dependencies = [
  "anyhow",
+ "arc-swap",
  "async-trait",
  "axum",
  "bcrypt",
