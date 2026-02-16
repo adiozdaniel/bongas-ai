@@ -213,4 +213,45 @@ impl InteractionRepository {
                 })
             })
     }
+
+    /// Batch insert multiple interactions of any type.
+    pub async fn create_interactions_batch(
+        &self,
+        user_ids: Vec<i32>,
+        item_ids: Vec<i32>,
+        types: Vec<String>,
+        ratings: Vec<Option<f32>>,
+        watch_durations: Vec<Option<i32>>,
+    ) -> AppResult<u64> {
+        if user_ids.is_empty() {
+            return Ok(0);
+        }
+
+        self.pool
+            .execute(|pool| async move {
+                sqlx::query(
+                    r#"
+                    INSERT INTO user_interactions 
+                        (user_id, item_id, interaction_type, rating, watch_duration_seconds, created_at)
+                    SELECT * FROM unnest($1::int[], $2::int[], $3::text[], $4::float4[], $5::int[], $6::timestamptz[])
+                    "#
+                )
+                .bind(&user_ids)
+                .bind(&item_ids)
+                .bind(&types)
+                .bind(&ratings)
+                .bind(&watch_durations)
+                .bind(vec![chrono::Utc::now(); user_ids.len()])
+                .execute(&pool)
+                .await
+                .map(|r| r.rows_affected())
+            })
+            .await
+            .map_err(|e| {
+                AppError::Postgres(PostgresError::Query {
+                    message: format!("Failed to batch insert interactions: {}", e),
+                    source: None,
+                })
+            })
+    }
 }

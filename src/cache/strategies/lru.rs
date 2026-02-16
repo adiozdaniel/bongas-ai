@@ -1,4 +1,4 @@
-  //! L1 in-memory LRU cache with size-based eviction.
+  //! L1 in-memory LRU cache with size-based eviction and sharding.
 
   use crate::cache::traits::{CacheStrategy, CacheTier};
   use crate::cache::metrics::CacheMetrics;
@@ -9,6 +9,10 @@
   use std::time::{Duration, Instant};
   use tokio::sync::RwLock;
   use anyhow::Result;
+  use std::collections::hash_map::DefaultHasher;
+  use std::hash::{Hash, Hasher};
+
+  const SHARD_COUNT: usize = 64;
 
   /// Entry in the LRU cache with expiration.
   #[derive(Clone)]
@@ -23,18 +27,30 @@
       }
   }
 
-  /// L1 in-memory LRU cache.
+  /// L1 in-memory LRU cache with sharding for high concurrency.
   pub struct LruCache {
-      cache: Arc<RwLock<LruMap<String, CacheEntry>>>,
+      shards: Vec<Arc<RwLock<LruMap<String, CacheEntry>>>>,
       metrics: Arc<CacheMetrics>,
   }
 
   impl LruCache {
       pub fn new(capacity: usize, metrics: Arc<CacheMetrics>) -> Self {
+          let shard_capacity = (capacity / SHARD_COUNT).max(1);
+          let mut shards = Vec::with_capacity(SHARD_COUNT);
+          for _ in 0..SHARD_COUNT {
+              shards.push(Arc::new(RwLock::new(LruMap::new(shard_capacity.try_into().unwrap()))));
+          }
+
           Self {
-              cache: Arc::new(RwLock::new(LruMap::new(capacity.try_into().unwrap()))),
+              shards,
               metrics,
           }
+      }
+
+      fn get_shard_index(&self, key: &str) -> usize {
+          let mut hasher = DefaultHasher::new();
+          key.hash(&mut hasher);
+          (hasher.finish() as usize) % SHARD_COUNT
       }
   }
 
@@ -44,7 +60,8 @@
       where
           T: for<'de> Deserialize<'de> + Send,
       {
-          let mut cache = self.cache.write().await;
+          let shard_idx = self.get_shard_index(key);
+          let mut cache = self.shards[shard_idx].write().await;
 
           if let Some(entry) = cache.get(key) {
               if entry.is_expired() {
@@ -72,7 +89,8 @@
               expires_at: Instant::now() + ttl,
           };
 
-          let mut cache = self.cache.write().await;
+          let shard_idx = self.get_shard_index(key);
+          let mut cache = self.shards[shard_idx].write().await;
           if cache.put(key.to_string(), entry).is_some() {
               self.metrics.record_eviction();
           }
@@ -81,24 +99,28 @@
       }
 
       async fn delete(&self, key: &str) -> Result<()> {
-          let mut cache = self.cache.write().await;
+          let shard_idx = self.get_shard_index(key);
+          let mut cache = self.shards[shard_idx].write().await;
           cache.pop(key);
           Ok(())
       }
 
       async fn exists(&self, key: &str) -> Result<bool> {
-          let cache = self.cache.read().await;
+          let shard_idx = self.get_shard_index(key);
+          let cache = self.shards[shard_idx].read().await;
           Ok(cache.contains(key))
       }
 
       async fn clear(&self) -> Result<()> {
-          let mut cache = self.cache.write().await;
-          cache.clear();
+          for shard in &self.shards {
+              let mut cache = shard.write().await;
+              cache.clear();
+          }
           Ok(())
       }
 
       fn name(&self) -> &'static str {
-          "lru"
+          "lru_sharded"
       }
 
       fn tier(&self) -> CacheTier {

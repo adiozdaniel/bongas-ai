@@ -41,154 +41,196 @@ impl ActivityProcessor {
 
     /// Run the processor loop, consuming activities from the channel.
     pub async fn run(self: Arc<Self>, mut receiver: mpsc::Receiver<UserActivity>) {
-        info!("Activity processor started");
+        info!("Activity processor started (batched + async flush)");
 
-        while let Some(activity) = receiver.recv().await {
-            let kind = activity.kind();
-            let user_id = activity.user_id();
+        let mut buffer = Vec::with_capacity(100);
+        let flush_interval = std::time::Duration::from_millis(500);
+        let mut interval = tokio::time::interval(flush_interval);
 
-            if let Err(e) = self.process(activity).await {
-                error!(
-                    user_id,
-                    activity_type = kind,
-                    error = %e,
-                    "Failed to process activity"
-                );
+        loop {
+            tokio::select! {
+                maybe_activity = receiver.recv() => {
+                    match maybe_activity {
+                        Some(activity) => {
+                            buffer.push(activity);
+                            if buffer.len() >= 100 {
+                                let batch = std::mem::replace(&mut buffer, Vec::with_capacity(100));
+                                let processor = self.clone();
+                                tokio::spawn(async move {
+                                    if let Err(e) = processor.flush_batch(batch).await {
+                                        error!("Failed to flush batch: {}", e);
+                                    }
+                                });
+                            }
+                        }
+                        None => {
+                            // Channel closed
+                            if !buffer.is_empty() {
+                                let batch = std::mem::take(&mut buffer);
+                                let processor = self.clone();
+                                tokio::spawn(async move {
+                                    if let Err(e) = processor.flush_batch(batch).await {
+                                        error!("Failed to flush final batch: {}", e);
+                                    }
+                                });
+                            }
+                            break;
+                        }
+                    }
+                }
+                _ = interval.tick() => {
+                    if !buffer.is_empty() {
+                        let batch = std::mem::replace(&mut buffer, Vec::with_capacity(100));
+                        let processor = self.clone();
+                        tokio::spawn(async move {
+                            if let Err(e) = processor.flush_batch(batch).await {
+                                error!("Failed to flush batch on interval: {}", e);
+                            }
+                        });
+                    }
+                }
             }
         }
 
         warn!("Activity processor channel closed — shutting down");
     }
 
-    /// Process a single activity: DB write + staleness event.
-    async fn process(&self, activity: UserActivity) -> Result<()> {
-        match activity {
-            UserActivity::Playback {
-                user_id,
-                item_id,
-                watch_percentage,
-                watch_duration_seconds,
-                completed,
-                ..
-            } => {
-                self.process_playback(user_id, item_id, watch_percentage, watch_duration_seconds, completed).await
-            }
-
-            UserActivity::Reaction {
-                user_id,
-                item_id,
-                reaction_type,
-                ..
-            } => {
-                self.process_reaction(user_id, item_id, &reaction_type).await
-            }
-
-            UserActivity::ProfileUpdate {
-                user_id,
-                update_type,
-                data,
-                ..
-            } => {
-                self.process_profile_update(user_id, &update_type, &data).await
-            }
-
-            UserActivity::Notification {
-                user_id,
-                notification_type,
-                ..
-            } => {
-                self.process_notification(user_id, &notification_type).await
-            }
-
-            UserActivity::Click {
-                user_id,
-                item_id,
-                ..
-            } => {
-                self.interaction_repo.record_click(user_id, item_id).await?;
-                info!(user_id, item_id, "Processed click");
-                Ok(())
-            }
-
-            UserActivity::Impression {
-                user_id,
-                item_id,
-                ..
-            } => {
-                self.interaction_repo.record_impression(user_id, item_id).await?;
-                Ok(())
-            }
-        }
-    }
-
-    // ─── Playback Processing ────────────────────────────────────────────────
-
-    async fn process_playback(
-        &self,
-        user_id: i32,
-        item_id: i32,
-        watch_percentage: f32,
-        watch_duration_seconds: i32,
-        completed: bool,
-    ) -> Result<()> {
-        // Convert watch percentage to implicit rating (1-5 scale)
-        let mut rating = match watch_percentage {
-            p if p < 0.25 => 1.0,
-            p if p < 0.50 => 2.0,
-            p if p < 0.75 => 3.5,
-            _ => 5.0,
-        };
-
-        // Bonus for completion
-        if completed {
-            rating = (rating + 0.5_f32).min(5.0_f32);
+    /// Flush the buffered activities to DB and staleness engine
+    async fn flush_batch(&self, buffer: Vec<UserActivity>) -> Result<()> {
+        if buffer.is_empty() {
+            return Ok(());
         }
 
-        // Store via resilient repository
-        self.interaction_repo
-            .create_implicit_rating(user_id, item_id, rating, watch_duration_seconds)
-            .await?;
+        let mut user_ids = Vec::with_capacity(buffer.len());
+        let mut item_ids = Vec::with_capacity(buffer.len());
+        let mut types = Vec::with_capacity(buffer.len());
+        let mut ratings = Vec::with_capacity(buffer.len());
+        let mut durations = Vec::with_capacity(buffer.len());
 
-        // Invalidate caches
-        self.staleness_engine
-            .process_event(&UserEvent::WatchEvent {
-                user_id,
-                item_id,
-                completion_rate: watch_percentage,
-            })
-            .await?;
+        let mut processed_indices = Vec::new();
 
-        info!(user_id, item_id, watch_percentage, rating, "Processed playback");
-        Ok(())
-    }
+        for (i, activity) in buffer.iter().enumerate() {
+            match activity {
+                UserActivity::Playback { user_id, item_id, watch_percentage, watch_duration_seconds, completed, .. } => {
+                    // Logic from process_playback
+                    let mut rating = match watch_percentage {
+                        p if *p < 0.25 => 1.0,
+                        p if *p < 0.50 => 2.0,
+                        p if *p < 0.75 => 3.5,
+                        _ => 5.0,
+                    };
+                    if *completed {
+                        rating = (rating + 0.5_f32).min(5.0_f32);
+                    }
 
-    // ─── Reaction Processing ────────────────────────────────────────────────
+                    user_ids.push(*user_id);
+                    item_ids.push(*item_id);
+                    types.push("implicit_rating".to_string());
+                    ratings.push(Some(rating));
+                    durations.push(Some(*watch_duration_seconds));
+                    processed_indices.push(i);
+                }
+                UserActivity::Reaction { user_id, item_id, reaction_type, .. } => {
+                    // Logic from process_reaction
+                    let rating = match reaction_type.as_str() {
+                        "like" => 5.0,
+                        "dislike" => 1.0,
+                        _ => 3.0,
+                    };
 
-    async fn process_reaction(
-        &self,
-        user_id: i32,
-        item_id: i32,
-        reaction_type: &str,
-    ) -> Result<()> {
-        let rating = match reaction_type {
-            "like" => 5.0,
-            "dislike" => 1.0,
-            _ => 3.0,
-        };
+                    user_ids.push(*user_id);
+                    item_ids.push(*item_id);
+                    types.push("explicit_rating".to_string());
+                    ratings.push(Some(rating));
+                    durations.push(None);
+                    processed_indices.push(i);
+                }
+                UserActivity::Click { user_id, item_id, .. } => {
+                    user_ids.push(*user_id);
+                    item_ids.push(*item_id);
+                    types.push("click".to_string());
+                    ratings.push(None);
+                    durations.push(None);
+                    processed_indices.push(i);
+                }
+                UserActivity::Impression { user_id, item_id, .. } => {
+                    user_ids.push(*user_id);
+                    item_ids.push(*item_id);
+                    types.push("impression".to_string());
+                    ratings.push(None);
+                    durations.push(None);
+                    processed_indices.push(i);
+                }
+                // Handle complex types individually
+                UserActivity::ProfileUpdate { user_id, update_type, data, .. } => {
+                    if let Err(e) = self.process_profile_update(*user_id, update_type, data).await {
+                        error!(user_id, error = %e, "Failed to process profile update in batch");
+                    }
+                }
+                UserActivity::Notification { user_id, notification_type, .. } => {
+                    if let Err(e) = self.process_notification(*user_id, notification_type).await {
+                        error!(user_id, error = %e, "Failed to process notification in batch");
+                    }
+                }
+            }
+        }
 
-        self.interaction_repo
-            .create_explicit_rating(user_id, item_id, rating)
-            .await?;
+        // Batch insert interactions
+        if !user_ids.is_empty() {
+            if let Err(e) = self.interaction_repo.create_interactions_batch(
+                user_ids, item_ids, types, ratings, durations
+            ).await {
+                error!("Failed to batch insert interactions: {}", e);
+                // We continue to processing staleness even if DB write fails, 
+                // or we could retry. For now, we log and proceed (best effort).
+            }
+        }
 
-        self.staleness_engine
-            .process_event(&UserEvent::ExplicitFeedback {
-                user_id,
-                item_id,
-                rating,
-            })
-            .await?;
+        // Update staleness engine for all events
+        for activity in buffer.iter() {
+            let event = match activity {
+                UserActivity::Playback { user_id, item_id, watch_percentage, .. } => Some(UserEvent::WatchEvent {
+                    user_id: *user_id,
+                    item_id: *item_id,
+                    completion_rate: *watch_percentage,
+                }),
+                UserActivity::Reaction { user_id, item_id, reaction_type, .. } => {
+                    let rating = match reaction_type.as_str() {
+                        "like" => 5.0,
+                        "dislike" => 1.0,
+                        _ => 3.0,
+                    };
+                    Some(UserEvent::ExplicitFeedback {
+                        user_id: *user_id,
+                        item_id: *item_id,
+                        rating,
+                    })
+                }
+                UserActivity::ProfileUpdate { user_id, .. } => Some(UserEvent::ExplicitFeedback {
+                    user_id: *user_id,
+                    item_id: 0,
+                    rating: 0.0,
+                }),
+                UserActivity::Notification { notification_type, .. } if notification_type == "new_content" => {
+                     Some(UserEvent::NewContentInGenre { genre: "all".to_string() })
+                },
+                 UserActivity::Notification { user_id, notification_type, .. } if notification_type == "recommendation" => {
+                     Some(UserEvent::ExplicitFeedback {
+                        user_id: *user_id,
+                        item_id: 0,
+                        rating: 0.0,
+                    })
+                },
+                _ => None,
+            };
 
-        info!(user_id, item_id, reaction_type, "Processed reaction");
+            if let Some(ev) = event {
+                if let Err(e) = self.staleness_engine.process_event(&ev).await {
+                     warn!(error = %e, "Failed to process staleness event");
+                }
+            }
+        }
+
         Ok(())
     }
 
