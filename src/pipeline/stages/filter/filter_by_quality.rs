@@ -4,7 +4,6 @@ use serde_json::Value as JsonValue;
 use serde::Deserialize;
 use crate::pipeline::{PipelineStage, ScoredItem};
 use crate::pipeline::context::ExecutionContext;
-use std::collections::HashMap;
 
 #[derive(Deserialize)]
 struct Params {
@@ -64,75 +63,42 @@ impl PipelineStage for FilterByQualityStage {
         let max_level = params.max_quality.as_ref().map(|q| Self::quality_to_level(q));
 
         let item_ids: Vec<i32> = input.iter().map(|item| item.item_id).collect();
-
-        #[derive(sqlx::FromRow)]
-        struct Row {
-            item_id: i32,
-            max_resolution: Option<String>,
-            has_hdr: Option<bool>,
-            has_dolby_vision: Option<bool>,
-            has_dolby_atmos: Option<bool>,
-        }
-
-        let rows: Vec<Row> = sqlx::query_as(
-            r#"
-            SELECT item_id, max_resolution, has_hdr, has_dolby_vision, has_dolby_atmos
-            FROM item_features
-            WHERE item_id = ANY($1)
-            "#,
-        )
-        .bind(&item_ids)
-        .fetch_all(context.db_pool.as_ref())
-        .await?;
-
-        let quality_map: HashMap<i32, (i32, bool, bool, bool)> = rows
-            .into_iter()
-            .map(|row| {
-                let quality_level = row.max_resolution
-                    .map(|q| Self::quality_to_level(&q))
-                    .unwrap_or(-1);
-                (
-                    row.item_id,
-                    (
-                        quality_level,
-                        row.has_hdr.unwrap_or(false),
-                        row.has_dolby_vision.unwrap_or(false),
-                        row.has_dolby_atmos.unwrap_or(false),
-                    ),
-                )
-            })
-            .collect();
+        let item_features = context.item_feature_service.get_item_features_batch(&item_ids).await?;
 
         let filtered: Vec<ScoredItem> = input
             .into_iter()
             .filter(|item| {
-                match quality_map.get(&item.item_id) {
-                    Some((quality_level, has_hdr, has_dolby_vision, has_dolby_atmos)) => {
+                match item_features.get(&item.item_id) {
+                    Some(row) => {
+                        let quality_level = row.max_resolution.as_ref()
+                            .map(|q| Self::quality_to_level(q))
+                            .unwrap_or(-1);
+
                         // Unknown quality
-                        if *quality_level < 0 {
+                        if quality_level < 0 {
                             return params.include_unknown;
                         }
 
                         // Check quality range
                         if let Some(min) = min_level {
-                            if *quality_level < min {
+                            if quality_level < min {
                                 return false;
                             }
                         }
                         if let Some(max) = max_level {
-                            if *quality_level > max {
+                            if quality_level > max {
                                 return false;
                             }
                         }
 
                         // Check HDR requirements
-                        if params.require_hdr && !*has_hdr {
+                        if params.require_hdr && !row.has_hdr.unwrap_or(false) {
                             return false;
                         }
-                        if params.require_dolby_vision && !*has_dolby_vision {
+                        if params.require_dolby_vision && !row.has_dolby_vision.unwrap_or(false) {
                             return false;
                         }
-                        if params.require_dolby_atmos && !*has_dolby_atmos {
+                        if params.require_dolby_atmos && !row.has_dolby_atmos.unwrap_or(false) {
                             return false;
                         }
 

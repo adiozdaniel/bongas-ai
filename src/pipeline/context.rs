@@ -8,7 +8,6 @@
 //! - Pipeline resilience configuration
 
 use std::sync::Arc;
-use sqlx::PgPool;
 use crate::analytics::types::PerformanceStats;
 use crate::cache::CacheManager;
 use crate::config::PipelineConfig;
@@ -29,7 +28,6 @@ pub struct ExecutionContext {
     pub request_id: String,
 
     // ── Core dependencies ───────────────────────────────────────────────
-    pub db_pool: Arc<PgPool>,
     pub cache_manager: Arc<CacheManager>,
     pub model_loader: Arc<ModelLoader>,
 
@@ -53,7 +51,6 @@ impl ExecutionContext {
     /// Create a new execution context with core dependencies.
     pub fn new(
         user_id: Option<i32>,
-        db_pool: Arc<PgPool>,
         cache_manager: Arc<CacheManager>,
         model_loader: Arc<ModelLoader>,
         item_feature_service: Arc<ItemFeatureService>,
@@ -65,7 +62,6 @@ impl ExecutionContext {
             device_type: None,
             location: None,
             request_id,
-            db_pool,
             cache_manager,
             model_loader,
             item_feature_service,

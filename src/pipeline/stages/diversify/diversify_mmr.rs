@@ -62,19 +62,7 @@ impl DiversifyMMRStage {
 
     /// Calculate cosine similarity between two embedding vectors
     fn cosine_similarity(emb_a: &[f32], emb_b: &[f32]) -> f32 {
-        if emb_a.len() != emb_b.len() || emb_a.is_empty() {
-            return 0.0;
-        }
-
-        let dot_product: f32 = emb_a.iter().zip(emb_b.iter()).map(|(a, b)| a * b).sum();
-        let norm_a: f32 = emb_a.iter().map(|x| x * x).sum::<f32>().sqrt();
-        let norm_b: f32 = emb_b.iter().map(|x| x * x).sum::<f32>().sqrt();
-
-        if norm_a == 0.0 || norm_b == 0.0 {
-            0.0
-        } else {
-            dot_product / (norm_a * norm_b)
-        }
+        crate::ml::utils::cosine_similarity(emb_a, emb_b)
     }
 }
 
@@ -97,60 +85,19 @@ impl PipelineStage for DiversifyMMRStage {
         }
 
         let item_ids: Vec<i32> = input.iter().map(|item| item.item_id).collect();
+        let item_features = context.item_feature_service.get_item_features_batch(&item_ids).await?;
 
         // Fetch features for similarity calculation
-        let feature_map: HashMap<i32, (Vec<String>, Vec<f32>)> = match params.similarity_feature.as_str() {
-            "embedding" | "combined" => {
-                #[derive(sqlx::FromRow)]
-                struct Row {
-                    item_id: i32,
-                    genres: Option<JsonValue>,
-                    embedding: Option<JsonValue>,
-                }
-
-                let rows: Vec<Row> = sqlx::query_as(
-                    "SELECT item_id, genres, embedding FROM item_features WHERE item_id = ANY($1)"
-                )
-                .bind(&item_ids)
-                .fetch_all(context.db_pool.as_ref())
-                .await?;
-
-                rows.into_iter()
-                    .map(|row| {
-                        let genres: Vec<String> = row.genres
-                            .and_then(|v| serde_json::from_value(v).ok())
-                            .unwrap_or_default();
-                        let embedding: Vec<f32> = row.embedding
-                            .and_then(|v| serde_json::from_value(v).ok())
-                            .unwrap_or_default();
-                        (row.item_id, (genres, embedding))
-                    })
-                    .collect()
-            }
-            _ => {
-                #[derive(sqlx::FromRow)]
-                struct Row {
-                    item_id: i32,
-                    genres: Option<JsonValue>,
-                }
-
-                let rows: Vec<Row> = sqlx::query_as(
-                    "SELECT item_id, genres FROM item_features WHERE item_id = ANY($1)"
-                )
-                .bind(&item_ids)
-                .fetch_all(context.db_pool.as_ref())
-                .await?;
-
-                rows.into_iter()
-                    .map(|row| {
-                        let genres: Vec<String> = row.genres
-                            .and_then(|v| serde_json::from_value(v).ok())
-                            .unwrap_or_default();
-                        (row.item_id, (genres, Vec::new()))
-                    })
-                    .collect()
-            }
-        };
+        let feature_map: HashMap<i32, (Vec<String>, Vec<f32>)> = item_features
+            .into_iter()
+            .map(|(item_id, row)| {
+                let genres: Vec<String> = row.genres.as_ref()
+                    .and_then(|v| serde_json::from_value(v.clone()).ok())
+                    .unwrap_or_default();
+                let embedding: Vec<f32> = row.embedding.unwrap_or_default();
+                (item_id, (genres, embedding))
+            })
+            .collect();
 
         // Normalize scores for MMR calculation
         let max_score = input.iter().map(|i| i.score).fold(0.0f32, f32::max);

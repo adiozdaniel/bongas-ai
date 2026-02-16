@@ -48,49 +48,26 @@ impl PipelineStage for DiversifyByCreatorStage {
         let params: Params = serde_json::from_value(params.clone())?;
         let item_ids: Vec<i32> = input.iter().map(|item| item.item_id).collect();
 
-        // Build query based on creator field
-        let field_name = match params.creator_field.as_str() {
-            "director" => "directors",
-            "studio" => "studios",
-            "actor" => "actors",
-            _ => "creators",
-        };
-
-        #[derive(sqlx::FromRow)]
-        struct Row {
-            item_id: i32,
-            creators: Option<JsonValue>,
-        }
-
-        let query = format!(
-            "SELECT item_id, {} as creators FROM item_features WHERE item_id = ANY($1)",
-            field_name
-        );
-
-        let rows: Vec<Row> = sqlx::query_as(&query)
-            .bind(&item_ids)
-            .fetch_all(context.db_pool.as_ref())
-            .await?;
-
-        let creator_map: HashMap<i32, Vec<String>> = rows
-            .into_iter()
-            .map(|row| {
-                let creators: Vec<String> = row.creators
-                    .and_then(|v| serde_json::from_value(v).ok())
-                    .unwrap_or_default();
-                (row.item_id, creators)
-            })
-            .collect();
+        let item_features = context.item_feature_service.get_item_features_batch(&item_ids).await?;
 
         // Track how many items we've included per creator
         let mut creator_counts: HashMap<String, usize> = HashMap::new();
         let mut selected: Vec<ScoredItem> = Vec::new();
 
         for item in input {
-            let creators = creator_map
-                .get(&item.item_id)
-                .cloned()
-                .unwrap_or_default();
+            let creators = if let Some(row) = item_features.get(&item.item_id) {
+                let creators_json = match params.creator_field.as_str() {
+                    "director" => &row.directors,
+                    "studio" => &row.studios,
+                    "actor" => &row.actors,
+                    _ => &row.creators,
+                };
+                creators_json.as_ref()
+                    .and_then(|v| serde_json::from_value::<Vec<String>>(v.clone()).ok())
+                    .unwrap_or_default()
+            } else {
+                Vec::new()
+            };
 
             if creators.is_empty() {
                 // No creator info, include by default

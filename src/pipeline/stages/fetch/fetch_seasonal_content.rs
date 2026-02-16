@@ -5,6 +5,7 @@ use serde::Deserialize;
 use crate::pipeline::{PipelineStage, ScoredItem};
 use crate::pipeline::context::ExecutionContext;
 use chrono::{Utc, Datelike};
+use crate::db::repositories::item_feature_service::SeasonalItemRowExtended;
 
 #[derive(Deserialize)]
 struct Params {
@@ -92,41 +93,13 @@ impl PipelineStage for FetchSeasonalContentStage {
         let mut search_tags: Vec<String> = vec![current_season.to_string()];
         search_tags.extend(holidays.iter().map(|h| h.to_string()));
 
-        #[derive(sqlx::FromRow)]
-        struct Row {
-            item_id: i32,
-            title: Option<String>,
-            seasonal_tags: Option<JsonValue>,
-            holiday_tags: Option<JsonValue>,
-            _themes: Option<JsonValue>,
-            popularity_score: Option<f32>,
-        }
-
-        // Query for content matching any seasonal/holiday tags
-        let rows: Vec<Row> = sqlx::query_as(
-            r#"
-            SELECT item_id, title, seasonal_tags, holiday_tags, themes, popularity_score
-            FROM item_features
-            WHERE is_active = true
-                AND (
-                    seasonal_tags ?| $1
-                    OR holiday_tags ?| $1
-                    OR themes ?| $1
-                )
-                AND (popularity_score >= $2 OR popularity_score IS NULL)
-            ORDER BY popularity_score DESC NULLS LAST
-            LIMIT $3
-            "#,
-        )
-        .bind(&search_tags)
-        .bind(params.min_popularity)
-        .bind(params.limit as i64)
-        .fetch_all(context.db_pool.as_ref())
-        .await?;
+        let rows: Vec<SeasonalItemRowExtended> = context.item_feature_service
+            .get_seasonal_content_by_tags(&search_tags, params.min_popularity, params.limit as i64)
+            .await?;
 
         let items: Vec<ScoredItem> = rows
             .into_iter()
-            .map(|row| {
+            .map(|row: SeasonalItemRowExtended| {
                 let seasonal_tags: Vec<String> = row.seasonal_tags
                     .and_then(|v| serde_json::from_value(v).ok())
                     .unwrap_or_default();

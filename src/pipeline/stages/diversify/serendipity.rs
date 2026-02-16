@@ -69,72 +69,36 @@ impl PipelineStage for SerendipityStage {
         };
 
         // Get user's genre preferences
-        #[derive(sqlx::FromRow)]
-        struct UserPrefs {
-            genre_affinity: Option<JsonValue>,
-            disliked_genres: Option<JsonValue>,
-        }
+        let user_features = context.item_feature_service.get_user_features(user_id).await?;
 
-        let user_prefs: Option<UserPrefs> = sqlx::query_as(
-            "SELECT genre_affinity, disliked_genres FROM user_features WHERE user_id = $1"
-        )
-        .bind(user_id)
-        .fetch_optional(context.db_pool.as_ref())
-        .await?;
-
-        let genre_affinity: HashMap<String, f32> = user_prefs.as_ref()
+        let genre_affinity: HashMap<String, f32> = user_features.as_ref()
             .and_then(|u| u.genre_affinity.clone())
             .and_then(|v| serde_json::from_value(v).ok())
             .unwrap_or_default();
 
-        let disliked_genres: HashSet<String> = user_prefs
-            .and_then(|u| u.disliked_genres)
+        let disliked_genres: HashSet<String> = user_features
+            .and_then(|u| u.disliked_genres.clone())
             .and_then(|v| serde_json::from_value::<Vec<String>>(v).ok())
             .map(|v| v.into_iter().map(|g| g.to_lowercase()).collect())
             .unwrap_or_default();
 
         // Get item features
         let item_ids: Vec<i32> = input.iter().map(|item| item.item_id).collect();
-
-        #[derive(sqlx::FromRow)]
-        struct ItemRow {
-            item_id: i32,
-            genres: Option<JsonValue>,
-            user_rating: Option<f32>,
-            critic_rating: Option<f32>,
-            is_award_winner: Option<bool>,
-        }
-
-        let items: Vec<ItemRow> = sqlx::query_as(
-            r#"
-            SELECT item_id, genres, user_rating, critic_rating, is_award_winner
-            FROM item_features
-            WHERE item_id = ANY($1)
-            "#,
-        )
-        .bind(&item_ids)
-        .fetch_all(context.db_pool.as_ref())
-        .await?;
-
-        let item_map: HashMap<i32, (Vec<String>, f32, bool)> = items
-            .into_iter()
-            .map(|row| {
-                let genres: Vec<String> = row.genres
-                    .and_then(|v| serde_json::from_value(v).ok())
-                    .unwrap_or_default();
-                let rating = row.critic_rating
-                    .or(row.user_rating)
-                    .unwrap_or(0.0);
-                let is_acclaimed = row.is_award_winner.unwrap_or(false) || rating >= 8.0;
-                (row.item_id, (genres, rating, is_acclaimed))
-            })
-            .collect();
+        let item_features = context.item_feature_service.get_item_features_batch(&item_ids).await?;
 
         // Identify serendipitous candidates
         let mut candidates: Vec<&ScoredItem> = Vec::new();
 
         for item in &input {
-            if let Some((genres, rating, is_acclaimed)) = item_map.get(&item.item_id) {
+            if let Some(row) = item_features.get(&item.item_id) {
+                let genres: Vec<String> = row.genres.as_ref()
+                    .and_then(|v| serde_json::from_value(v.clone()).ok())
+                    .unwrap_or_default();
+                let rating = row.critic_rating
+                    .or(row.user_rating)
+                    .unwrap_or(0.0);
+                let is_acclaimed = row.is_award_winner.unwrap_or(false) || rating >= 8.0;
+
                 // Check if item is outside user's comfort zone
                 let avg_affinity: f32 = genres.iter()
                     .filter_map(|g| genre_affinity.get(&g.to_lowercase()))
@@ -147,10 +111,10 @@ impl PipelineStage for SerendipityStage {
                     .any(|g| disliked_genres.contains(&g.to_lowercase()));
 
                 // Check rating threshold
-                let meets_rating = *rating >= params.min_rating;
+                let meets_rating = rating >= params.min_rating;
 
                 // Check acclaimed preference
-                let meets_acclaimed = !params.prefer_acclaimed || *is_acclaimed;
+                let meets_acclaimed = !params.prefer_acclaimed || is_acclaimed;
 
                 if is_serendipitous && !has_disliked && meets_rating && meets_acclaimed {
                     candidates.push(item);

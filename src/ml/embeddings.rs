@@ -13,18 +13,18 @@ use std::time::Instant;
 
 use anyhow::Result;
 use serde_json::Value as JsonValue;
-use sqlx::PgPool;
 use tokio::sync::Semaphore;
 use tracing::{debug, warn};
 
 use crate::cache::CacheManager;
 use crate::config::MlConfig;
 use crate::error::ModelError;
+use crate::db::ResilientPool;
 
 
 /// Embedding manager for user and item embeddings.
 pub struct EmbeddingManager {
-    db_pool: Arc<PgPool>,
+    pool: Arc<ResilientPool>,
     cache_manager: Arc<CacheManager>,
     bulkhead: Arc<Semaphore>,
     config: MlConfig,
@@ -33,14 +33,14 @@ pub struct EmbeddingManager {
 
 impl EmbeddingManager {
     pub fn new(
-        db_pool: Arc<PgPool>,
+        pool: Arc<ResilientPool>,
         cache_manager: Arc<CacheManager>,
         config: MlConfig,
         analytics: Option<Arc<crate::analytics::types::PerformanceStats>>,
     ) -> Self {
         let bulkhead = Arc::new(Semaphore::new(config.feature_fetch_max_concurrent));
         Self {
-            db_pool,
+            pool,
             cache_manager,
             bulkhead,
             config,
@@ -154,24 +154,17 @@ impl EmbeddingManager {
 
     /// Compute cosine similarity between two vectors.
     pub fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
-        let dot: f32 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
-        let norm_a: f32 = a.iter().map(|x| x * x).sum::<f32>().sqrt();
-        let norm_b: f32 = b.iter().map(|x| x * x).sum::<f32>().sqrt();
-        if norm_a > 0.0 && norm_b > 0.0 { dot / (norm_a * norm_b) } else { 0.0 }
+        crate::ml::utils::cosine_similarity(a, b)
     }
 
     /// Compute dot product between two vectors.
     pub fn dot_product(a: &[f32], b: &[f32]) -> f32 {
-        a.iter().zip(b.iter()).map(|(x, y)| x * y).sum()
+        crate::ml::utils::dot_product(a, b)
     }
 
     /// Compute euclidean similarity (1 / (1 + distance)).
     pub fn euclidean_similarity(a: &[f32], b: &[f32]) -> f32 {
-        let distance: f32 = a.iter().zip(b.iter())
-            .map(|(x, y)| (x - y).powi(2))
-            .sum::<f32>()
-            .sqrt();
-        1.0 / (1.0 + distance)
+        crate::ml::utils::euclidean_similarity(a, b)
     }
 
     // ── Internal DB queries ──────────────────────────────────────────────────
@@ -188,12 +181,15 @@ impl EmbeddingManager {
             tfidf_vector: Option<JsonValue>,
         }
 
-        let rows: Vec<Row> = sqlx::query_as(
-            "SELECT item_id, embedding, tfidf_vector FROM item_features WHERE item_id = ANY($1)",
-        )
-        .bind(item_ids)
-        .fetch_all(self.db_pool.as_ref())
-        .await?;
+        let ids = item_ids.to_vec();
+        let rows: Vec<Row> = self.pool.execute(|pool| async move {
+            sqlx::query_as::<_, Row>(
+                "SELECT item_id, embedding, tfidf_vector FROM item_features WHERE item_id = ANY($1)",
+            )
+            .bind(&ids)
+            .fetch_all(&pool)
+            .await
+        }).await?;
 
         let mut found: HashMap<i32, Vec<f32>> = HashMap::new();
         for row in rows {
@@ -226,12 +222,14 @@ impl EmbeddingManager {
             embedding: Option<Vec<f32>>,
         }
 
-        let row: Option<Row> = sqlx::query_as(
-            "SELECT embedding FROM user_features WHERE user_id = $1",
-        )
-        .bind(user_id)
-        .fetch_optional(self.db_pool.as_ref())
-        .await?;
+        let row: Option<Row> = self.pool.execute(|pool| async move {
+            sqlx::query_as::<_, Row>(
+                "SELECT embedding FROM user_features WHERE user_id = $1",
+            )
+            .bind(user_id)
+            .fetch_optional(&pool)
+            .await
+        }).await?;
 
         Ok(row
             .and_then(|r| r.embedding)

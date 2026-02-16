@@ -4,7 +4,6 @@ use serde_json::Value as JsonValue;
 use serde::Deserialize;
 use crate::pipeline::{PipelineStage, ScoredItem};
 use crate::pipeline::context::ExecutionContext;
-use std::collections::HashMap;
 use chrono::Utc;
 
 #[derive(Deserialize)]
@@ -49,50 +48,28 @@ impl PipelineStage for BoostNewContentStage {
         let params: Params = serde_json::from_value(params.clone())?;
         let item_ids: Vec<i32> = input.iter().map(|item| item.item_id).collect();
 
-        #[derive(sqlx::FromRow)]
-        struct Row {
-            item_id: i32,
-            release_date: Option<chrono::DateTime<Utc>>,
-            added_date: Option<chrono::DateTime<Utc>>,
-        }
-
-        let rows: Vec<Row> = sqlx::query_as(
-            r#"
-            SELECT item_id, release_date, added_date
-            FROM item_features
-            WHERE item_id = ANY($1)
-            "#,
-        )
-        .bind(&item_ids)
-        .fetch_all(context.db_pool.as_ref())
-        .await?;
+        let item_features = context.item_feature_service.get_item_features_batch(&item_ids).await?;
 
         let now = Utc::now();
         let threshold = chrono::Duration::days(params.new_threshold_days as i64);
 
-        let date_map: HashMap<i32, Option<chrono::DateTime<Utc>>> = rows
-            .into_iter()
-            .map(|row| {
-                // Use release_date if available, otherwise fall back to added_date
-                let date = row.release_date.or(row.added_date);
-                (row.item_id, date)
-            })
-            .collect();
-
         let boosted: Vec<ScoredItem> = input
             .into_iter()
             .map(|mut item| {
-                if let Some(Some(date)) = date_map.get(&item.item_id) {
-                    let age = now - *date;
-                    if age <= threshold && age.num_days() >= 0 {
-                        // Calculate decay based on age
-                        let age_ratio = age.num_days() as f32 / params.new_threshold_days as f32;
-                        let decay = (-params.decay_rate * age_ratio).exp();
-                        let boost = 1.0 + (params.boost_factor - 1.0) * decay;
+                if let Some(row) = item_features.get(&item.item_id) {
+                    // Use release_date if available, otherwise fall back to added_date
+                    if let Some(date) = row.release_date.or(row.added_date) {
+                        let age = now - date;
+                        if age <= threshold && age.num_days() >= 0 {
+                            // Calculate decay based on age
+                            let age_ratio = age.num_days() as f32 / params.new_threshold_days as f32;
+                            let decay = (-params.decay_rate * age_ratio).exp();
+                            let boost = 1.0 + (params.boost_factor - 1.0) * decay;
 
-                        item.score *= boost;
-                        item.metadata["is_new"] = serde_json::json!(true);
-                        item.metadata["days_since_release"] = serde_json::json!(age.num_days());
+                            item.score *= boost;
+                            item.metadata["is_new"] = serde_json::json!(true);
+                            item.metadata["days_since_release"] = serde_json::json!(age.num_days());
+                        }
                     }
                 }
                 item

@@ -4,7 +4,6 @@ use serde_json::Value as JsonValue;
 use serde::Deserialize;
 use crate::pipeline::{PipelineStage, ScoredItem};
 use crate::pipeline::context::ExecutionContext;
-use std::collections::HashMap;
 
 #[derive(Deserialize)]
 struct Params {
@@ -39,53 +38,34 @@ impl PipelineStage for FilterByLanguageStage {
         let params: Params = serde_json::from_value(params.clone())?;
         let item_ids: Vec<i32> = input.iter().map(|item| item.item_id).collect();
 
-        #[derive(sqlx::FromRow)]
-        struct Row {
-            item_id: i32,
-            language: Option<String>,
-            audio_languages: Option<JsonValue>,
-            subtitle_languages: Option<JsonValue>,
-        }
-
-        let rows: Vec<Row> = sqlx::query_as(
-            r#"
-            SELECT item_id, language, audio_languages, subtitle_languages
-            FROM item_features
-            WHERE item_id = ANY($1)
-            "#,
-        )
-        .bind(&item_ids)
-        .fetch_all(context.db_pool.as_ref())
-        .await?;
-
-        let language_map: HashMap<i32, Vec<String>> = rows
-            .into_iter()
-            .map(|row| {
-                let mut langs = Vec::new();
-                if let Some(lang) = row.language {
-                    langs.push(lang.to_lowercase());
-                }
-                if let Some(audio) = row.audio_languages {
-                    if let Ok(audio_langs) = serde_json::from_value::<Vec<String>>(audio) {
-                        langs.extend(audio_langs.into_iter().map(|l| l.to_lowercase()));
-                    }
-                }
-                if let Some(subs) = row.subtitle_languages {
-                    if let Ok(sub_langs) = serde_json::from_value::<Vec<String>>(subs) {
-                        langs.extend(sub_langs.into_iter().map(|l| l.to_lowercase()));
-                    }
-                }
-                (row.item_id, langs)
-            })
-            .collect();
+        let item_features = context.item_feature_service.get_item_features_batch(&item_ids).await?;
 
         let target_languages: Vec<String> = params.languages.iter().map(|l| l.to_lowercase()).collect();
 
         let filtered: Vec<ScoredItem> = input
             .into_iter()
             .filter(|item| {
-                match language_map.get(&item.item_id) {
-                    Some(langs) if !langs.is_empty() => {
+                match item_features.get(&item.item_id) {
+                    Some(row) => {
+                        let mut langs = Vec::new();
+                        if let Some(ref lang) = row.language {
+                            langs.push(lang.to_lowercase());
+                        }
+                        if let Some(ref audio) = row.audio_languages {
+                            if let Ok(audio_langs) = serde_json::from_value::<Vec<String>>(audio.clone()) {
+                                langs.extend(audio_langs.into_iter().map(|l| l.to_lowercase()));
+                            }
+                        }
+                        if let Some(ref subs) = row.subtitle_languages {
+                            if let Ok(sub_langs) = serde_json::from_value::<Vec<String>>(subs.clone()) {
+                                langs.extend(sub_langs.into_iter().map(|l| l.to_lowercase()));
+                            }
+                        }
+
+                        if langs.is_empty() {
+                            return params.include_unknown;
+                        }
+
                         let has_language = langs.iter().any(|l| target_languages.contains(l));
                         match params.mode.as_str() {
                             "include" => has_language,
@@ -93,7 +73,7 @@ impl PipelineStage for FilterByLanguageStage {
                             _ => true,
                         }
                     }
-                    _ => params.include_unknown,
+                    None => params.include_unknown,
                 }
             })
             .collect();

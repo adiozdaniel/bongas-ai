@@ -4,6 +4,7 @@ use serde_json::{Value as JsonValue, json};
 use serde::Deserialize;
 use crate::pipeline::{PipelineStage, ScoredItem};
 use crate::pipeline::context::ExecutionContext;
+use crate::db::repositories::item_feature_service::ItemFeatureRow;
 use tracing::info;
 
 #[derive(Deserialize)]
@@ -41,34 +42,32 @@ impl PipelineStage for MLInferenceSimilarityStage {
 
         // Get embeddings for seed items
         let seed_ids: Vec<i32> = input.iter().map(|i| i.item_id).collect();
-        let seed_embeddings = self.get_embeddings(context, &seed_ids).await?;
+        let seed_embeddings_tuples = context.embedding_manager
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("EmbeddingManager not configured"))?
+            .get_item_embeddings(&seed_ids, 128) // 128 is the feature dimension from `unwrap_or_else(|| vec![0.0; 128])`
+            .await?;
+        let seed_embeddings: Vec<Vec<f32>> = seed_embeddings_tuples.into_iter().map(|(_, emb)| emb).collect();
 
-        // Get candidate items not in seeds
-        #[derive(sqlx::FromRow)]
-        struct CandidateRow {
-            item_id: i32,
-            tfidf_vector: Option<JsonValue>,
-        }
+        // Get candidate item features
+        let all_item_ids_in_input: Vec<i32> = input.iter().map(|item| item.item_id).collect();
+        let all_item_features_map = context.item_feature_service
+            .get_item_features_batch(&all_item_ids_in_input)
+            .await?;
 
-        let candidates: Vec<CandidateRow> = sqlx::query_as(
-            r#"
-            SELECT item_id, tfidf_vector
-            FROM item_features
-            WHERE item_id != ALL($1)
-                AND tfidf_vector IS NOT NULL
-            ORDER BY trending_score DESC
-            LIMIT 500
-            "#,
-        )
-        .bind(&seed_ids)
-        .fetch_all(context.db_pool.as_ref())
-        .await?;
+        // Filter out seed items and items without tfidf_vector
+        // The original query also ordered by trending_score DESC LIMIT 500.
+        // This logic would ideally be in a dedicated ItemFeatureService method for candidate selection.
+        // For now, we proceed with the available filtered candidates.
+        let candidates_features: Vec<ItemFeatureRow> = all_item_features_map.into_values()
+            .filter(|feature_row| !seed_ids.contains(&feature_row.item_id) && feature_row.tfidf_vector.is_some())
+            .collect();
 
         // Score candidates by average similarity to all seeds
         let mut results: Vec<ScoredItem> = Vec::new();
 
-        for cand in candidates {
-            let cand_emb: Vec<f32> = cand.tfidf_vector
+        for cand_feature in candidates_features {
+            let cand_emb: Vec<f32> = cand_feature.tfidf_vector
                 .and_then(|v| serde_json::from_value(v).ok())
                 .unwrap_or_else(|| vec![0.0; 128]);
 
@@ -83,7 +82,7 @@ impl PipelineStage for MLInferenceSimilarityStage {
                 .sum::<f32>() / seed_embeddings.len().max(1) as f32;
 
             results.push(ScoredItem {
-                item_id: cand.item_id,
+                item_id: cand_feature.item_id,
                 score: avg_sim,
                 metadata: json!({
                     "similarity_method": params.method,
@@ -99,31 +98,7 @@ impl PipelineStage for MLInferenceSimilarityStage {
     }
 }
 
-impl MLInferenceSimilarityStage {
-    async fn get_embeddings(
-        &self,
-        context: &ExecutionContext,
-        item_ids: &[i32],
-    ) -> Result<Vec<Vec<f32>>> {
-        #[derive(sqlx::FromRow)]
-        struct Row {
-            tfidf_vector: Option<JsonValue>,
-        }
 
-        let rows: Vec<Row> = sqlx::query_as(
-            "SELECT tfidf_vector FROM item_features WHERE item_id = ANY($1)",
-        )
-        .bind(item_ids)
-        .fetch_all(context.db_pool.as_ref())
-        .await?;
-
-        Ok(rows.into_iter().map(|r| {
-            r.tfidf_vector
-                .and_then(|v| serde_json::from_value(v).ok())
-                .unwrap_or_else(|| vec![0.0; 128])
-        }).collect())
-    }
-}
 
 fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
     let dot: f32 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();

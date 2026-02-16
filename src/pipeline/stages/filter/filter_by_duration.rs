@@ -4,7 +4,6 @@ use serde_json::Value as JsonValue;
 use serde::Deserialize;
 use crate::pipeline::{PipelineStage, ScoredItem};
 use crate::pipeline::context::ExecutionContext;
-use std::collections::HashMap;
 
 #[derive(Deserialize)]
 struct Params {
@@ -35,38 +34,21 @@ impl PipelineStage for FilterByDurationStage {
     ) -> Result<Vec<ScoredItem>> {
         let params: Params = serde_json::from_value(params.clone())?;
         let item_ids: Vec<i32> = input.iter().map(|item| item.item_id).collect();
-
-        #[derive(sqlx::FromRow)]
-        struct Row {
-            item_id: i32,
-            duration_seconds: Option<i32>,
-        }
-
-        let rows: Vec<Row> = sqlx::query_as(
-            r#"
-            SELECT item_id, duration_seconds
-            FROM item_features
-            WHERE item_id = ANY($1)
-            "#,
-        )
-        .bind(&item_ids)
-        .fetch_all(context.db_pool.as_ref())
-        .await?;
-
-        let duration_map: HashMap<i32, Option<i32>> = rows
-            .into_iter()
-            .map(|row| (row.item_id, row.duration_seconds))
-            .collect();
+        let item_features = context.item_feature_service.get_item_features_batch(&item_ids).await?;
 
         let filtered: Vec<ScoredItem> = input
             .into_iter()
             .filter(|item| {
-                match duration_map.get(&item.item_id) {
-                    Some(Some(duration_seconds)) => {
-                        let duration_minutes = duration_seconds / 60;
-                        let above_min = params.min_minutes.map_or(true, |min| duration_minutes >= min);
-                        let below_max = params.max_minutes.map_or(true, |max| duration_minutes <= max);
-                        above_min && below_max
+                match item_features.get(&item.item_id) {
+                    Some(row) => {
+                        if let Some(duration_seconds) = row.duration_seconds {
+                            let duration_minutes = duration_seconds / 60;
+                            let above_min = params.min_minutes.map_or(true, |min| duration_minutes >= min);
+                            let below_max = params.max_minutes.map_or(true, |max| duration_minutes <= max);
+                            above_min && below_max
+                        } else {
+                            params.include_unknown
+                        }
                     }
                     _ => params.include_unknown,
                 }

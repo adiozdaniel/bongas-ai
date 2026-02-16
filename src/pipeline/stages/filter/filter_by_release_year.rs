@@ -4,7 +4,6 @@ use serde_json::Value as JsonValue;
 use serde::Deserialize;
 use crate::pipeline::{PipelineStage, ScoredItem};
 use crate::pipeline::context::ExecutionContext;
-use std::collections::HashMap;
 
 #[derive(Deserialize)]
 struct Params {
@@ -39,41 +38,25 @@ impl PipelineStage for FilterByReleaseYearStage {
         let params: Params = serde_json::from_value(params.clone())?;
         let item_ids: Vec<i32> = input.iter().map(|item| item.item_id).collect();
 
-        #[derive(sqlx::FromRow)]
-        struct Row {
-            item_id: i32,
-            release_year: Option<i32>,
-        }
-
-        let rows: Vec<Row> = sqlx::query_as(
-            r#"
-            SELECT item_id, release_year
-            FROM item_features
-            WHERE item_id = ANY($1)
-            "#,
-        )
-        .bind(&item_ids)
-        .fetch_all(context.db_pool.as_ref())
-        .await?;
-
-        let year_map: HashMap<i32, Option<i32>> = rows
-            .into_iter()
-            .map(|row| (row.item_id, row.release_year))
-            .collect();
+        let item_features = context.item_feature_service.get_item_features_batch(&item_ids).await?;
 
         let filtered: Vec<ScoredItem> = input
             .into_iter()
             .filter(|item| {
-                match year_map.get(&item.item_id) {
-                    Some(Some(year)) => {
-                        // If specific years are provided, check against those
-                        if let Some(ref years) = params.years {
-                            return years.contains(year);
+                match item_features.get(&item.item_id) {
+                    Some(row) => {
+                        if let Some(year) = row.release_year {
+                            // If specific years are provided, check against those
+                            if let Some(ref years) = params.years {
+                                return years.contains(&year);
+                            }
+                            // Otherwise check min/max range
+                            let above_min = params.min_year.map_or(true, |min| year >= min);
+                            let below_max = params.max_year.map_or(true, |max| year <= max);
+                            above_min && below_max
+                        } else {
+                            params.include_unknown
                         }
-                        // Otherwise check min/max range
-                        let above_min = params.min_year.map_or(true, |min| *year >= min);
-                        let below_max = params.max_year.map_or(true, |max| *year <= max);
-                        above_min && below_max
                     }
                     _ => params.include_unknown,
                 }

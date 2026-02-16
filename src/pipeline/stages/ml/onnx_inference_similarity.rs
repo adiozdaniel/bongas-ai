@@ -75,16 +75,20 @@ impl PipelineStage for ONNXInferenceSimilarityStage {
 
         // Get seed item embeddings
         let seed_ids: Vec<i32> = input.iter().map(|item| item.item_id).collect();
-        let seed_embeddings = self
-            .get_item_embeddings(context, &seed_ids, params.embedding_dim)
+        let seed_embeddings = context.embedding_manager
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("EmbeddingManager not configured"))?
+            .get_item_embeddings(&seed_ids, params.embedding_dim)
             .await?;
 
         // Get candidate items (excluding seeds)
-        let candidate_ids = self
-            .get_candidate_items(context, &seed_ids, params.candidate_limit)
+        let candidate_ids = context.item_feature_service
+            .get_candidate_item_ids_for_similarity(&seed_ids, params.candidate_limit as i64)
             .await?;
-        let candidate_embeddings = self
-            .get_item_embeddings(context, &candidate_ids, params.embedding_dim)
+        let candidate_embeddings = context.embedding_manager
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("EmbeddingManager not configured"))?
+            .get_item_embeddings(&candidate_ids, params.embedding_dim)
             .await?;
 
         // Compute similarities
@@ -105,10 +109,10 @@ impl PipelineStage for ONNXInferenceSimilarityStage {
                 .filter(|(cid, _)| !seed_ids.contains(cid))
                 .map(|(cid, cand_vec)| {
                     let score = match params.method.as_str() {
-                        "cosine" => Self::cosine_similarity(seed_vec, cand_vec),
-                        "dot_product" => Self::dot_product(seed_vec, cand_vec),
-                        "euclidean" => Self::euclidean_similarity(seed_vec, cand_vec),
-                        _ => Self::cosine_similarity(seed_vec, cand_vec),
+                        "cosine" => crate::ml::utils::cosine_similarity(seed_vec, cand_vec),
+                        "dot_product" => crate::ml::utils::dot_product(seed_vec, cand_vec),
+                        "euclidean" => crate::ml::utils::euclidean_similarity(seed_vec, cand_vec),
+                        _ => crate::ml::utils::cosine_similarity(seed_vec, cand_vec),
                     };
                     ScoredItem {
                         item_id: *cid,
@@ -165,136 +169,5 @@ impl PipelineStage for ONNXInferenceSimilarityStage {
         );
 
         Ok(deduped)
-    }
-}
-
-impl ONNXInferenceSimilarityStage {
-    /// Get item embeddings from database
-    async fn get_item_embeddings(
-        &self,
-        context: &ExecutionContext,
-        item_ids: &[i32],
-        embedding_dim: usize,
-    ) -> Result<Vec<(i32, Vec<f32>)>> {
-        if item_ids.is_empty() {
-            return Ok(Vec::new());
-        }
-
-        #[derive(sqlx::FromRow)]
-        struct Row {
-            item_id: i32,
-            embedding: Option<Vec<f32>>,
-            tfidf_vector: Option<JsonValue>,
-        }
-
-        let rows: Vec<Row> = sqlx::query_as(
-            r#"
-            SELECT item_id, embedding, tfidf_vector
-            FROM item_features
-            WHERE item_id = ANY($1)
-            "#,
-        )
-        .bind(item_ids)
-        .fetch_all(context.db_pool.as_ref())
-        .await?;
-
-        let mut embeddings = Vec::new();
-        for row in rows {
-            let emb = if let Some(embedding) = row.embedding {
-                // Prefer pre-computed embedding
-                Self::pad_or_truncate(embedding, embedding_dim)
-            } else if let Some(vec_json) = row.tfidf_vector {
-                // Fall back to TF-IDF vector
-                let vec = serde_json::from_value::<Vec<f32>>(vec_json)
-                    .unwrap_or_else(|_| vec![0.0; embedding_dim]);
-                Self::pad_or_truncate(vec, embedding_dim)
-            } else {
-                // Cold start
-                vec![0.0; embedding_dim]
-            };
-            embeddings.push((row.item_id, emb));
-        }
-
-        // Fill missing items with zeros
-        for &item_id in item_ids {
-            if !embeddings.iter().any(|(id, _)| *id == item_id) {
-                embeddings.push((item_id, vec![0.0; embedding_dim]));
-            }
-        }
-
-        Ok(embeddings)
-    }
-
-    /// Get candidate items for similarity search (excluding seed items)
-    async fn get_candidate_items(
-        &self,
-        context: &ExecutionContext,
-        exclude_ids: &[i32],
-        limit: usize,
-    ) -> Result<Vec<i32>> {
-        #[derive(sqlx::FromRow)]
-        struct Row {
-            item_id: i32,
-        }
-
-        let rows: Vec<Row> = sqlx::query_as(
-            r#"
-            SELECT item_id FROM item_features
-            WHERE item_id != ALL($1)
-              AND (embedding IS NOT NULL OR tfidf_vector IS NOT NULL)
-            ORDER BY trending_score DESC NULLS LAST, view_count DESC NULLS LAST
-            LIMIT $2
-            "#,
-        )
-        .bind(exclude_ids)
-        .bind(limit as i64)
-        .fetch_all(context.db_pool.as_ref())
-        .await?;
-
-        Ok(rows.into_iter().map(|r| r.item_id).collect())
-    }
-
-    /// Pad or truncate vector to exact dimension
-    fn pad_or_truncate(mut vec: Vec<f32>, target_dim: usize) -> Vec<f32> {
-        if vec.len() < target_dim {
-            vec.resize(target_dim, 0.0);
-        } else if vec.len() > target_dim {
-            vec.truncate(target_dim);
-        }
-        vec
-    }
-
-    /// Cosine similarity between two vectors
-    fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
-        if a.len() != b.len() || a.is_empty() {
-            return 0.0;
-        }
-
-        let dot: f32 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
-        let norm_a: f32 = a.iter().map(|x| x * x).sum::<f32>().sqrt();
-        let norm_b: f32 = b.iter().map(|x| x * x).sum::<f32>().sqrt();
-
-        if norm_a > 0.0 && norm_b > 0.0 {
-            dot / (norm_a * norm_b)
-        } else {
-            0.0
-        }
-    }
-
-    /// Dot product between two vectors
-    fn dot_product(a: &[f32], b: &[f32]) -> f32 {
-        a.iter().zip(b.iter()).map(|(x, y)| x * y).sum()
-    }
-
-    /// Euclidean distance converted to similarity (closer = higher score)
-    fn euclidean_similarity(a: &[f32], b: &[f32]) -> f32 {
-        let dist: f32 = a
-            .iter()
-            .zip(b.iter())
-            .map(|(x, y)| (x - y).powi(2))
-            .sum::<f32>()
-            .sqrt();
-        // Convert distance to similarity
-        1.0 / (1.0 + dist)
     }
 }

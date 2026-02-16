@@ -58,28 +58,8 @@ impl PipelineStage for BoostPersonalizationStage {
         let item_ids: Vec<i32> = input.iter().map(|item| item.item_id).collect();
 
         // Fetch pre-computed personalization scores from feature store
-        #[derive(sqlx::FromRow)]
-        struct PersonalizationRow {
-            item_id: i32,
-            personalization_score: f32,
-            _model_type: String,
-        }
-
-        let scores: Vec<PersonalizationRow> = sqlx::query_as(
-            r#"
-            SELECT item_id, score as personalization_score, model_type
-            FROM user_item_scores
-            WHERE user_id = $1
-                AND item_id = ANY($2)
-                AND model_type = $3
-            "#,
-        )
-        .bind(user_id)
-        .bind(&item_ids)
-        .bind(&params.model_type)
-        .fetch_all(context.db_pool.as_ref())
-        .await
-        .unwrap_or_default();
+        let scores = context.item_feature_service.get_user_item_scores_batch(user_id, &item_ids, &params.model_type).await
+            .unwrap_or_default();
 
         // If no pre-computed scores, try to compute from user features
         let score_map: HashMap<i32, f32> = if scores.is_empty() {
@@ -87,7 +67,7 @@ impl PipelineStage for BoostPersonalizationStage {
             Self::compute_fallback_scores(context, user_id, &item_ids).await?
         } else {
             scores.into_iter()
-                .map(|row| (row.item_id, row.personalization_score))
+                .map(|row| (row.item_id, row.score))
                 .collect()
         };
 
@@ -137,17 +117,7 @@ impl BoostPersonalizationStage {
         item_ids: &[i32],
     ) -> Result<HashMap<i32, f32>> {
         // Get user's genre preferences
-        #[derive(sqlx::FromRow)]
-        struct UserFeatures {
-            genre_affinity: Option<JsonValue>,
-        }
-
-        let user: Option<UserFeatures> = sqlx::query_as(
-            "SELECT genre_affinity FROM user_features WHERE user_id = $1"
-        )
-        .bind(user_id)
-        .fetch_optional(context.db_pool.as_ref())
-        .await?;
+        let user = context.item_feature_service.get_user_features(user_id).await?;
 
         let genre_affinity: HashMap<String, f32> = user
             .and_then(|u| u.genre_affinity)
@@ -159,23 +129,12 @@ impl BoostPersonalizationStage {
         }
 
         // Get item genres
-        #[derive(sqlx::FromRow)]
-        struct ItemRow {
-            item_id: i32,
-            genres: Option<JsonValue>,
-        }
-
-        let items: Vec<ItemRow> = sqlx::query_as(
-            "SELECT item_id, genres FROM item_features WHERE item_id = ANY($1)"
-        )
-        .bind(item_ids)
-        .fetch_all(context.db_pool.as_ref())
-        .await?;
+        let item_features = context.item_feature_service.get_item_features_batch(item_ids).await?;
 
         // Compute content-based scores
-        let scores: HashMap<i32, f32> = items
+        let scores: HashMap<i32, f32> = item_features
             .into_iter()
-            .map(|row| {
+            .map(|(item_id, row)| {
                 let genres: Vec<String> = row.genres
                     .and_then(|v| serde_json::from_value(v).ok())
                     .unwrap_or_default();
@@ -184,7 +143,7 @@ impl BoostPersonalizationStage {
                     .filter_map(|g| genre_affinity.get(&g.to_lowercase()))
                     .sum::<f32>() / genres.len().max(1) as f32;
 
-                (row.item_id, score)
+                (item_id, score)
             })
             .collect();
 
@@ -195,21 +154,10 @@ impl BoostPersonalizationStage {
         context: &ExecutionContext,
         item_ids: &[i32],
     ) -> Result<HashMap<i32, f32>> {
-        #[derive(sqlx::FromRow)]
-        struct Row {
-            item_id: i32,
-            popularity_score: Option<f32>,
-        }
+        let item_features = context.item_feature_service.get_item_features_batch(item_ids).await?;
 
-        let rows: Vec<Row> = sqlx::query_as(
-            "SELECT item_id, popularity_score FROM item_features WHERE item_id = ANY($1)"
-        )
-        .bind(item_ids)
-        .fetch_all(context.db_pool.as_ref())
-        .await?;
-
-        Ok(rows.into_iter()
-            .filter_map(|row| row.popularity_score.map(|s| (row.item_id, s)))
+        Ok(item_features.into_iter()
+            .filter_map(|(item_id, row)| row.popularity_score.map(|s| (item_id, s)))
             .collect())
     }
 }

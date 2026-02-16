@@ -13,18 +13,18 @@ use std::time::Instant;
 
 use anyhow::Result;
 use serde_json::Value as JsonValue;
-use sqlx::PgPool;
 use tokio::sync::Semaphore;
 use tracing::{debug, warn};
 
 use crate::cache::CacheManager;
 use crate::config::MlConfig;
 use crate::error::ModelError;
+use crate::db::ResilientPool;
 
 
 /// Centralized feature store for user and item features.
 pub struct FeatureStore {
-    db_pool: Arc<PgPool>,
+    pool: Arc<ResilientPool>,
     cache_manager: Arc<CacheManager>,
     bulkhead: Arc<Semaphore>,
     config: MlConfig,
@@ -33,14 +33,14 @@ pub struct FeatureStore {
 
 impl FeatureStore {
     pub fn new(
-        db_pool: Arc<PgPool>,
+        pool: Arc<ResilientPool>,
         cache_manager: Arc<CacheManager>,
         config: MlConfig,
         analytics: Option<Arc<crate::analytics::types::PerformanceStats>>,
     ) -> Self {
         let bulkhead = Arc::new(Semaphore::new(config.feature_fetch_max_concurrent));
         Self {
-            db_pool,
+            pool,
             cache_manager,
             bulkhead,
             config,
@@ -171,16 +171,18 @@ impl FeatureStore {
             avg_completion_rate: Option<f32>,
         }
 
-        let row: Option<Row> = sqlx::query_as(
-            r#"
-            SELECT genre_affinity, embedding, total_watch_time_minutes, avg_completion_rate
-            FROM user_features
-            WHERE user_id = $1
-            "#,
-        )
-        .bind(user_id)
-        .fetch_optional(self.db_pool.as_ref())
-        .await?;
+        let row: Option<Row> = self.pool.execute(|pool| async move {
+            sqlx::query_as::<_, Row>(
+                r#"
+                SELECT genre_affinity, embedding, total_watch_time_minutes, avg_completion_rate
+                FROM user_features
+                WHERE user_id = $1
+                "#,
+            )
+            .bind(user_id)
+            .fetch_optional(&pool)
+            .await
+        }).await?;
 
         let features = match row {
             Some(row) => {
@@ -222,16 +224,19 @@ impl FeatureStore {
             completion_rate: Option<f32>,
         }
 
-        let rows: Vec<Row> = sqlx::query_as(
-            r#"
-            SELECT item_id, embedding, tfidf_vector, view_count, trending_score, completion_rate
-            FROM item_features
-            WHERE item_id = ANY($1)
-            "#,
-        )
-        .bind(item_ids)
-        .fetch_all(self.db_pool.as_ref())
-        .await?;
+        let ids = item_ids.to_vec();
+        let rows: Vec<Row> = self.pool.execute(|pool| async move {
+            sqlx::query_as::<_, Row>(
+                r#"
+                SELECT item_id, embedding, tfidf_vector, view_count, trending_score, completion_rate
+                FROM item_features
+                WHERE item_id = ANY($1)
+                "#,
+            )
+            .bind(&ids)
+            .fetch_all(&pool)
+            .await
+        }).await?;
 
         let mut map = HashMap::new();
         for row in rows {

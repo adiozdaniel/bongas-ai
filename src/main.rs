@@ -99,15 +99,9 @@ async fn main() -> Result<()> {
     // ═══════════════════════════════════════════════════════════════════════════
     // 6. INITIALIZE BONGAS ENGINE
     // ═══════════════════════════════════════════════════════════════════════════
-    let model_path = config.ml.model_path.to_str()
-        .context("Invalid model path")?;
-
     let engine = BongasEngine::new(
+        config.clone(),
         db_pool,
-        &config.redis.url,
-        model_path,
-        config.security.clone(),
-        cache_config.clone(),
         circuit_breaker_registry.clone(),
     )
     .await

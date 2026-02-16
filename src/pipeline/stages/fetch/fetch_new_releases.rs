@@ -59,49 +59,13 @@ impl PipelineStage for FetchNewReleasesStage {
 
         let cutoff_date = Utc::now() - chrono::Duration::days(params.days as i64);
 
-        let order_clause = match params.sort_by.as_str() {
-            "added_date" => "added_date DESC NULLS LAST",
-            "popularity" => "popularity_score DESC NULLS LAST",
-            _ => "release_date DESC NULLS LAST",
-        };
-
-        #[derive(sqlx::FromRow)]
-        struct Row {
-            item_id: i32,
-            title: Option<String>,
-            release_date: Option<chrono::DateTime<Utc>>,
-            added_date: Option<chrono::DateTime<Utc>>,
-            content_type: Option<String>,
-            genres: Option<JsonValue>,
-            popularity_score: Option<f32>,
-        }
-
-        let mut query = format!(
-            r#"
-            SELECT item_id, title, release_date, added_date, content_type, genres, popularity_score
-            FROM item_features
-            WHERE is_active = true
-                AND (release_date >= $1 OR added_date >= $1)
-            "#
-        );
-
-        // Add content type filter
-        if params.content_type != "all" {
-            query.push_str(&format!(" AND content_type = '{}'", params.content_type));
-        }
-
-        // Add genre filter
-        if let Some(ref genre) = params.genre {
-            query.push_str(&format!(" AND genres @> '[\"{}\"]'::jsonb", genre));
-        }
-
-        query.push_str(&format!(" ORDER BY {} LIMIT $2", order_clause));
-
-        let rows: Vec<Row> = sqlx::query_as(&query)
-            .bind(cutoff_date)
-            .bind(params.limit as i64)
-            .fetch_all(context.db_pool.as_ref())
-            .await?;
+        let rows = context.item_feature_service.get_new_releases_advanced(
+            cutoff_date,
+            &params.content_type,
+            params.genre.clone(),
+            &params.sort_by,
+            params.limit as i64,
+        ).await?;
 
         let now = Utc::now();
         let items: Vec<ScoredItem> = rows

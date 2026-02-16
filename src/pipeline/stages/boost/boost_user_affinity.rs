@@ -60,23 +60,7 @@ impl PipelineStage for BoostUserAffinityStage {
         };
 
         // Fetch user preferences
-        #[derive(sqlx::FromRow)]
-        struct UserPrefs {
-            genre_affinity: Option<JsonValue>,
-            favorite_creators: Option<JsonValue>,
-            preferred_content_type: Option<String>,
-        }
-
-        let user_prefs: Option<UserPrefs> = sqlx::query_as(
-            r#"
-            SELECT genre_affinity, favorite_creators, preferred_content_type
-            FROM user_features
-            WHERE user_id = $1
-            "#,
-        )
-        .bind(user_id)
-        .fetch_optional(context.db_pool.as_ref())
-        .await?;
+        let user_prefs = context.item_feature_service.get_user_features(user_id).await?;
 
         let user_prefs = match user_prefs {
             Some(p) => p,
@@ -95,45 +79,21 @@ impl PipelineStage for BoostUserAffinityStage {
 
         // Fetch item features
         let item_ids: Vec<i32> = input.iter().map(|item| item.item_id).collect();
-
-        #[derive(sqlx::FromRow)]
-        struct ItemRow {
-            item_id: i32,
-            genres: Option<JsonValue>,
-            creators: Option<JsonValue>,
-            content_type: Option<String>,
-        }
-
-        let items: Vec<ItemRow> = sqlx::query_as(
-            r#"
-            SELECT item_id, genres, creators, content_type
-            FROM item_features
-            WHERE item_id = ANY($1)
-            "#,
-        )
-        .bind(&item_ids)
-        .fetch_all(context.db_pool.as_ref())
-        .await?;
-
-        let item_map: HashMap<i32, (Vec<String>, Vec<String>, String)> = items
-            .into_iter()
-            .map(|row| {
-                let genres: Vec<String> = row.genres
-                    .and_then(|v| serde_json::from_value(v).ok())
-                    .unwrap_or_default();
-                let creators: Vec<String> = row.creators
-                    .and_then(|v| serde_json::from_value(v).ok())
-                    .unwrap_or_default();
-                let content_type = row.content_type.unwrap_or_default();
-                (row.item_id, (genres, creators, content_type))
-            })
-            .collect();
+        let item_features = context.item_feature_service.get_item_features_batch(&item_ids).await?;
 
         let boosted: Vec<ScoredItem> = input
             .into_iter()
             .map(|mut item| {
-                if let Some((genres, creators, content_type)) = item_map.get(&item.item_id) {
+                if let Some(row) = item_features.get(&item.item_id) {
                     let mut affinity_score = 0.0;
+
+                    let genres: Vec<String> = row.genres.as_ref()
+                        .and_then(|v| serde_json::from_value(v.clone()).ok())
+                        .unwrap_or_default();
+                    let creators: Vec<String> = row.creators.as_ref()
+                        .and_then(|v| serde_json::from_value(v.clone()).ok())
+                        .unwrap_or_default();
+                    let content_type = row.content_type.as_deref().unwrap_or_default();
 
                     // Genre affinity
                     let genre_score: f32 = genres

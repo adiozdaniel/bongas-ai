@@ -59,19 +59,9 @@ impl PipelineStage for FetchUserPreferencesStage {
         };
 
         // Get user's genre preferences
-        #[derive(sqlx::FromRow)]
-        struct UserPrefs {
-            genre_affinity: Option<JsonValue>,
-        }
+        let user_features = context.item_feature_service.get_user_features(user_id).await?;
 
-        let prefs: Option<UserPrefs> = sqlx::query_as(
-            "SELECT genre_affinity FROM user_features WHERE user_id = $1"
-        )
-        .bind(user_id)
-        .fetch_optional(context.db_pool.as_ref())
-        .await?;
-
-        let genre_affinity: Vec<(String, f32)> = prefs
+        let genre_affinity: Vec<(String, f32)> = user_features
             .and_then(|p| p.genre_affinity)
             .and_then(|v| serde_json::from_value::<std::collections::HashMap<String, f32>>(v).ok())
             .map(|m| {
@@ -91,27 +81,10 @@ impl PipelineStage for FetchUserPreferencesStage {
 
         // Fetch items for each preferred genre
         for (genre, affinity) in genre_affinity.iter().take(5) {
-            #[derive(sqlx::FromRow)]
-            struct ItemRow {
-                item_id: i32,
-                title: Option<String>,
-                popularity_score: Option<f32>,
-            }
-
-            let genre_items: Vec<ItemRow> = sqlx::query_as(
-                r#"
-                SELECT i.item_id, i.title, i.popularity_score
-                FROM item_features i
-                WHERE i.genres @> $1::jsonb
-                    AND i.is_active = true
-                ORDER BY i.popularity_score DESC NULLS LAST
-                LIMIT $2
-                "#,
-            )
-            .bind(json!([genre]))
-            .bind(params.items_per_genre as i64)
-            .fetch_all(context.db_pool.as_ref())
-            .await?;
+            let genre_items = context.item_feature_service.get_items_by_genre(
+                json!([genre]),
+                params.items_per_genre as i64,
+            ).await?;
 
             for item in genre_items {
                 let base_score = item.popularity_score.unwrap_or(0.5);
@@ -130,25 +103,8 @@ impl PipelineStage for FetchUserPreferencesStage {
 
         // Optionally include watchlist items
         if params.include_watchlist {
-            #[derive(sqlx::FromRow)]
-            struct WatchlistRow {
-                item_id: i32,
-                added_at: chrono::DateTime<chrono::Utc>,
-            }
-
-            let watchlist: Vec<WatchlistRow> = sqlx::query_as(
-                r#"
-                SELECT item_id, added_at
-                FROM user_watchlist
-                WHERE user_id = $1
-                ORDER BY added_at DESC
-                LIMIT 20
-                "#,
-            )
-            .bind(user_id)
-            .fetch_all(context.db_pool.as_ref())
-            .await
-            .unwrap_or_default();
+            let watchlist = context.item_feature_service.get_user_watchlist(user_id, 20).await
+                .unwrap_or_default();
 
             for wl_item in watchlist {
                 items.push(ScoredItem {

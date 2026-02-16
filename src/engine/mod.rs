@@ -15,6 +15,7 @@ use tracing::info;
 use crate::resilience::{ResilienceMetricsCollector, MetricsRegistry, ResilienceConfig};
 use crate::db::{ResilientPool, ResilientPoolConfig};
 use crate::db::models::PipelineDefinition;
+use crate::AppConfig;
 use crate::pipeline::executor::PipelineExecutor;
 use crate::pipeline::context::ExecutionContext;
 use crate::pipeline::ScoredItem;
@@ -28,7 +29,6 @@ use crate::db::repositories::model_repository::ModelRepository;
 use crate::db::repositories::feature_repository::FeatureRepository;
 use crate::db::repositories::cache_repository::CacheRepository;
 use crate::db::repositories::item_feature_service::ItemFeatureService;
-use crate::config::SecurityConfig;
 use crate::security::SecurityManager;
 
 use self::staging_manager::StagingManager;
@@ -37,6 +37,9 @@ use self::scenario_factory::ScenarioFactory;
 
 /// Central orchestrator for BONGAS-AI
 pub struct BongasEngine {
+    // Configuration
+    _config: Arc<AppConfig>,
+
     // Scenario management
     scenarios: Arc<RwLock<HashMap<String, ScenarioDefinition>>>,
     scenario_factory: Arc<ScenarioFactory>,
@@ -70,7 +73,6 @@ pub struct BongasEngine {
     resilience_metrics: Arc<ResilienceMetricsCollector>,
 
     // Dependencies
-    db_pool: Arc<PgPool>,
     cache_manager: Arc<CacheManager>,
 }
 
@@ -85,11 +87,8 @@ pub struct ScenarioDefinition {
 impl BongasEngine {
     /// Create new BongasEngine
     pub async fn new(
+        config: Arc<AppConfig>,
         db_pool: PgPool,
-        redis_url: &str,
-        model_dir: &str,
-        security_config: SecurityConfig,
-        cache_config: CacheConfig,
         circuit_breaker_registry: Arc<CircuitBreakerRegistry>,
     ) -> Result<Arc<Self>> {
         info!("Initializing BongasEngine...");
@@ -109,7 +108,7 @@ impl BongasEngine {
             resilience_metrics.clone();
         let security_manager = Arc::new(
             SecurityManager::new(
-                security_config,
+                config.security.clone(),
                 circuit_breaker_registry.clone(),
                 security_observer,
                 None, // Analytics wired separately when PerformanceStats is available
@@ -117,17 +116,16 @@ impl BongasEngine {
             .context("Failed to create SecurityManager")?,
         );
 
-        let db_pool = Arc::new(db_pool);
-
         // Create Netflix-grade cache manager
-        let cache_manager = Arc::new(CacheManager::new(redis_url, cache_config.clone()).await?);
+        let cache_config = CacheConfig::default();
+        let cache_manager = Arc::new(CacheManager::new(&config.redis.url, cache_config.clone()).await?);
 
         // Create model repository and loader
         let model_repo = Arc::new(ModelRepository::new(resilient_pool.clone(), resilience_metrics.clone()));
         let model_loader = Arc::new(ModelLoader::new(
-            model_dir,
+            config.ml.model_path.to_str().unwrap_or("models"),
             model_repo.clone(),
-            crate::config::MlConfig::default(),
+            config.ml.clone(),
             resilience_metrics.clone(),
             None,
         ));
@@ -138,24 +136,25 @@ impl BongasEngine {
 
         // Create staging manager with CacheManager
         let staging_manager = Arc::new(
-            StagingManager::new(redis_url, (*db_pool).clone(), cache_config).await?
+            StagingManager::new(
+                &config.redis.url,
+                resilient_pool.clone(),
+                cache_config,
+                resilience_metrics.clone(),
+            ).await?
         );
 
         // Create staleness engine
         let staleness_engine = Arc::new(StalenessEngine::new(staging_manager.clone()));
 
-        // Create analytics manager
-        // let analytics = Arc::new(AnalyticsManager::new()?);
-
         // Create scenario factory
         let scenario_factory = Arc::new(ScenarioFactory::new(resilient_pool.clone(), resilience_metrics.clone()));
 
         // Create pipeline executor with Netflix resilience
-        let pipeline_config = crate::config::PipelineConfig::default();
         let pipeline_observer: Arc<dyn crate::circuit_breaker::observer::ResilienceObserver> =
             resilience_metrics.clone();
         let pipeline_executor = Arc::new(PipelineExecutor::new(
-            pipeline_config,
+            config.pipeline.clone(),
             circuit_breaker_registry.clone(),
             pipeline_observer,
             None, // Analytics wired separately per-request via ExecutionContext
@@ -172,15 +171,16 @@ impl BongasEngine {
         // Create repositories & services
         let item_feature_service = Arc::new(ItemFeatureService::new(resilient_pool.clone(), resilience_metrics.clone()));
         let feature_repo = Arc::new(FeatureRepository::new(resilient_pool.clone(), resilience_metrics.clone()));
-        let cache_repo = Arc::new(CacheRepository::new((*db_pool).clone(), resilience_metrics.clone()));
+        let cache_repo = Arc::new(CacheRepository::new(resilient_pool.clone(), resilience_metrics.clone()));
         let feature_store = Arc::new(crate::ml::feature_store::FeatureStore::new(
-            db_pool.clone(),
+            resilient_pool.clone(),
             cache_manager.clone(),
-            crate::config::MlConfig::default(), // Assuming default is fine for now
+            config.ml.clone(),
             None, // Analytics wired separately when PerformanceStats is available
         ));
 
         let engine = Arc::new(Self {
+            _config: config.clone(),
             scenarios: Arc::new(RwLock::new(HashMap::new())),
             scenario_factory,
             pipeline_executor,
@@ -197,7 +197,6 @@ impl BongasEngine {
             circuit_breaker_registry,
             resilient_pool,
             resilience_metrics,
-            db_pool,
             cache_manager,
         });
 
@@ -216,7 +215,6 @@ impl BongasEngine {
         let manager = IngestionManager::start_legacy(
             config.clone(),
             self.resilient_pool.clone(),
-            self.db_pool.clone(),
             self.resilience_metrics.clone(),
             self.staleness_engine.clone(),
             self.circuit_breaker_registry.clone(),
@@ -317,7 +315,6 @@ impl BongasEngine {
         // Execute pipeline
         let context = ExecutionContext::new(
             user_id,
-            self.db_pool.clone(),
             self.cache_manager.clone(),
             self.model_loader.clone(),
             self.item_feature_service.clone(),
@@ -409,7 +406,6 @@ impl BongasEngine {
         let request_id = uuid::Uuid::new_v4().to_string();
         let context = ExecutionContext::new(
             user_id,
-            self.db_pool.clone(),
             self.cache_manager.clone(),
             self.model_loader.clone(),
             self.item_feature_service.clone(),

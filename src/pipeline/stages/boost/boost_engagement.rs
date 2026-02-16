@@ -65,33 +65,14 @@ impl PipelineStage for BoostEngagementStage {
         let params: Params = serde_json::from_value(params.clone())?;
         let item_ids: Vec<i32> = input.iter().map(|item| item.item_id).collect();
 
-        #[derive(sqlx::FromRow)]
-        struct Row {
-            item_id: i32,
-            like_count: Option<i64>,
-            comment_count: Option<i64>,
-            share_count: Option<i64>,
-            save_count: Option<i64>,
-            view_count: Option<i64>,
-        }
-
-        let rows: Vec<Row> = sqlx::query_as(
-            r#"
-            SELECT item_id, like_count, comment_count, share_count, save_count, view_count
-            FROM item_features
-            WHERE item_id = ANY($1)
-            "#,
-        )
-        .bind(&item_ids)
-        .fetch_all(context.db_pool.as_ref())
-        .await?;
+        let item_features = context.item_feature_service.get_item_features_batch(&item_ids).await?;
 
         // Calculate engagement rates (normalized by view count)
-        let engagement_map: HashMap<i32, (f32, i64, i64, i64, i64)> = rows
+        let engagement_map: HashMap<i32, (f32, i64, i64, i64, i64)> = item_features
             .into_iter()
-            .map(|row| {
-                let views = row.view_count.unwrap_or(1).max(1) as f32;
-                let likes = row.like_count.unwrap_or(0);
+            .map(|(item_id, row)| {
+                let views = row.view_count.max(1) as f32;
+                let likes = row.like_count as i64;
                 let comments = row.comment_count.unwrap_or(0);
                 let shares = row.share_count.unwrap_or(0);
                 let saves = row.save_count.unwrap_or(0);
@@ -108,7 +89,7 @@ impl PipelineStage for BoostEngagementStage {
                     share_rate * params.share_weight +
                     save_rate * params.save_weight;
 
-                (row.item_id, (engagement_score, likes, comments, shares, saves))
+                (item_id, (engagement_score, likes, comments, shares, saves))
             })
             .collect();
 

@@ -14,6 +14,8 @@ use tracing::{info, debug};
 
 use crate::cache::{CacheManager, CacheConfig};
 use crate::db::repositories::cache_repository::CacheRepository;
+use crate::db::ResilientPool;
+use crate::resilience::ResilienceMetricsCollector;
 use crate::pipeline::ScoredItem;
 
 pub struct StagingManager {
@@ -22,12 +24,17 @@ pub struct StagingManager {
 }
 
 impl StagingManager {
-    pub async fn new(redis_url: &str, db_pool: sqlx::PgPool, config: CacheConfig) -> Result<Self> {
+    pub async fn new(
+        redis_url: &str,
+        pool: Arc<ResilientPool>,
+        config: CacheConfig,
+        metrics: Arc<ResilienceMetricsCollector>,
+    ) -> Result<Self> {
         let cache_manager = Arc::new(CacheManager::new(redis_url, config).await?);
 
         Ok(Self {
             cache_manager,
-            cache_repo: CacheRepository::new(db_pool, Arc::new(crate::resilience::ResilienceMetricsCollector::new(Arc::new(crate::resilience::MetricsRegistry::new(crate::resilience::ResilienceConfig::default()))))),
+            cache_repo: CacheRepository::new(pool, metrics),
         })
     }
 

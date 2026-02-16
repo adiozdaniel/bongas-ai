@@ -15,7 +15,6 @@ pub mod sources;
 pub mod metrics;
 
 use anyhow::Result;
-use sqlx::PgPool;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
@@ -50,7 +49,6 @@ impl IngestionManager {
     /// Create a new IngestionManager and start all sources.
     pub fn new(
         _config: crate::config::IngestionConfig,
-        _db_pool: Arc<PgPool>,
         _resilient_pool: Arc<ResilientPool>,
         _metrics_collector: Arc<ResilienceMetricsCollector>,
         _staleness_engine: Arc<StalenessEngine>,
@@ -78,7 +76,6 @@ impl IngestionManager {
     pub async fn start_legacy(
         config: crate::config::types::ingestion::IngestionConfig,
         resilient_pool: Arc<ResilientPool>,
-        db_pool: Arc<PgPool>,
         metrics_collector: Arc<ResilienceMetricsCollector>,
         staleness_engine: Arc<StalenessEngine>,
         circuit_breaker_registry: Arc<CircuitBreakerRegistry>,
@@ -144,7 +141,6 @@ impl IngestionManager {
         // ── Start processor ─────────────────────────────────────────────
         let processor = Arc::new(ActivityProcessor::new(
             resilient_pool,
-            db_pool,
             metrics_collector,
             staleness_engine,
         ));

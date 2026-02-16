@@ -4,7 +4,6 @@ use serde_json::Value as JsonValue;
 use serde::Deserialize;
 use crate::pipeline::{PipelineStage, ScoredItem};
 use crate::pipeline::context::ExecutionContext;
-use std::collections::HashMap;
 
 #[derive(Deserialize)]
 struct Params {
@@ -45,50 +44,33 @@ impl PipelineStage for FilterByCountryStage {
 
         let item_ids: Vec<i32> = input.iter().map(|item| item.item_id).collect();
 
-        #[derive(sqlx::FromRow)]
-        struct Row {
-            item_id: i32,
-            available_countries: Option<JsonValue>,
-            blocked_countries: Option<JsonValue>,
-        }
-
-        let rows: Vec<Row> = sqlx::query_as(
-            r#"
-            SELECT item_id, available_countries, blocked_countries
-            FROM item_features
-            WHERE item_id = ANY($1)
-            "#,
-        )
-        .bind(&item_ids)
-        .fetch_all(context.db_pool.as_ref())
-        .await?;
-
-        let availability_map: HashMap<i32, (Option<Vec<String>>, Option<Vec<String>>)> = rows
-            .into_iter()
-            .map(|row| {
-                let available: Option<Vec<String>> = row.available_countries
-                    .and_then(|v| serde_json::from_value(v).ok());
-                let blocked: Option<Vec<String>> = row.blocked_countries
-                    .and_then(|v| serde_json::from_value(v).ok());
-                (row.item_id, (available, blocked))
-            })
-            .collect();
+        let item_features = context.item_feature_service.get_item_features_batch(&item_ids).await?;
 
         let filtered: Vec<ScoredItem> = input
             .into_iter()
             .filter(|item| {
-                match availability_map.get(&item.item_id) {
-                    Some((available, blocked)) => {
+                match item_features.get(&item.item_id) {
+                    Some(row) => {
                         // Check if blocked
-                        if let Some(blocked_list) = blocked {
-                            if blocked_list.iter().any(|c| c.to_uppercase() == country_code) {
-                                return false;
+                        if let Some(ref blocked_json) = row.blocked_countries {
+                            if let Ok(blocked_list) = serde_json::from_value::<Vec<String>>(blocked_json.clone()) {
+                                if blocked_list.iter().any(|c| c.to_uppercase() == country_code) {
+                                    return false;
+                                }
                             }
                         }
                         // Check if available
-                        match available {
-                            Some(available_list) if !available_list.is_empty() => {
-                                available_list.iter().any(|c| c.to_uppercase() == country_code)
+                        match row.available_countries {
+                            Some(ref available_json) => {
+                                if let Ok(available_list) = serde_json::from_value::<Vec<String>>(available_json.clone()) {
+                                    if available_list.is_empty() {
+                                        params.include_unrestricted
+                                    } else {
+                                        available_list.iter().any(|c| c.to_uppercase() == country_code)
+                                    }
+                                } else {
+                                    params.include_unrestricted
+                                }
                             }
                             _ => params.include_unrestricted,
                         }

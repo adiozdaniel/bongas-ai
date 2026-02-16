@@ -4,7 +4,6 @@ use serde_json::Value as JsonValue;
 use serde::Deserialize;
 use crate::pipeline::{PipelineStage, ScoredItem};
 use crate::pipeline::context::ExecutionContext;
-use std::collections::HashMap;
 use chrono::{Utc, Datelike};
 
 #[derive(Deserialize)]
@@ -96,47 +95,23 @@ impl PipelineStage for BoostSeasonalStage {
         };
 
         let item_ids: Vec<i32> = input.iter().map(|item| item.item_id).collect();
-
-        #[derive(sqlx::FromRow)]
-        struct Row {
-            item_id: i32,
-            seasonal_tags: Option<JsonValue>,
-            holiday_tags: Option<JsonValue>,
-            themes: Option<JsonValue>,
-        }
-
-        let rows: Vec<Row> = sqlx::query_as(
-            r#"
-            SELECT item_id, seasonal_tags, holiday_tags, themes
-            FROM item_features
-            WHERE item_id = ANY($1)
-            "#,
-        )
-        .bind(&item_ids)
-        .fetch_all(context.db_pool.as_ref())
-        .await?;
-
-        let tag_map: HashMap<i32, (Vec<String>, Vec<String>, Vec<String>)> = rows
-            .into_iter()
-            .map(|row| {
-                let seasonal: Vec<String> = row.seasonal_tags
-                    .and_then(|v| serde_json::from_value(v).ok())
-                    .unwrap_or_default();
-                let holiday: Vec<String> = row.holiday_tags
-                    .and_then(|v| serde_json::from_value(v).ok())
-                    .unwrap_or_default();
-                let themes: Vec<String> = row.themes
-                    .and_then(|v| serde_json::from_value(v).ok())
-                    .unwrap_or_default();
-                (row.item_id, (seasonal, holiday, themes))
-            })
-            .collect();
+        let item_features = context.item_feature_service.get_item_features_batch(&item_ids).await?;
 
         let boosted: Vec<ScoredItem> = input
             .into_iter()
             .map(|mut item| {
-                if let Some((seasonal_tags, holiday_tags, themes)) = tag_map.get(&item.item_id) {
+                if let Some(row) = item_features.get(&item.item_id) {
                     let mut relevance_score: f32 = 0.0;
+
+                    let seasonal_tags: Vec<String> = row.seasonal_tags.as_ref()
+                        .and_then(|v| serde_json::from_value(v.clone()).ok())
+                        .unwrap_or_default();
+                    let holiday_tags: Vec<String> = row.holiday_tags.as_ref()
+                        .and_then(|v| serde_json::from_value(v.clone()).ok())
+                        .unwrap_or_default();
+                    let themes: Vec<String> = row.themes.as_ref()
+                        .and_then(|v| serde_json::from_value(v.clone()).ok())
+                        .unwrap_or_default();
 
                     // Check season match
                     let season_match = seasonal_tags.iter()

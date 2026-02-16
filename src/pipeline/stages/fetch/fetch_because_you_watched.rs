@@ -60,110 +60,44 @@ impl PipelineStage for FetchBecauseYouWatchedStage {
         let source_item_id = match params.source_item_id {
             Some(id) => id,
             None => {
-                // Get user's most recently watched item with good completion
-                #[derive(sqlx::FromRow)]
-                struct RecentWatch {
-                    item_id: i32,
-                }
-
-                let recent: Option<RecentWatch> = sqlx::query_as(
-                    r#"
-                    SELECT item_id
-                    FROM user_interactions
-                    WHERE user_id = $1
-                        AND interaction_type = 'view'
-                        AND completion_rate >= $2
-                    ORDER BY created_at DESC
-                    LIMIT 1
-                    "#,
-                )
-                .bind(user_id)
-                .bind(params.min_completion)
-                .fetch_optional(context.db_pool.as_ref())
-                .await?;
-
-                match recent {
-                    Some(r) => r.item_id,
+                match context.item_feature_service.get_recent_watch_with_completion(user_id, params.min_completion).await? {
+                    Some(id) => id,
                     None => return Ok(Vec::new()),
                 }
             }
         };
 
         // Get source item details
-        #[derive(sqlx::FromRow)]
-        struct SourceItem {
-            title: Option<String>,
-            genres: Option<JsonValue>,
-            creators: Option<JsonValue>,
-        }
-
-        let source: Option<SourceItem> = sqlx::query_as(
-            "SELECT title, genres, creators FROM item_features WHERE item_id = $1"
-        )
-        .bind(source_item_id)
-        .fetch_optional(context.db_pool.as_ref())
-        .await?;
-
-        let source = match source {
+        let source_features = context.item_feature_service.get_item_features_batch(&[source_item_id]).await?;
+        let source = match source_features.get(&source_item_id) {
             Some(s) => s,
             None => return Ok(Vec::new()),
         };
 
-        let source_genres: Vec<String> = source.genres
-            .and_then(|v| serde_json::from_value(v).ok())
+        let source_genres: Vec<String> = source.genres.as_ref()
+            .and_then(|v| serde_json::from_value(v.clone()).ok())
             .unwrap_or_default();
 
-        let source_creators: Vec<String> = source.creators
-            .and_then(|v| serde_json::from_value(v).ok())
+        let source_creators: Vec<String> = source.creators.as_ref()
+            .and_then(|v| serde_json::from_value(v.clone()).ok())
             .unwrap_or_default();
 
         // Get user's watched items to exclude
         let watched_items: HashSet<i32> = if params.exclude_watched {
-            #[derive(sqlx::FromRow)]
-            struct WatchedRow {
-                item_id: i32,
-            }
-
-            let watched: Vec<WatchedRow> = sqlx::query_as(
-                "SELECT DISTINCT item_id FROM user_interactions WHERE user_id = $1 AND interaction_type = 'view'"
-            )
-            .bind(user_id)
-            .fetch_all(context.db_pool.as_ref())
-            .await
-            .unwrap_or_default();
-
-            watched.into_iter().map(|w| w.item_id).collect()
+            let watched = context.item_feature_service.get_watched_item_ids(user_id).await
+                .unwrap_or_default();
+            watched.into_iter().collect()
         } else {
             HashSet::new()
         };
 
         // Find similar items
-        #[derive(sqlx::FromRow)]
-        struct SimilarRow {
-            item_id: i32,
-            title: Option<String>,
-            genres: Option<JsonValue>,
-            creators: Option<JsonValue>,
-            popularity_score: Option<f32>,
-        }
-
-        let candidates: Vec<SimilarRow> = sqlx::query_as(
-            r#"
-            SELECT item_id, title, genres, creators, popularity_score
-            FROM item_features
-            WHERE item_id != $1
-                AND is_active = true
-                AND (genres && $2::jsonb OR creators && $3::jsonb)
-            ORDER BY popularity_score DESC NULLS LAST
-            LIMIT $4
-            "#,
-        )
-        .bind(source_item_id)
-        .bind(json!(source_genres))
-        .bind(json!(source_creators))
-        .bind((params.limit * 3) as i64)
-        .fetch_all(context.db_pool.as_ref())
-        .await?;
+        let candidates = context.item_feature_service.get_items_by_overlap(
+            source_item_id,
+            &source_genres,
+            &source_creators,
+            (params.limit * 3) as i64,
+        ).await?;
 
         let source_genre_set: HashSet<_> = source_genres.iter()
             .map(|g| g.to_lowercase())
@@ -177,12 +111,12 @@ impl PipelineStage for FetchBecauseYouWatchedStage {
             .into_iter()
             .filter(|row| !watched_items.contains(&row.item_id))
             .map(|row| {
-                let item_genres: Vec<String> = row.genres
-                    .and_then(|v| serde_json::from_value(v).ok())
+                let item_genres: Vec<String> = row.genres.as_ref()
+                    .and_then(|v| serde_json::from_value(v.clone()).ok())
                     .unwrap_or_default();
 
-                let item_creators: Vec<String> = row.creators
-                    .and_then(|v| serde_json::from_value(v).ok())
+                let item_creators: Vec<String> = row.creators.as_ref()
+                    .and_then(|v| serde_json::from_value(v.clone()).ok())
                     .unwrap_or_default();
 
                 // Calculate similarity

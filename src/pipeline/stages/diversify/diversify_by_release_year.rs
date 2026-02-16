@@ -53,23 +53,7 @@ impl PipelineStage for DiversifyByReleaseYearStage {
         let params: Params = serde_json::from_value(params.clone())?;
         let item_ids: Vec<i32> = input.iter().map(|item| item.item_id).collect();
 
-        #[derive(sqlx::FromRow)]
-        struct Row {
-            item_id: i32,
-            release_year: Option<i32>,
-        }
-
-        let rows: Vec<Row> = sqlx::query_as(
-            "SELECT item_id, release_year FROM item_features WHERE item_id = ANY($1)"
-        )
-        .bind(&item_ids)
-        .fetch_all(context.db_pool.as_ref())
-        .await?;
-
-        let year_map: HashMap<i32, Option<i32>> = rows
-            .into_iter()
-            .map(|row| (row.item_id, row.release_year))
-            .collect();
+        let item_features = context.item_feature_service.get_item_features_batch(&item_ids).await?;
 
         // Group items by decade/year
         let use_year = params.max_per_year.is_some();
@@ -83,7 +67,7 @@ impl PipelineStage for DiversifyByReleaseYearStage {
         let mut items_with_years: Vec<(ScoredItem, Option<i32>)> = input
             .into_iter()
             .map(|item| {
-                let year = year_map.get(&item.item_id).copied().flatten();
+                let year = item_features.get(&item.item_id).and_then(|row| row.release_year);
                 (item, year)
             })
             .collect();

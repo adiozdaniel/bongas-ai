@@ -50,23 +50,12 @@ impl PipelineStage for FetchSimilarContentStage {
         let params: Params = serde_json::from_value(params.clone())?;
 
         // Get source item features
-        #[derive(sqlx::FromRow)]
-        struct SourceItem {
-            genres: Option<JsonValue>,
-            creators: Option<JsonValue>,
-            embedding: Option<JsonValue>,
-            _content_type: Option<String>,
-        }
+        let source_item_features_map = context.item_feature_service
+            .get_item_features_batch(&[params.source_item_id])
+            .await?;
 
-        let source: Option<SourceItem> = sqlx::query_as(
-            "SELECT genres, creators, embedding, content_type FROM item_features WHERE item_id = $1"
-        )
-        .bind(params.source_item_id)
-        .fetch_optional(context.db_pool.as_ref())
-        .await?;
-
-        let source = match source {
-            Some(s) => s,
+        let source = match source_item_features_map.get(&params.source_item_id) {
+            Some(s) => s.clone(), // Clone to own the data for further processing
             None => return Ok(Vec::new()),
         };
 
@@ -78,8 +67,8 @@ impl PipelineStage for FetchSimilarContentStage {
             .and_then(|v| serde_json::from_value(v).ok())
             .unwrap_or_default();
 
+        // Note: ItemFeatureRow's `embedding` is `Option<Vec<f32>>`, not `Option<JsonValue>`
         let source_embedding: Vec<f32> = source.embedding
-            .and_then(|v| serde_json::from_value(v).ok())
             .unwrap_or_default();
 
         let mut items: Vec<ScoredItem> = Vec::new();
@@ -87,25 +76,12 @@ impl PipelineStage for FetchSimilarContentStage {
         match params.method.as_str() {
             "embedding" if !source_embedding.is_empty() => {
                 // Use pre-computed similar items from embedding similarity
-                #[derive(sqlx::FromRow)]
-                struct SimilarRow {
-                    similar_item_id: i32,
-                    similarity_score: f32,
-                }
-
-                let similar: Vec<SimilarRow> = sqlx::query_as(
-                    r#"
-                    SELECT similar_item_id, similarity_score
-                    FROM item_similarities
-                    WHERE item_id = $1 AND similarity_type = 'embedding'
-                    ORDER BY similarity_score DESC
-                    LIMIT $2
-                    "#,
-                )
-                .bind(params.source_item_id)
-                .bind(params.limit as i64)
-                .fetch_all(context.db_pool.as_ref())
-                .await?;
+                let similar = context.item_feature_service
+                    .get_item_similarities_by_embedding(
+                        params.source_item_id,
+                        params.limit as i64,
+                    )
+                    .await?;
 
                 for row in similar {
                     if row.similarity_score >= params.min_similarity {
@@ -124,44 +100,24 @@ impl PipelineStage for FetchSimilarContentStage {
             }
             "collaborative" => {
                 // Find items that users who watched source also watched
-                #[derive(sqlx::FromRow)]
-                struct CoWatchedRow {
-                    item_id: i32,
-                    co_watch_count: i64,
-                }
+                let co_watched = context.item_feature_service.get_co_watched_items(
+                    params.source_item_id,
+                    params.limit as i64,
+                ).await?;
 
-                let co_watched: Vec<CoWatchedRow> = sqlx::query_as(
-                    r#"
-                    SELECT ui2.item_id, COUNT(DISTINCT ui2.user_id) as co_watch_count
-                    FROM user_interactions ui1
-                    JOIN user_interactions ui2 ON ui1.user_id = ui2.user_id
-                    WHERE ui1.item_id = $1
-                        AND ui2.item_id != $1
-                        AND ui1.interaction_type = 'view'
-                        AND ui2.interaction_type = 'view'
-                    GROUP BY ui2.item_id
-                    ORDER BY co_watch_count DESC
-                    LIMIT $2
-                    "#,
-                )
-                .bind(params.source_item_id)
-                .bind(params.limit as i64)
-                .fetch_all(context.db_pool.as_ref())
-                .await?;
+                let max_count = co_watched.first().map(|r| r.1).unwrap_or(1) as f32;
 
-                let max_count = co_watched.first().map(|r| r.co_watch_count).unwrap_or(1) as f32;
-
-                for row in co_watched {
-                    let similarity = row.co_watch_count as f32 / max_count;
+                for (item_id, co_watch_count) in co_watched {
+                    let similarity = co_watch_count as f32 / max_count;
                     if similarity >= params.min_similarity {
                         items.push(ScoredItem {
-                            item_id: row.item_id,
+                            item_id,
                             score: similarity,
                             metadata: json!({
                                 "source": "similar_content",
                                 "method": "collaborative",
                                 "source_item_id": params.source_item_id,
-                                "co_watch_count": row.co_watch_count,
+                                "co_watch_count": co_watch_count,
                             }),
                         });
                     }
@@ -173,38 +129,20 @@ impl PipelineStage for FetchSimilarContentStage {
                     return Ok(Vec::new());
                 }
 
-                #[derive(sqlx::FromRow)]
-                struct GenreMatchRow {
-                    item_id: i32,
-                    genres: Option<JsonValue>,
-                    creators: Option<JsonValue>,
-                    popularity_score: Option<f32>,
-                }
-
-                let candidates: Vec<GenreMatchRow> = sqlx::query_as(
-                    r#"
-                    SELECT item_id, genres, creators, popularity_score
-                    FROM item_features
-                    WHERE item_id != $1
-                        AND genres && $2::jsonb
-                        AND is_active = true
-                    ORDER BY popularity_score DESC NULLS LAST
-                    LIMIT $3
-                    "#,
-                )
-                .bind(params.source_item_id)
-                .bind(json!(source_genres))
-                .bind((params.limit * 3) as i64) // Fetch more to filter later
-                .fetch_all(context.db_pool.as_ref())
-                .await?;
+                let candidates = context.item_feature_service.get_items_by_overlap(
+                    params.source_item_id,
+                    &source_genres,
+                    &source_creators,
+                    (params.limit * 3) as i64,
+                ).await?;
 
                 for row in candidates {
-                    let item_genres: Vec<String> = row.genres
-                        .and_then(|v| serde_json::from_value(v).ok())
+                    let item_genres: Vec<String> = row.genres.as_ref()
+                        .and_then(|v| serde_json::from_value(v.clone()).ok())
                         .unwrap_or_default();
 
-                    let item_creators: Vec<String> = row.creators
-                        .and_then(|v| serde_json::from_value(v).ok())
+                    let item_creators: Vec<String> = row.creators.as_ref()
+                        .and_then(|v| serde_json::from_value(v.clone()).ok())
                         .unwrap_or_default();
 
                     // Calculate genre similarity (Jaccard)

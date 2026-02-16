@@ -8,7 +8,6 @@
 //! (circuit breakers, bulkhead, metrics).
 
 use anyhow::Result;
-use sqlx::PgPool;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use tracing::{info, warn, error};
@@ -23,20 +22,19 @@ use super::types::UserActivity;
 /// Processes activities from any source and routes them to DB + staleness engine.
 pub struct ActivityProcessor {
     interaction_repo: Arc<InteractionRepository>,
-    db_pool: Arc<PgPool>,
+    pool: Arc<ResilientPool>,
     staleness_engine: Arc<StalenessEngine>,
 }
 
 impl ActivityProcessor {
     pub fn new(
         resilient_pool: Arc<ResilientPool>,
-        db_pool: Arc<PgPool>,
         metrics_collector: Arc<ResilienceMetricsCollector>,
         staleness_engine: Arc<StalenessEngine>,
     ) -> Self {
         Self {
-            interaction_repo: Arc::new(InteractionRepository::new(resilient_pool, metrics_collector)),
-            db_pool,
+            interaction_repo: Arc::new(InteractionRepository::new(resilient_pool.clone(), metrics_collector)),
+            pool: resilient_pool,
             staleness_engine,
         }
     }
@@ -239,22 +237,30 @@ impl ActivityProcessor {
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
 
-        sqlx::query(
-            r#"
-            INSERT INTO user_preferences (user_id, preferred_genres, preferred_languages, content_maturity, updated_at)
-            VALUES ($1, $2, $3, $4, NOW())
-            ON CONFLICT (user_id) DO UPDATE SET
-                preferred_genres = COALESCE($2, user_preferences.preferred_genres),
-                preferred_languages = COALESCE($3, user_preferences.preferred_languages),
-                content_maturity = COALESCE($4, user_preferences.content_maturity),
-                updated_at = NOW()
-            "#
-        )
-        .bind(user_id)
-        .bind(preferred_genres)
-        .bind(preferred_languages)
-        .bind(content_maturity)
-        .execute(self.db_pool.as_ref())
+        self.pool.execute(|pool| {
+            let preferred_genres = preferred_genres.clone();
+            let preferred_languages = preferred_languages.clone();
+            let content_maturity = content_maturity.clone();
+            async move {
+                sqlx::query(
+                    r#"
+                    INSERT INTO user_preferences (user_id, preferred_genres, preferred_languages, content_maturity, updated_at)
+                    VALUES ($1, $2, $3, $4, NOW())
+                    ON CONFLICT (user_id) DO UPDATE SET
+                        preferred_genres = COALESCE($2, user_preferences.preferred_genres),
+                        preferred_languages = COALESCE($3, user_preferences.preferred_languages),
+                        content_maturity = COALESCE($4, user_preferences.content_maturity),
+                        updated_at = NOW()
+                    "#
+                )
+                .bind(user_id)
+                .bind(preferred_genres)
+                .bind(preferred_languages)
+                .bind(content_maturity)
+                .execute(&pool)
+                .await
+            }
+        })
         .await?;
 
         Ok(())
@@ -269,22 +275,28 @@ impl ActivityProcessor {
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
 
-        sqlx::query(
-            r#"
-            INSERT INTO user_settings (user_id, notifications_enabled, autoplay_enabled, video_quality, updated_at)
-            VALUES ($1, $2, $3, $4, NOW())
-            ON CONFLICT (user_id) DO UPDATE SET
-                notifications_enabled = COALESCE($2, user_settings.notifications_enabled),
-                autoplay_enabled = COALESCE($3, user_settings.autoplay_enabled),
-                video_quality = COALESCE($4, user_settings.video_quality),
-                updated_at = NOW()
-            "#
-        )
-        .bind(user_id)
-        .bind(notifications_enabled)
-        .bind(autoplay_enabled)
-        .bind(video_quality)
-        .execute(self.db_pool.as_ref())
+        self.pool.execute(|pool| {
+            let video_quality = video_quality.clone();
+            async move {
+                sqlx::query(
+                    r#"
+                    INSERT INTO user_settings (user_id, notifications_enabled, autoplay_enabled, video_quality, updated_at)
+                    VALUES ($1, $2, $3, $4, NOW())
+                    ON CONFLICT (user_id) DO UPDATE SET
+                        notifications_enabled = COALESCE($2, user_settings.notifications_enabled),
+                        autoplay_enabled = COALESCE($3, user_settings.autoplay_enabled),
+                        video_quality = COALESCE($4, user_settings.video_quality),
+                        updated_at = NOW()
+                    "#
+                )
+                .bind(user_id)
+                .bind(notifications_enabled)
+                .bind(autoplay_enabled)
+                .bind(video_quality)
+                .execute(&pool)
+                .await
+            }
+        })
         .await?;
 
         Ok(())
@@ -298,22 +310,30 @@ impl ActivityProcessor {
         let timezone: Option<String> = data.get("timezone")
             .and_then(|v| v.as_str()).map(|s| s.to_string());
 
-        sqlx::query(
-            r#"
-            INSERT INTO user_demographics (user_id, age_group, country, timezone, updated_at)
-            VALUES ($1, $2, $3, $4, NOW())
-            ON CONFLICT (user_id) DO UPDATE SET
-                age_group = COALESCE($2, user_demographics.age_group),
-                country = COALESCE($3, user_demographics.country),
-                timezone = COALESCE($4, user_demographics.timezone),
-                updated_at = NOW()
-            "#
-        )
-        .bind(user_id)
-        .bind(age_group)
-        .bind(country)
-        .bind(timezone)
-        .execute(self.db_pool.as_ref())
+        self.pool.execute(|pool| {
+            let age_group = age_group.clone();
+            let country = country.clone();
+            let timezone = timezone.clone();
+            async move {
+                sqlx::query(
+                    r#"
+                    INSERT INTO user_demographics (user_id, age_group, country, timezone, updated_at)
+                    VALUES ($1, $2, $3, $4, NOW())
+                    ON CONFLICT (user_id) DO UPDATE SET
+                        age_group = COALESCE($2, user_demographics.age_group),
+                        country = COALESCE($3, user_demographics.country),
+                        timezone = COALESCE($4, user_demographics.timezone),
+                        updated_at = NOW()
+                    "#
+                )
+                .bind(user_id)
+                .bind(age_group)
+                .bind(country)
+                .bind(timezone)
+                .execute(&pool)
+                .await
+            }
+        })
         .await?;
 
         Ok(())
@@ -329,22 +349,28 @@ impl ActivityProcessor {
             .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
             .map(|dt| dt.with_timezone(&chrono::Utc));
 
-        sqlx::query(
-            r#"
-            INSERT INTO user_subscriptions (user_id, tier, is_active, expires_at, updated_at)
-            VALUES ($1, $2, $3, $4, NOW())
-            ON CONFLICT (user_id) DO UPDATE SET
-                tier = COALESCE($2, user_subscriptions.tier),
-                is_active = COALESCE($3, user_subscriptions.is_active),
-                expires_at = COALESCE($4, user_subscriptions.expires_at),
-                updated_at = NOW()
-            "#
-        )
-        .bind(user_id)
-        .bind(tier)
-        .bind(is_active)
-        .bind(expires_at)
-        .execute(self.db_pool.as_ref())
+        self.pool.execute(|pool| {
+            let tier = tier.clone();
+            async move {
+                sqlx::query(
+                    r#"
+                    INSERT INTO user_subscriptions (user_id, tier, is_active, expires_at, updated_at)
+                    VALUES ($1, $2, $3, $4, NOW())
+                    ON CONFLICT (user_id) DO UPDATE SET
+                        tier = COALESCE($2, user_subscriptions.tier),
+                        is_active = COALESCE($3, user_subscriptions.is_active),
+                        expires_at = COALESCE($4, user_subscriptions.expires_at),
+                        updated_at = NOW()
+                    "#
+                )
+                .bind(user_id)
+                .bind(tier)
+                .bind(is_active)
+                .bind(expires_at)
+                .execute(&pool)
+                .await
+            }
+        })
         .await?;
 
         Ok(())

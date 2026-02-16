@@ -5,7 +5,6 @@ use serde::Deserialize;
 use crate::pipeline::{PipelineStage, ScoredItem};
 use crate::pipeline::context::ExecutionContext;
 use std::collections::HashMap;
-use chrono::Utc;
 
 #[derive(Deserialize)]
 struct Params {
@@ -51,51 +50,17 @@ impl PipelineStage for BoostPromotedStage {
     ) -> Result<Vec<ScoredItem>> {
         let params: Params = serde_json::from_value(params.clone())?;
         let item_ids: Vec<i32> = input.iter().map(|item| item.item_id).collect();
-        let now = Utc::now();
 
-        #[derive(sqlx::FromRow)]
-        struct Row {
-            item_id: i32,
-            promotion_priority: Option<i32>,
-            _promotion_start: Option<chrono::DateTime<Utc>>,
-            _promotion_end: Option<chrono::DateTime<Utc>>,
-            target_segments: Option<JsonValue>,
-            promotion_label: Option<String>,
-        }
-
-        let rows: Vec<Row> = sqlx::query_as(
-            r#"
-            SELECT item_id, promotion_priority, promotion_start, promotion_end, target_segments, promotion_label
-            FROM item_promotions
-            WHERE item_id = ANY($1)
-                AND (promotion_start IS NULL OR promotion_start <= $2)
-                AND (promotion_end IS NULL OR promotion_end >= $2)
-                AND is_active = true
-            ORDER BY promotion_priority DESC
-            "#,
-        )
-        .bind(&item_ids)
-        .bind(now)
-        .fetch_all(context.db_pool.as_ref())
-        .await
-        .unwrap_or_default();
+        let promotions = context.item_feature_service.get_promotions_batch(&item_ids).await
+            .unwrap_or_default();
 
         // Get user segment if needed
         let user_segment: Option<String> = if params.target_segment.is_some() || context.user_id.is_some() {
             if let Some(user_id) = context.user_id {
-                #[derive(sqlx::FromRow)]
-                struct UserRow {
-                    segment: Option<String>,
-                }
-                sqlx::query_as::<_, UserRow>(
-                    "SELECT segment FROM user_profiles WHERE user_id = $1"
-                )
-                .bind(user_id)
-                .fetch_optional(context.db_pool.as_ref())
-                .await
-                .ok()
-                .flatten()
-                .and_then(|u| u.segment)
+                context.item_feature_service.get_user_profile(user_id).await
+                    .ok()
+                    .flatten()
+                    .and_then(|p| p.segment)
             } else {
                 None
             }
@@ -103,7 +68,7 @@ impl PipelineStage for BoostPromotedStage {
             None
         };
 
-        let promotion_map: HashMap<i32, (i32, Option<String>)> = rows
+        let promotion_map: HashMap<i32, (i32, Option<String>)> = promotions
             .into_iter()
             .filter(|row| {
                 // Check segment targeting
