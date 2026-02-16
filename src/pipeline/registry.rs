@@ -20,12 +20,14 @@ pub fn build_stage_registry() -> HashMap<String, Arc<dyn PipelineStage>> {
     registry.insert("fetch_by_category".into(), Arc::new(stages::fetch::FetchByCategoryStage));
     registry.insert("fetch_because_you_watched".into(), Arc::new(stages::fetch::FetchBecauseYouWatchedStage));
 
-    // Category 2: ML Inference (5 stages) - WITH ONNX SUPPORT
+    // Category 2: ML Inference (7 stages) - WITH ONNX SUPPORT
     registry.insert("onnx_inference".into(), Arc::new(stages::ml::ONNXInferenceStage));
     registry.insert("onnx_inference_similarity".into(), Arc::new(stages::ml::ONNXInferenceSimilarityStage));
     registry.insert("ml_inference_two_tower".into(), Arc::new(stages::ml::MLInferenceTwoTowerStage));
     registry.insert("ml_inference_bert4rec".into(), Arc::new(stages::ml::MLInferenceBERT4RecStage));
     registry.insert("ml_inference_similarity".into(), Arc::new(stages::ml::MLInferenceSimilarityStage));
+    registry.insert("heuristic_aggregator".into(), Arc::new(stages::ml::HeuristicAggregatorStage));
+    registry.insert("meta_scorer".into(), Arc::new(stages::ml::MetaScorerStage));
 
     // Category 3: Filtering (12 stages)
     registry.insert("filter_already_watched".into(), Arc::new(stages::filter::FilterAlreadyWatchedStage));
