@@ -153,6 +153,11 @@
           self.metrics.snapshot()
       }
 
+      /// Get raw handle to metrics for recording events.
+      pub fn metrics_handle(&self) -> Arc<CacheMetrics> {
+          Arc::clone(&self.metrics)
+      }
+
       /// Clear all caches.
       pub async fn clear(&self) -> Result<()> {
           if let Some(ref l1) = self.l1 {

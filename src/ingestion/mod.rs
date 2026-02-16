@@ -48,6 +48,7 @@ pub struct IngestionManager {
     handles: Vec<JoinHandle<()>>,
     api_source: Arc<ApiSource>,
     metrics: Arc<IngestionMetrics>,
+    clickhouse_client: Option<Arc<clickhouse::Client>>,
 }
 
 impl IngestionManager {
@@ -59,6 +60,7 @@ impl IngestionManager {
         staleness_engine: Arc<StalenessEngine>,
         circuit_breaker_registry: Arc<CircuitBreakerRegistry>,
         ingestion_metrics: Arc<IngestionMetrics>,
+        clickhouse_client: Option<Arc<clickhouse::Client>>,
     ) -> Self {
         Self {
             config,
@@ -69,6 +71,7 @@ impl IngestionManager {
             handles: Vec::new(),
             api_source: Arc::new(ApiSource::new()),
             metrics: ingestion_metrics,
+            clickhouse_client,
         }
     }
 
@@ -113,20 +116,25 @@ impl IngestionManager {
         }
 
         // 3. ClickHouse polling source
-        let clickhouse = Arc::new(ClickHouseSource::new(
-            self.config.clickhouse.clone().into(),
-            self.circuit_breaker_registry.clone(),
-        ));
-        all_sources.push(clickhouse.clone());
+        if let Some(ref client) = self.clickhouse_client {
+            let clickhouse = Arc::new(ClickHouseSource::new(
+                self.config.clickhouse.clone().into(),
+                (**client).clone(),
+                self.circuit_breaker_registry.clone(),
+            ));
+            all_sources.push(clickhouse.clone());
 
-        let tx = sender.clone();
-        self.handles.push(tokio::spawn(async move {
-            if let Err(e) = clickhouse.start(tx).await {
-                warn!(error = %e, "ClickHouse source exited with error");
-            }
-        }));
+            let tx = sender.clone();
+            self.handles.push(tokio::spawn(async move {
+                if let Err(e) = clickhouse.start(tx).await {
+                    warn!(error = %e, "ClickHouse source exited with error");
+                }
+            }));
 
-        info!("ClickHouse polling enabled");
+            info!("ClickHouse polling enabled");
+        } else {
+            warn!("ClickHouse client not provided, ClickHouse polling source disabled");
+        }
 
         // ── Start processor ─────────────────────────────────────────────
         let processor = Arc::new(ActivityProcessor::new(
@@ -201,20 +209,9 @@ impl IngestionManager {
         }
 
         // 3. ClickHouse polling source
-        let clickhouse = Arc::new(ClickHouseSource::new(
-            config.clickhouse.clone().into(),
-            circuit_breaker_registry.clone(),
-        ));
-        all_sources.push(clickhouse.clone());
-
-        let tx = sender.clone();
-        handles.push(tokio::spawn(async move {
-            if let Err(e) = clickhouse.start(tx).await {
-                warn!(error = %e, "ClickHouse source exited with error");
-            }
-        }));
-
-        info!("ClickHouse polling enabled");
+        // Note: start_legacy currently has no way to pass a ClickHouse client.
+        // It remains disabled in legacy mode for now.
+        warn!("ClickHouse client not provided in legacy start, ClickHouse source disabled");
 
         // ── Start processor ─────────────────────────────────────────────
         let processor = Arc::new(ActivityProcessor::new(
@@ -246,6 +243,7 @@ impl IngestionManager {
             handles,
             api_source,
             metrics,
+            clickhouse_client: None,
         })
     }
 

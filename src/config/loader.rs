@@ -102,7 +102,9 @@ use std::time::Duration;
           let database = DatabaseConfig {
               url: config_map.get("database.url")
                   .cloned(),
-              read_replicas: vec![], // TODO: Parse from config
+              read_replicas: config_map.get("database.read_replicas")
+                  .map(|s| s.split(',').map(|s| s.trim().to_string()).collect())
+                  .unwrap_or_default(),
               max_connections: config_map.get("database.max_connections")
                   .and_then(|s| s.parse().ok())
                   .unwrap_or(20),
@@ -121,7 +123,9 @@ use std::time::Duration;
               statement_timeout: config_map.get("database.statement_timeout")
                   .and_then(|s| s.parse().ok())
                   .unwrap_or(300),
-              use_read_replicas: false, // TODO: Parse from config
+              use_read_replicas: config_map.get("database.use_read_replicas")
+                  .and_then(|s| s.parse().ok())
+                  .unwrap_or(false),
           };
 
           // Parse Redis configuration
@@ -129,7 +133,9 @@ use std::time::Duration;
               url: config_map.get("redis.url")
                   .cloned()
                   .unwrap_or_else(|| "redis://localhost:6379".to_string()),
-              cluster_nodes: vec![], // TODO: Parse from config
+              cluster_nodes: config_map.get("redis.cluster_nodes")
+                  .map(|s| s.split(',').map(|s| s.trim().to_string()).collect())
+                  .unwrap_or_default(),
               pool_size: config_map.get("redis.pool_size")
                   .and_then(|s| s.parse().ok())
                   .unwrap_or(10),
@@ -145,7 +151,9 @@ use std::time::Duration;
               retry_backoff: config_map.get("redis.retry_backoff")
                   .and_then(|s| s.parse().ok())
                   .unwrap_or(100),
-              cluster_mode: false, // TODO: Parse from config
+              cluster_mode: config_map.get("redis.cluster_mode")
+                  .and_then(|s| s.parse().ok())
+                  .unwrap_or(false),
           };
 
           // Parse ClickHouse configuration

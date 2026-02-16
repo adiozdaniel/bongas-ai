@@ -120,6 +120,7 @@ impl StagingManager {
             format!("rec:*:{}:*", user_id)
         };
         let _ = self.cache_manager.delete(&key_pattern).await;
+        self.cache_manager.metrics_handle().record_invalidation();
 
         // Mark L3 cache as stale
         let rows_affected = self.cache_repo.mark_stale(user_id, scenario_slug, reason).await?;
@@ -149,6 +150,7 @@ impl StagingManager {
 
         let default_key = format!("rec:{}:{}:default", scenario_slug, user_id);
         let _ = self.cache_manager.delete(&default_key).await;
+        self.cache_manager.metrics_handle().record_invalidation();
 
         // Invalidate L3 (PostgreSQL)
         let rows_affected = self.cache_repo.mark_stale(user_id, Some(scenario_slug), "invalidate").await?;
@@ -185,7 +187,7 @@ impl StagingManager {
             l1_misses: metrics.l1_misses,
             l2_hits: metrics.l2_hits,
             l2_misses: metrics.l2_misses,
-            invalidations: 0, // TODO: Track via CacheMetrics
+            invalidations: metrics.invalidations,
             hit_rate: metrics.overall_hit_rate(),
         }
     }

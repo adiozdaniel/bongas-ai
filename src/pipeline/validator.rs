@@ -1,21 +1,38 @@
+//! Pipeline structural validator for the "Safety Gate" activation phase.
+//!
+//! # Architecture
+//! ```text
+//! JSONB Pipeline ───> [PipelineValidator] ───> OK: Proceed to Linker
+//!                                         └─── ERR: Reject Activation
+//! ```
+//!
+//! Ensures that dynamic pipeline sequences are logically sound and type-safe 
+//! before they are allowed to enter the high-performance Fast Path.
+
 use anyhow::Result;
 use std::sync::Arc;
 use std::collections::HashMap;
 
-use crate::pipeline::{PipelineStage, StageDataKind, PipelineError, ExecutablePipeline};
+use crate::pipeline::{PipelineStage, StageDataKind, PipelineError, ExecutablePipeline, ExecutionNode};
 use crate::db::models::{PipelineDefinition, PipelineStageConfig};
 
 /// Validates the structural integrity and type safety of a pipeline.
+///
+/// Prevents runtime errors by checking stage compatibility during the activation phase.
 pub struct PipelineValidator {
+    /// Registry of all available stages for type lookups.
     stage_registry: HashMap<String, Arc<dyn PipelineStage>>,
 }
 
 impl PipelineValidator {
+    /// Create a new validator with the provided stage registry.
     pub fn new(stage_registry: HashMap<String, Arc<dyn PipelineStage>>) -> Self {
         Self { stage_registry }
     }
 
     /// Validate a raw pipeline definition from the database.
+    ///
+    /// Checks both the main execution path and the fallback path for type mismatches.
     pub fn validate_definition(&self, definition: &PipelineDefinition) -> Result<()> {
         self.validate_stage_sequence(&definition.stages)?;
         
@@ -27,6 +44,8 @@ impl PipelineValidator {
     }
 
     /// Validate a sequence of stage configurations.
+    ///
+    /// Verifies that each stage's input requirements are satisfied by the previous stage's output.
     fn validate_stage_sequence(&self, stages: &[PipelineStageConfig]) -> Result<()> {
         if stages.is_empty() {
             return Ok(());
@@ -60,12 +79,14 @@ impl PipelineValidator {
     }
 
     /// Validate an already-linked executable pipeline.
+    ///
+    /// Useful for final integrity checks before swapping the Fast Path.
     pub fn validate_executable(&self, pipeline: &ExecutablePipeline) -> Result<()> {
         let mut current_output = StageDataKind::Empty;
 
         for (idx, node) in pipeline.nodes.iter().enumerate() {
             match node {
-                crate::pipeline::ExecutionNode::Single(stage) => {
+                ExecutionNode::Single(stage) => {
                     let input_req = stage.implementation.input_type();
                     let output_prod = stage.implementation.output_type();
 
@@ -81,7 +102,7 @@ impl PipelineValidator {
                     }
                     current_output = output_prod;
                 }
-                crate::pipeline::ExecutionNode::Parallel(stages) => {
+                ExecutionNode::Parallel(stages) => {
                     let mut first_output = None;
                     for stage in stages {
                         let input_req = stage.implementation.input_type();
@@ -116,9 +137,7 @@ impl PipelineValidator {
 
     /// Helper to check if two data kinds are compatible.
     fn are_types_compatible(&self, output: StageDataKind, input: StageDataKind) -> bool {
-        // Empty output can only go into stages that accept Empty input
-        // ScoredItems can go into ScoredItems
-        // ItemIds can go into ItemIds (or we might allow ItemIds -> ScoredItems if stage handles it)
-        output == input || (output == StageDataKind::Empty && input == StageDataKind::Empty)
+        // Strict matching for now. In future, could allow ItemIds -> ScoredItems promotion.
+        output == input
     }
 }

@@ -103,22 +103,6 @@ impl ResilientPoolConfig {
 /// - Bulkhead (semaphore) for concurrency limiting
 /// - Metrics collection for observability
 /// - Timeout enforcement for all queries
-///
-/// ## TODO: Read Replica Support
-/// For 10x+ read throughput, implement:
-/// 1. Create separate PgPool for each read replica
-/// 2. Add `execute_read()` method that routes to replicas (round-robin/random)
-/// 3. Keep `execute()` for writes (routes to primary)
-/// 4. Add replica health checking and automatic failover
-/// 5. Example:
-///    ```rust
-///    pub struct ResilientPool {
-///        primary: PgPool,
-///        replicas: Vec<PgPool>,
-///        replica_selector: AtomicUsize, // for round-robin
-///        // ... existing fields
-///    }
-///    ```
 pub struct ResilientPool {
     /// Underlying connection pool
     pool: PgPool,

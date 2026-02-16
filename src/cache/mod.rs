@@ -30,4 +30,4 @@
   pub use strategies::{LruCache, NoOpCache, RedisCache};
   pub use traits::{CacheStrategy, CacheTier};
   pub use warming::CacheWarmer;
-  pub use hot_registry::{HotRegistrySafe, HotItem};
+  pub use hot_registry::{HotRegistry, HotItem};

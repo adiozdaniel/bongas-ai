@@ -12,7 +12,7 @@ use crate::AppConfig;
 use crate::pipeline::executor::PipelineExecutor;
 use crate::pipeline::context::ExecutionContext;
 use crate::pipeline::{ScoredItem, ExecutablePipeline};
-use crate::cache::{CacheManager, CacheConfig, CacheWarmer, CacheMetricsSnapshot, HotRegistrySafe, HotItem};
+use crate::cache::{CacheManager, CacheConfig, CacheWarmer, CacheMetricsSnapshot, HotRegistry, HotItem};
 use crate::circuit_breaker::CircuitBreakerRegistry;
 use crate::ingestion::IngestionManager;
 use crate::ingestion::metrics::IngestionMetrics;
@@ -47,7 +47,7 @@ pub struct BongasEngine {
     // Caching & staging
     pub(crate) staging_manager: Arc<StagingManager>,
     pub(crate) staleness_engine: Arc<StalenessEngine>,
-    pub(crate) hot_registry: Arc<HotRegistrySafe>,
+    pub(crate) hot_registry: Arc<HotRegistry>,
 
     // ML Model Management
     pub(crate) model_loader: Arc<ModelLoader>,
@@ -151,7 +151,7 @@ impl BongasEngine {
         // Create Netflix-grade cache manager
         let cache_config = CacheConfig::default();
         let cache_manager = Arc::new(CacheManager::new(&config.redis.url, cache_config.clone()).await?);
-        let hot_registry = Arc::new(HotRegistrySafe::new());
+        let hot_registry = Arc::new(HotRegistry::new());
         let performance_stats = Arc::new(PerformanceStats::new());
 
         // Create model repository and loader
@@ -202,27 +202,6 @@ impl BongasEngine {
         // Create Ingestion metrics registry
         let ingestion_metrics = Arc::new(IngestionMetrics::new(Vec::new()));
 
-        // Create Ingestion manager
-        let ingestion_manager = IngestionManager::new(
-            config.ingestion.clone(),
-            resilient_pool.clone(),
-            resilience_metrics.clone(),
-            staleness_engine.clone(),
-            circuit_breaker_registry.clone(),
-            ingestion_metrics.clone(),
-        );
-
-        // Create repositories & services
-        let item_feature_service = Arc::new(ItemFeatureService::new(resilient_pool.clone(), resilience_metrics.clone()));
-        let feature_repo = Arc::new(FeatureRepository::new(resilient_pool.clone(), resilience_metrics.clone()));
-        let cache_repo = Arc::new(CacheRepository::new(resilient_pool.clone(), resilience_metrics.clone()));
-        let feature_store = Arc::new(crate::ml::feature_store::FeatureStore::new(
-            resilient_pool.clone(),
-            cache_manager.clone(),
-            config.ml.clone(),
-            None, // Analytics wired separately when PerformanceStats is available
-        ));
-
         // Create ClickHouse client if configured
         let clickhouse = if !config.clickhouse.url.is_empty() {
             Some(Arc::new(
@@ -235,6 +214,28 @@ impl BongasEngine {
         } else {
             None
         };
+
+        // Create Ingestion manager
+        let ingestion_manager = IngestionManager::new(
+            config.ingestion.clone(),
+            resilient_pool.clone(),
+            resilience_metrics.clone(),
+            staleness_engine.clone(),
+            circuit_breaker_registry.clone(),
+            ingestion_metrics.clone(),
+            clickhouse.clone(),
+        );
+
+        // Create repositories & services
+        let item_feature_service = Arc::new(ItemFeatureService::new(resilient_pool.clone(), resilience_metrics.clone()));
+        let feature_repo = Arc::new(FeatureRepository::new(resilient_pool.clone(), resilience_metrics.clone()));
+        let cache_repo = Arc::new(CacheRepository::new(resilient_pool.clone(), resilience_metrics.clone()));
+        let feature_store = Arc::new(crate::ml::feature_store::FeatureStore::new(
+            resilient_pool.clone(),
+            cache_manager.clone(),
+            config.ml.clone(),
+            None, // Analytics wired separately when PerformanceStats is available
+        ));
 
         let engine = Arc::new(Self {
             config: config.clone(),

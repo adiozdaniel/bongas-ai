@@ -11,6 +11,7 @@
       l2_hits: Arc<AtomicU64>,
       l2_misses: Arc<AtomicU64>,
       evictions: Arc<AtomicU64>,
+      invalidations: Arc<AtomicU64>,
       errors: Arc<AtomicU64>,
   }
 
@@ -22,6 +23,7 @@
               l2_hits: Arc::new(AtomicU64::new(0)),
               l2_misses: Arc::new(AtomicU64::new(0)),
               evictions: Arc::new(AtomicU64::new(0)),
+              invalidations: Arc::new(AtomicU64::new(0)),
               errors: Arc::new(AtomicU64::new(0)),
           }
       }
@@ -46,6 +48,10 @@
           self.evictions.fetch_add(1, Ordering::Relaxed);
       }
 
+      pub fn record_invalidation(&self) {
+          self.invalidations.fetch_add(1, Ordering::Relaxed);
+      }
+
       pub fn record_error(&self) {
           self.errors.fetch_add(1, Ordering::Relaxed);
       }
@@ -57,6 +63,7 @@
               l2_hits: self.l2_hits.load(Ordering::Relaxed),
               l2_misses: self.l2_misses.load(Ordering::Relaxed),
               evictions: self.evictions.load(Ordering::Relaxed),
+              invalidations: self.invalidations.load(Ordering::Relaxed),
               errors: self.errors.load(Ordering::Relaxed),
           }
       }
@@ -75,6 +82,7 @@
       pub l2_hits: u64,
       pub l2_misses: u64,
       pub evictions: u64,
+      pub invalidations: u64,
       pub errors: u64,
   }
 

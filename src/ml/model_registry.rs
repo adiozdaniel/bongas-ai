@@ -14,6 +14,7 @@ use tokio::sync::RwLock;
 use tracing::{info, debug};
 
 use crate::config::MlConfig;
+use crate::circuit_breaker::{CircuitBreakerRegistry, CircuitBreakerId};
 /// Model version state in the registry.
 #[derive(Debug, Clone)]
 pub struct ModelVersion {
@@ -54,17 +55,20 @@ pub struct VersionedModelRegistry {
     versions: Arc<RwLock<HashMap<String, Vec<ModelVersion>>>>,
     config: MlConfig,
     analytics: Option<Arc<crate::analytics::types::PerformanceStats>>,
+    breaker_registry: Arc<CircuitBreakerRegistry>,
 }
 
 impl VersionedModelRegistry {
     pub fn new(
         config: MlConfig,
         analytics: Option<Arc<crate::analytics::types::PerformanceStats>>,
+        breaker_registry: Arc<CircuitBreakerRegistry>,
     ) -> Self {
         Self {
             versions: Arc::new(RwLock::new(HashMap::new())),
             config,
             analytics,
+            breaker_registry,
         }
     }
 
@@ -203,11 +207,18 @@ impl VersionedModelRegistry {
 
         for entries in versions.values() {
             for entry in entries {
+                let breaker_name: &'static str = Box::leak(format!("model.{}", entry.model_name).into_boxed_str());
+                let breaker_id = CircuitBreakerId::new(breaker_name);
+                let breaker_state = self.breaker_registry
+                    .get(&breaker_id)
+                    .map(|b| format!("{:?}", b.current_state()))
+                    .unwrap_or_else(|| "unknown".to_string());
+
                 health.push(ModelHealth {
                     model_name: entry.model_name.clone(),
                     version: entry.version.clone(),
                     status: entry.status.clone(),
-                    breaker_state: "unknown".to_string(), // TODO: wire from breaker registry
+                    breaker_state,
                     inference_count: 0,
                     error_count: 0,
                 });

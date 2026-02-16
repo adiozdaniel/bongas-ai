@@ -9,7 +9,7 @@
 
 use std::sync::Arc;
 use crate::analytics::types::PerformanceStats;
-use crate::cache::{CacheManager, HotRegistrySafe};
+use crate::cache::{CacheManager, HotRegistry};
 use crate::config::PipelineConfig;
 use crate::db::repositories::item_feature_service::ItemFeatureService;
 use crate::ml::model_loader::ModelLoader;
@@ -31,7 +31,7 @@ pub struct ExecutionContext {
     // ── Core dependencies ───────────────────────────────────────────────
     pub cache_manager: Arc<CacheManager>,
     pub model_loader: Arc<ModelLoader>,
-    pub hot_registry: Option<Arc<HotRegistrySafe>>,
+    pub hot_registry: Option<Arc<HotRegistry>>,
 
     // ── Resilient data access ───────────────────────────────────────────
     /// Unified item/user feature service — pipeline stages should use this
@@ -145,11 +145,13 @@ impl ExecutionContext {
             feature_store,
             "bench-request".to_string(),
         )
+        .with_hot_registry(Arc::new(HotRegistry::new()))
+        .with_analytics(Arc::new(PerformanceStats::new()))
     }
 
     // ── Builder methods ─────────────────────────────────────────────────
 
-    pub fn with_hot_registry(mut self, hot_registry: Arc<HotRegistrySafe>) -> Self {
+    pub fn with_hot_registry(mut self, hot_registry: Arc<HotRegistry>) -> Self {
         self.hot_registry = Some(hot_registry);
         self
     }
