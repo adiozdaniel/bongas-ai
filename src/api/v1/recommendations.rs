@@ -63,17 +63,63 @@ async fn execute_and_map(
 
 // ─── Handlers ───────────────────────────────────────────────────────────────
 
+use crate::api::models::{StandardResponse, RecommendationItem, PaginationParams, HomeFeedResponse, FeedRow};
+
+// ... (other handlers)
+
 async fn get_home_recommendations(
     Path(user_id): Path<i32>,
-    Query(params): Query<PaginationParams>,
     Extension(engine): Extension<Arc<BongasEngine>>,
-) -> Result<Json<StandardResponse<Vec<RecommendationItem>>>, AppError> {
-    let limit = params.limit.unwrap_or(20);
-    let offset = params.offset.unwrap_or(0);
-    let items = execute_and_map(&engine, "personalized_home", Some(user_id), serde_json::json!({}), offset, limit).await?;
+) -> Result<Json<StandardResponse<HomeFeedResponse>>, AppError> {
+    let engine_ref = engine.as_ref();
 
-    info!(user_id, scenario = "personalized_home", result_count = items.len(), "Home recommendations served");
-    Ok(Json(StandardResponse::success(items)))
+    // Concurrently fetch multiple scenarios for the home feed
+    let (continue_watching, supreme_ranker, trending) = tokio::join!(
+        execute_and_map(engine_ref, "continue_watching", Some(user_id), serde_json::json!({}), 0, 10),
+        execute_and_map(engine_ref, "supreme_ranker", Some(user_id), serde_json::json!({}), 0, 20),
+        execute_and_map(engine_ref, "trending_now", None, serde_json::json!({}), 0, 20),
+    );
+
+    let mut rows = Vec::new();
+
+    // 1. Continue Watching (if items exist)
+    if let Ok(items) = continue_watching {
+        if !items.is_empty() {
+            rows.push(FeedRow {
+                title: "Continue Watching".to_string(),
+                row_type: "horizontal_list".to_string(),
+                scenario: "continue_watching".to_string(),
+                items,
+            });
+        }
+    }
+
+    // 2. Supreme Ranker (Grok-style personalized feed)
+    if let Ok(items) = supreme_ranker {
+        rows.push(FeedRow {
+            title: "Picked For You".to_string(),
+            row_type: "horizontal_list".to_string(),
+            scenario: "supreme_ranker".to_string(),
+            items,
+        });
+    }
+
+    // 3. Trending Now
+    if let Ok(items) = trending {
+        rows.push(FeedRow {
+            title: "Trending Now".to_string(),
+            row_type: "horizontal_list".to_string(),
+            scenario: "trending_now".to_string(),
+            items,
+        });
+    }
+
+    info!(user_id, row_count = rows.len(), "Master Home Feed assembled");
+    
+    Ok(Json(StandardResponse::success(HomeFeedResponse {
+        rows,
+        experiment_id: None,
+    })))
 }
 
 async fn get_continue_watching(

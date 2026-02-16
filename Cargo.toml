@@ -85,6 +85,10 @@ tokio-test = "0.4"
 criterion = { version = "0.5", features = ["async_tokio"] }
 
 [[bench]]
+name = "redis_bench"
+harness = false
+
+[[bench]]
 name = "pipeline_bench"
 harness = false
 
