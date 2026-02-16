@@ -102,6 +102,7 @@ use std::time::Duration;
           let database = DatabaseConfig {
               url: config_map.get("database.url")
                   .cloned(),
+              read_replicas: vec![], // TODO: Parse from config
               max_connections: config_map.get("database.max_connections")
                   .and_then(|s| s.parse().ok())
                   .unwrap_or(20),
@@ -120,6 +121,7 @@ use std::time::Duration;
               statement_timeout: config_map.get("database.statement_timeout")
                   .and_then(|s| s.parse().ok())
                   .unwrap_or(300),
+              use_read_replicas: false, // TODO: Parse from config
           };
 
           // Parse Redis configuration
@@ -127,6 +129,7 @@ use std::time::Duration;
               url: config_map.get("redis.url")
                   .cloned()
                   .unwrap_or_else(|| "redis://localhost:6379".to_string()),
+              cluster_nodes: vec![], // TODO: Parse from config
               pool_size: config_map.get("redis.pool_size")
                   .and_then(|s| s.parse().ok())
                   .unwrap_or(10),
@@ -142,6 +145,7 @@ use std::time::Duration;
               retry_backoff: config_map.get("redis.retry_backoff")
                   .and_then(|s| s.parse().ok())
                   .unwrap_or(100),
+              cluster_mode: false, // TODO: Parse from config
           };
 
           // Parse ClickHouse configuration

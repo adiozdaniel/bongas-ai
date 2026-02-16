@@ -1,0 +1,158 @@
+# Production Configuration for BONGAS-AI
+# ==========================================
+# This configuration is optimized for production scale (10K-100K concurrent users)
+#
+# IMPORTANT: DevOps team needs to provision:
+# - Database replicas
+# - Redis Cluster (if using cluster_mode)
+# - Monitoring infrastructure
+# - Load balancers
+
+[server]
+host = "0.0.0.0"
+port = 8080
+environment = "production"
+
+[database]
+# Primary database connection
+url = "postgresql://postgres:password@db-primary.example.com:5432/baze_catalog"
+# 5x increase from dev (20 -> 100)
+max_connections = 100
+min_connections = 20
+connection_timeout = 30
+idle_timeout = 600
+max_lifetime = 1800
+statement_timeout = 300
+
+# Read replicas for load distribution (DevOps configures these)
+# use_read_replicas = true
+# read_replicas = [
+#     "postgresql://postgres:password@db-replica-1.example.com:5432/baze_catalog",
+#     "postgresql://postgres:password@db-replica-2.example.com:5432/baze_catalog",
+#     "postgresql://postgres:password@db-replica-3.example.com:5432/baze_catalog"
+# ]
+
+[redis]
+# Single Redis for simple deployments
+url = "redis://redis.example.com:6379"
+# 5x increase from dev (10 -> 50)
+pool_size = 50
+connection_timeout = 5
+request_timeout = 10
+max_retries = 3
+retry_backoff = 100
+
+# Redis Cluster for high availability (DevOps configures these)
+# cluster_mode = true
+# cluster_nodes = [
+#     "redis://redis-1.example.com:6379",
+#     "redis://redis-2.example.com:6379",
+#     "redis://redis-3.example.com:6379"
+# ]
+
+[clickhouse]
+url = "http://clickhouse.example.com:8123"
+user = "default"
+password = ""
+database = "baze_analytics"
+
+[kafka]
+brokers = "kafka-1.example.com:9092,kafka-2.example.com:9092,kafka-3.example.com:9092"
+group_id = "bongas-ai-consumers"
+profile_topic = "profile.events"
+reaction_topic = "reaction.events"
+notification_topic = "notification.events"
+playback_topic = "playback.events"
+
+[security]
+license_key = "${LICENSE_KEY}"
+license_server_url = "https://license.example.com"
+hardware_id_salt = "${HARDWARE_ID_SALT}"
+
+[spring_cloud]
+enabled = false
+url = "http://config-server.example.com:8888"
+app_name = "bongas-ai"
+profile = "production"
+
+[ml]
+model_path = "/var/lib/bongas-ai/models"
+# 2x increase for throughput
+batch_size = 128
+# 4x worker increase (16 -> 64)
+inference_max_concurrent = 64
+# 4x queue depth (1024 -> 4096)
+worker_queue_depth = 4096
+# 2x thread count
+onnx_intra_threads = 8
+# Enable canary deployments in production
+canary_enabled = true
+
+[onnx]
+enabled = true
+model_path = "/var/lib/bongas-ai/models"
+# DevOps can configure GPU: execution_provider = "cuda"
+execution_provider = "cpu"
+graph_optimization = true
+
+[pipeline]
+# 4x concurrency increases
+stage_max_concurrent = 128
+fetch_max_concurrent = 64
+ml_max_concurrent = 32
+# Sample 10% to reduce overhead
+analytics_sample_rate = 0.1
+
+[cache]
+l1_ttl_seconds = 600  # 2x longer for production
+l2_ttl_seconds = 7200 # 2x longer for production
+warming_interval_minutes = 30
+warm_scenarios = [
+    "personalized_home",
+    "continue_watching",
+    "trending_now",
+    "live_tv",
+    "for_you"
+]
+
+[logging]
+level = "info"
+# Use JSON for production log aggregation (ELK, Datadog, etc.)
+format = "json"
+
+# Monitoring & Observability (requires infrastructure setup)
+[metrics]
+enabled = true
+# prometheus_endpoint = "0.0.0.0:9090"
+# export_interval_seconds = 30
+
+[tracing]
+enabled = true
+# service_name = "bongas-ai"
+# otlp_endpoint = "http://jaeger.example.com:4317"
+# sample_rate = 0.1
+
+[bulkhead]
+enabled = true
+max_concurrent_calls = 200  # 2x increase (100 -> 200)
+per_endpoint = true
+
+# ==========================================
+# Expected Performance Characteristics
+# ==========================================
+# With this configuration you should achieve:
+# - Cached requests: 2,000-5,000 req/s
+# - Uncached simple pipelines: 500-1,000 req/s
+# - ML-heavy pipelines: 200-500 req/s
+# - Concurrent users: 10,000-50,000
+#
+# Bottlenecks will be:
+# 1. Database connections (100) - scale horizontally for more
+# 2. ML inference (64 workers) - add GPU or more instances
+# 3. Redis connections (50) - move to Redis Cluster
+#
+# To scale beyond 100K users:
+# - Deploy multiple instances behind load balancer
+# - Use Redis Cluster
+# - Add database read replicas
+# - Consider GPU for ONNX inference

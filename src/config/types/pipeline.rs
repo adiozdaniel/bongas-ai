@@ -85,3 +85,44 @@ impl Default for PipelineConfig {
         }
     }
 }
+
+impl PipelineConfig {
+    /// Get production-grade defaults (4x dev capacity)
+    pub fn production() -> Self {
+        Self {
+            // Per-Stage Circuit Breaker
+            stage_breaker_enabled: true,
+            stage_breaker_failure_rate: 0.5,
+            stage_breaker_slow_call_rate: 0.5,
+            stage_breaker_slow_call_duration: Duration::from_secs(2),
+            stage_breaker_minimum_calls: 10,
+            stage_breaker_recovery_timeout: Duration::from_secs(30),
+            stage_breaker_half_open_calls: 3,
+
+            // Per-Stage Timeout
+            stage_timeout_default: Duration::from_secs(5),
+            fetch_stage_timeout: Duration::from_secs(3),
+            ml_stage_timeout: Duration::from_secs(10),
+            filter_stage_timeout: Duration::from_secs(2),
+
+            // Pipeline-Level Timeout
+            pipeline_timeout: Duration::from_secs(30),
+
+            // Bulkhead — 4x increase for production
+            stage_max_concurrent: 128, // 4x
+            fetch_max_concurrent: 64,  // 4x
+            ml_max_concurrent: 32,     // 4x
+
+            // Fallback
+            fallback_enabled: true,
+            fallback_on_stage_timeout: true,
+            fallback_on_stage_error: true,
+            fallback_pass_through_input: true,
+
+            // Analytics — sample in production to reduce overhead
+            analytics_enabled: true,
+            analytics_per_stage: true,
+            analytics_sample_rate: 0.1, // Sample 10% to reduce overhead
+        }
+    }
+}

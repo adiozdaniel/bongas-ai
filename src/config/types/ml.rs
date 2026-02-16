@@ -131,3 +131,66 @@ impl Default for MlConfig {
         }
     }
 }
+
+impl MlConfig {
+    /// Get production-grade defaults (4x dev capacity)
+    pub fn production() -> Self {
+        Self {
+            // Model Runtime
+            model_path: PathBuf::from("./models"),
+            batch_size: 128, // 2x increase for throughput
+            onnx_enabled: true,
+            onnx_execution_provider: "cpu".to_string(), // DevOps can change to "cuda"
+            onnx_graph_optimization: true,
+            onnx_intra_threads: 8, // 2x threads
+
+            // Feature Store
+            feature_store_enabled: true,
+            feature_cache_ttl: Duration::from_secs(600), // Longer cache for production
+            feature_fetch_timeout: Duration::from_millis(500),
+
+            // Model Registry
+            model_cache_size: 200,
+            canary_enabled: true, // Enable canary in production
+            canary_traffic_percent: 5.0,
+            shadow_mode_enabled: false,
+
+            // Online Learning
+            online_learning_enabled: false,
+            feedback_batch_size: 512, // 2x batch size
+            feedback_flush_interval: Duration::from_secs(30),
+
+            // Circuit Breaker
+            inference_breaker_failure_rate: 0.5,
+            inference_breaker_slow_call_rate: 0.5,
+            inference_breaker_slow_call_duration: Duration::from_secs(2),
+            inference_breaker_minimum_calls: 10,
+            inference_breaker_recovery_timeout: Duration::from_secs(30),
+            inference_breaker_half_open_calls: 3,
+
+            // Bulkhead — 4x increase for production
+            inference_max_concurrent: 64, // 4x workers
+            feature_fetch_max_concurrent: 128, // 4x fetch concurrency
+            worker_queue_depth: 4096, // 4x queue depth
+
+            // Retry
+            model_load_max_retries: 3,
+            model_load_base_backoff: Duration::from_millis(100),
+            model_load_max_backoff: Duration::from_secs(5),
+            feature_fetch_max_retries: 2,
+
+            // Timeout
+            inference_timeout: Duration::from_secs(5),
+            model_load_timeout: Duration::from_secs(30),
+
+            // Fallback
+            fallback_to_stale_model: true,
+            fallback_cold_start_score: 0.5,
+            fallback_max_stale_age: Duration::from_secs(3600),
+
+            // Analytics
+            analytics_enabled: true,
+            analytics_sample_rate: 0.1, // Sample 10% in production to reduce overhead
+        }
+    }
+}
