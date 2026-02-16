@@ -135,4 +135,24 @@ impl InteractionRepository {
             .bind(bit_mask).fetch_all(&pool).await.map(|rows| rows.into_iter().map(|r| r.0).collect())
         }).await.map_err(|e| AppError::Postgres(PostgresError::Query { message: e.to_string(), source: None }))
     }
+
+    /// Get top engaged users in the last 30 days (High priority for cache warming)
+    pub async fn get_top_engaged_users(&self, limit: i32) -> AppResult<Vec<i32>> {
+        self.pool.execute(|pool| async move {
+            sqlx::query_as::<_, (i32,)> (
+                r#"
+                SELECT user_id
+                FROM user_interactions
+                WHERE created_at > NOW() - INTERVAL '30 days'
+                GROUP BY user_id
+                ORDER BY COUNT(*) DESC
+                LIMIT $1
+                "#
+            )
+            .bind(limit)
+            .fetch_all(&pool)
+            .await
+            .map(|rows| rows.into_iter().map(|r| r.0).collect())
+        }).await.map_err(|e| AppError::Postgres(PostgresError::Query { message: e.to_string(), source: None }))
+    }
 }

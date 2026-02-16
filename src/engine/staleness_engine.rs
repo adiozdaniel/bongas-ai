@@ -91,6 +91,7 @@ impl StalenessEngine {
                     "for_you_personalized".to_string(),
                     "because_you_watched".to_string(),
                     "recommended_for_you".to_string(),
+                    "supreme_ranker".to_string(),
                 ],
             },
 

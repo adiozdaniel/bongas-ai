@@ -56,14 +56,14 @@
           let key_owned = key.to_string();
 
           let result = self.circuit_breaker.call(|| async {
-              let value: Option<String> = conn.get(&key_owned).await.map_err(RedisError::from)?;
+              let value: Option<Vec<u8>> = conn.get(&key_owned).await.map_err(RedisError::from)?;
               Ok::<_, RedisError>(value)
           }).await;
 
           match result {
-              Ok(Some(json_str)) => {
+              Ok(Some(bytes)) => {
                   self.metrics.record_l2_hit();
-                  let value: T = serde_json::from_str(&json_str)?;
+                  let value: T = bincode::deserialize(&bytes)?;
                   Ok(Some(value))
               }
               Ok(None) => {
@@ -82,7 +82,7 @@
       where
           T: Serialize + Send + Sync,
       {
-          let serialized = serde_json::to_string(value)?;
+          let serialized = bincode::serialize(value)?;
           let mut conn = self.client.clone();
           let key_owned = key.to_string();
           let ttl_secs = ttl.as_secs();

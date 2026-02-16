@@ -25,16 +25,22 @@ impl PredictiveWarmer {
 
     /// Start the predictive warming background task.
     pub async fn start(self: Arc<Self>) {
-        // Run every hour to predict the NEXT hour's arrivals
-        let mut ticker = interval(Duration::from_secs(3600));
+        // Run every 15 minutes to predict the next arrival window
+        let mut ticker = interval(Duration::from_secs(900));
 
         loop {
             ticker.tick().await;
             
-            let next_hour = (chrono::Utc::now().hour() + 1) % 24;
-            info!(next_hour, "Starting predictive cache warming cycle");
+            let now = chrono::Utc::now();
+            let next_window_start = (now + Duration::from_secs(900)).hour();
+            
+            info!(
+                hour = next_window_start,
+                minute = ((now.minute() / 15 + 1) * 15) % 60,
+                "Starting 15-minute predictive cache warming cycle"
+            );
 
-            if let Err(e) = self.warm_next_arrivals(next_hour).await {
+            if let Err(e) = self.warm_next_arrivals(next_window_start).await {
                 warn!(error = %e, "Predictive warming cycle failed");
             }
         }
@@ -53,11 +59,27 @@ impl PredictiveWarmer {
             resilience_metrics,
         );
 
+        // Fetch both "High Priority" (Whales/Influencers) and "Likely Arrivals"
+        let high_priority_users = interaction_repo.get_top_engaged_users(100).await.unwrap_or_default();
         let likely_users = interaction_repo.get_likely_arrivals(target_hour).await?;
-        info!(user_count = likely_users.len(), target_hour, "Identified likely arrivals");
+        
+        info!(
+            likely = likely_users.len(),
+            priority = high_priority_users.len(),
+            target_hour,
+            "Identified warming candidates"
+        );
 
         // 2. Trigger warming for each user + scenario
-        for user_id in likely_users {
+        // Combine and deduplicate
+        let mut all_users = likely_users;
+        for u in high_priority_users {
+            if !all_users.contains(&u) {
+                all_users.push(u);
+            }
+        }
+
+        for user_id in all_users {
             for scenario in &self.warm_scenarios {
                 let engine = self.engine.clone();
                 let scenario_slug = scenario.clone();
