@@ -23,7 +23,7 @@ pub use http::{CompressionConfig, CorsConfig};
 // Re-export config types for convenience
 pub use types::{
     AnalyticsConfig, CircuitBreakerConfig, ClickHouseConfig, DatabaseConfig,
-    ErrorConfig, IngestionConfig, KafkaSourceConfig, ApiSourceConfig, ClickHouseSourceConfig,
+    ErrorConfig, IngestionConfig, ApiSourceConfig, ClickHouseSourceConfig,
     MlConfig, PipelineConfig, RedisConfig, SecurityConfig, ServerConfig,
 };
 

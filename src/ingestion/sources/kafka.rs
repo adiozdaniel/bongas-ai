@@ -15,7 +15,7 @@ use tracing::{info, error, warn};
 
 use crate::circuit_breaker::{CircuitBreakerRegistry, CircuitBreakerId, CircuitBreakerConfig};
 use super::super::types::{ActivitySource, SourceHealth, UserActivity};
-use crate::config::types::ingestion as config_ingestion;
+use crate::config::types::kafka as config_kafka;
 
 /// Configuration for the Kafka activity source.
 #[derive(Debug, Clone)]
@@ -28,8 +28,8 @@ pub struct KafkaSourceConfig {
     pub notification_topic: String,
 }
 
-impl From<config_ingestion::KafkaSourceConfig> for KafkaSourceConfig {
-    fn from(config: config_ingestion::KafkaSourceConfig) -> Self {
+impl From<config_kafka::KafkaConfig> for KafkaSourceConfig {
+    fn from(config: config_kafka::KafkaConfig) -> Self {
         KafkaSourceConfig {
             brokers: config.brokers,
             group_id: config.group_id,

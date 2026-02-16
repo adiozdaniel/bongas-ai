@@ -4,6 +4,7 @@
 //! existing resilience metrics patterns for consistency.
 
 use std::sync::Arc;
+use tokio::sync::RwLock;
 use serde::Serialize;
 
 use super::types::{ActivitySource, SourceHealth};
@@ -22,22 +23,33 @@ pub struct IngestionHealth {
 
 /// Collects metrics from all registered activity sources.
 pub struct IngestionMetrics {
-    sources: Vec<Arc<dyn ActivitySource>>,
+    sources: Arc<RwLock<Vec<Arc<dyn ActivitySource>>>>,
 }
 
 impl IngestionMetrics {
     pub fn new(sources: Vec<Arc<dyn ActivitySource>>) -> Self {
-        Self { sources }
+        Self { 
+            sources: Arc::new(RwLock::new(sources)) 
+        }
+    }
+
+    /// Update the list of active sources.
+    pub fn update_sources(&self, new_sources: Vec<Arc<dyn ActivitySource>>) {
+        let sources = self.sources.clone();
+        tokio::spawn(async move {
+            *sources.write().await = new_sources;
+        });
     }
 
     /// Get aggregated health across all sources.
     pub async fn health(&self) -> IngestionHealth {
-        let mut source_healths = Vec::with_capacity(self.sources.len());
+        let sources = self.sources.read().await;
+        let mut source_healths = Vec::with_capacity(sources.len());
         let mut degraded = Vec::new();
         let mut total_ingested = 0u64;
         let mut total_errors = 0u64;
 
-        for source in &self.sources {
+        for source in sources.iter() {
             let h = source.health().await;
             if !h.healthy {
                 degraded.push(h.source_name.clone());
@@ -51,7 +63,7 @@ impl IngestionMetrics {
 
         IngestionHealth {
             healthy: degraded.is_empty(),
-            total_sources: self.sources.len(),
+            total_sources: sources.len(),
             active_sources: active,
             degraded_sources: degraded,
             total_messages_ingested: total_ingested,

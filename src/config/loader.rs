@@ -8,8 +8,8 @@ use super::sources::{ConfigSource, ConfigResult, ConfigError, TomlSource, EnvSou
 use super::types::{
     AppConfig, CircuitBreakerConfig, ErrorConfig, AnalyticsConfig,
     ServerConfig, DatabaseConfig, RedisConfig, ClickHouseConfig,
-    IngestionConfig, KafkaSourceConfig, ApiSourceConfig, ClickHouseSourceConfig,
-    SecurityConfig, MlConfig, PipelineConfig,
+    IngestionConfig, KafkaConfig, ApiSourceConfig, ClickHouseSourceConfig,
+    SecurityConfig, MlConfig, PipelineConfig, ObservabilityConfig, ResilienceConfig,
 };
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -170,7 +170,7 @@ use std::time::Duration;
           };
 
         // Parse Ingestion configuration
-        let kafka_source = KafkaSourceConfig {
+        let kafka_source = KafkaConfig {
             enabled: config_map
                 .get("ingestion.kafka.enabled")
                 .and_then(|s| s.parse().ok())
@@ -435,6 +435,21 @@ use std::time::Duration;
           let error = ErrorConfig::default();
           let analytics = AnalyticsConfig::default();
 
+          // Parse Observability and Resilience
+          let observability = ObservabilityConfig::default();
+          let resilience = ResilienceConfig {
+              defaults: super::types::resilience::ResilienceDefaults {
+                  circuit_breaker: CircuitBreakerConfig::default(),
+                  retry: super::types::resilience::RetryConfig {
+                      max_retries: 3,
+                      base_delay: Duration::from_millis(100),
+                      max_delay: Duration::from_secs(1),
+                  },
+                  timeout: Duration::from_secs(30),
+              },
+              overrides: HashMap::new(),
+          };
+
           Ok(AppConfig::new(
               server,
               database,
@@ -447,33 +462,16 @@ use std::time::Duration;
               circuit_breaker,
               error,
               analytics,
+              observability,
+              resilience,
           ))
       }
 
       /// Validate cross-module configuration dependencies.
       fn validate_config(config: &AppConfig) -> ConfigResult<()> {
-          // Validate that circuit breaker is enabled if analytics is enabled
-          if config.analytics.enabled && !config.circuit_breaker.enabled {
-              return Err(ConfigError::Validation(
-                  "Analytics requires circuit breaker to be enabled".to_string()
-              ));
-          }
-
-          // Validate error handling configuration
-          if config.error.enabled && config.error.max_retries == 0 {
-              return Err(ConfigError::Validation(
-                  "Error handling requires max_retries > 0".to_string()
-              ));
-          }
-
-          // Validate service configurations
-          if config.database.url.is_none() && config.redis.url.is_empty() {
-              return Err(ConfigError::Validation(
-                  "At least one database service must be configured".to_string()
-              ));
-          }
-
-          Ok(())
+          // Delegate to specialized validation module
+          super::validation::validate_app_config(config)
+              .map_err(|e| ConfigError::Validation(e.to_string()))
       }
   }
 

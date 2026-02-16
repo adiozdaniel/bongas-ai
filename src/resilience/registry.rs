@@ -85,17 +85,13 @@ impl BreakerMetrics {
     /// Get the current state.
     #[inline]
     pub fn state(&self) -> CircuitState {
-        self.read_state()
-            .map(|guard| *guard)
-            .unwrap_or(CircuitState::Closed)
+        *self.read_state()
     }
 
     /// Get how long the breaker has been in current state.
     #[inline]
     pub fn state_duration(&self) -> std::time::Duration {
-        self.read_state_changed_at()
-            .map(|guard| guard.elapsed())
-            .unwrap_or_default()
+        self.read_state_changed_at().elapsed()
     }
 
     pub fn snapshot(&self, breaker_id: &str) -> BreakerSnapshot {
@@ -125,12 +121,8 @@ impl BreakerMetrics {
     }
 
     pub fn update_state(&self, new_state: CircuitState) {
-        if let Ok(mut guard) = self.write_state() {
-            *guard = new_state;
-        }
-        if let Ok(mut guard) = self.write_state_changed_at() {
-            *guard = Instant::now();
-        }
+        *self.write_state() = new_state;
+        *self.write_state_changed_at() = Instant::now();
     }
 
     pub fn reset(&self) {
@@ -149,35 +141,23 @@ impl BreakerMetrics {
     // ─── Lock Poison Recovery ──────────────────────────────────────────────
 
     #[inline]
-    fn read_state(&self) -> Result<RwLockReadGuard<'_, CircuitState>, ()> {
-        self.state
-            .read()
-            .or_else(|e| Ok(e.into_inner()))
-            .map_err(|_: RwLockReadGuard<'_, CircuitState>| ())
+    fn read_state(&self) -> RwLockReadGuard<'_, CircuitState> {
+        self.state.read().unwrap_or_else(PoisonError::into_inner)
     }
 
     #[inline]
-    fn write_state(&self) -> Result<RwLockWriteGuard<'_, CircuitState>, ()> {
-        self.state
-            .write()
-            .or_else(|e| Ok(e.into_inner()))
-            .map_err(|_: RwLockWriteGuard<'_, CircuitState>| ())
+    fn write_state(&self) -> RwLockWriteGuard<'_, CircuitState> {
+        self.state.write().unwrap_or_else(PoisonError::into_inner)
     }
 
     #[inline]
-    fn read_state_changed_at(&self) -> Result<RwLockReadGuard<'_, Instant>, ()> {
-        self.state_changed_at
-            .read()
-            .or_else(|e| Ok(e.into_inner()))
-            .map_err(|_: RwLockReadGuard<'_, Instant>| ())
+    fn read_state_changed_at(&self) -> RwLockReadGuard<'_, Instant> {
+        self.state_changed_at.read().unwrap_or_else(PoisonError::into_inner)
     }
 
     #[inline]
-    fn write_state_changed_at(&self) -> Result<RwLockWriteGuard<'_, Instant>, ()> {
-        self.state_changed_at
-            .write()
-            .or_else(|e| Ok(e.into_inner()))
-            .map_err(|_: RwLockWriteGuard<'_, Instant>| ())
+    fn write_state_changed_at(&self) -> RwLockWriteGuard<'_, Instant> {
+        self.state_changed_at.write().unwrap_or_else(PoisonError::into_inner)
     }
 }
 
@@ -260,9 +240,8 @@ impl MetricsRegistry {
                 .update(entry.value().total_calls(), elapsed);
         }
 
-        if let Ok(mut guard) = self.write_last_rate_update() {
-            *guard = Instant::now();
-        }
+        let mut guard = self.write_last_rate_update();
+        *guard = Instant::now();
     }
 
     /// Take a snapshot of all metrics.
@@ -376,10 +355,9 @@ impl MetricsRegistry {
     }
 
     #[inline]
-    fn write_last_rate_update(&self) -> Result<RwLockWriteGuard<'_, Instant>, ()> {
+    fn write_last_rate_update(&self) -> RwLockWriteGuard<'_, Instant> {
         self.last_rate_update
             .write()
-            .or_else(|e| Ok(e.into_inner()))
-            .map_err(|_: RwLockWriteGuard<'_, Instant>| ())
+            .unwrap_or_else(PoisonError::into_inner)
     }
 }

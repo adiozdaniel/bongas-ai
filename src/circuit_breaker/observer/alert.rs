@@ -4,7 +4,9 @@
 //! circuit breakers change state or error thresholds are exceeded.
 
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
+use std::collections::HashMap;
+use std::sync::Mutex;
 
 use super::event::{CircuitBreakerEvent, CircuitState};
 use super::traits::ResilienceObserver;
@@ -90,32 +92,40 @@ impl AlertMessage {
       AlertSeverity::Critical => "#ff0000",
     };
 
-    let mut fields_json = String::new();
-    for (key, value) in &self.fields {
-      if !fields_json.is_empty() {
-          fields_json.push_str(",");
-      }
-              
-      fields_json.push_str(&format!(
-        r#"{{"title":"{}","value":"{}","short":true}}"#,
-        key, value
-      ));
-    }
+    let fields: Vec<serde_json::Value> = self.fields.iter().map(|(k, v)| {
+      serde_json::json!({
+        "title": k,
+        "value": v,
+        "short": true
+      })
+    }).collect();
 
-    format!(
-      r#"{{"attachments":[{{"color":"{}","title":"[{}] {}","text":"{}","fields":[{}],"footer":"Circuit Breaker: 
-      {}","ts":{}}}]}}"#,
-      color,
-      self.severity,
-      self.title,
-      self.description,
-      fields_json,
-      self.breaker_id,
-      self.timestamp
-          .duration_since(std::time::UNIX_EPOCH)
-          .map(|d| d.as_secs())
-          .unwrap_or(0)
-    )
+    serde_json::json!({
+      "attachments": [{
+        "color": color,
+        "title": format!("[{}] {}", self.severity, self.title),
+        "text": self.description,
+        "fields": fields,
+        "footer": format!("BONGAS-AI | {}", self.breaker_id),
+        "ts": self.timestamp
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0)
+      }]
+    }).to_string()
+  }
+
+  /// Format as generic webhook JSON.
+  pub fn to_webhook_json(&self) -> String {
+    let fields_map: HashMap<String, String> = self.fields.iter().cloned().collect();
+    serde_json::json!({
+      "severity": self.severity.to_string(),
+      "breaker_id": self.breaker_id,
+      "title": self.title,
+      "description": self.description,
+      "timestamp": self.timestamp,
+      "fields": fields_map
+    }).to_string()
   }
 }
 
@@ -157,6 +167,7 @@ impl Default for AlertConfig {
 pub struct AlertObserver {
     config: AlertConfig,
     http_client: Option<Arc<dyn AlertSender>>,
+    last_alert_times: Mutex<HashMap<String, Instant>>,
 }
 
 impl AlertObserver {
@@ -165,6 +176,7 @@ impl AlertObserver {
     Self {
       config,
       http_client: None,
+      last_alert_times: Mutex::new(HashMap::new()),
     }
   }
 
@@ -173,6 +185,7 @@ impl AlertObserver {
     Self {
       config,
       http_client: Some(sender),
+      last_alert_times: Mutex::new(HashMap::new()),
     }
   }
 
@@ -180,6 +193,17 @@ impl AlertObserver {
   fn send_alert(&self, message: AlertMessage) {
     if message.severity < self.config.min_severity {
       return;
+    }
+
+    // Enforce cooldown
+    {
+      let mut times = self.last_alert_times.lock().unwrap();
+      if let Some(last) = times.get(&message.breaker_id) {
+        if last.elapsed() < self.config.cooldown {
+          return; // Still in cooldown
+        }
+      }
+      times.insert(message.breaker_id.clone(), Instant::now());
     }
 
     for channel in &self.config.channels {
@@ -200,26 +224,30 @@ impl AlertObserver {
             let url = webhook_url.clone();
             let client = Arc::clone(client);
               
-            // Fire and forget - don't block the observer
             tokio::spawn(async move {
               if let Err(e) = client.send(&url, &json).await {
                 tracing::error!(error = %e, "failed to send Slack alert");
               }
             });
+          } else {
+            tracing::warn!("Slack alert configured but no HTTP client provided");
           }
         }
           
-        AlertChannel::Webhook { url, auth_header: _ } => {
+        AlertChannel::Webhook { url, auth_header } => {
           if let Some(ref client) = self.http_client {
-            let json = message.to_slack_json(); // Reuse format for now
+            let json = message.to_webhook_json();
             let url = url.clone();
+            let auth = auth_header.clone();
             let client = Arc::clone(client);
 
             tokio::spawn(async move {
-              if let Err(e) = client.send(&url, &json).await {
+              if let Err(e) = client.send_with_auth(&url, &json, auth.as_deref()).await {
                 tracing::error!(error = %e, "failed to send webhook alert");
               }
             });
+          } else {
+            tracing::warn!("Webhook alert configured but no HTTP client provided");
           }
         }
         
@@ -284,6 +312,13 @@ impl ResilienceObserver for AlertObserver {
 pub trait AlertSender: Send + Sync {
   /// Send an alert payload to the given URL.
   async fn send(&self, url: &str, payload: &str) -> Result<(), AlertSendError>;
+
+  /// Send an alert payload with optional auth header.
+  async fn send_with_auth(
+    &self, url: &str, payload: &str, _auth_header: Option<&str>
+  ) -> Result<(), AlertSendError> {
+    self.send(url, payload).await
+  }
 }
 
 /// Error sending alert.

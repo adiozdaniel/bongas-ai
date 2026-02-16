@@ -24,6 +24,7 @@
   use chrono::Utc;
 
   use crate::error::ErrorClassification;
+  use crate::middlewares::error_handling::classify_http_error;
 
   /// Unified error handling middleware that provides consistent error responses
   pub async fn unified_error_middleware(
@@ -103,24 +104,6 @@
           path: uri.path().to_string(),
           timestamp: Utc::now().to_rfc3339(),
           duration_ms: duration.as_millis() as u64,
-      }
-  }
-
-  /// Classify HTTP status code to ErrorClassification
-  fn classify_http_error(status: StatusCode) -> (&'static str, &'static str, ErrorClassification) {
-      match status {
-          StatusCode::NOT_FOUND => ("Resource not found", "RESOURCE_NOT_FOUND", ErrorClassification::Permanent),
-          StatusCode::BAD_REQUEST => ("Bad request", "BAD_REQUEST", ErrorClassification::Permanent),
-          StatusCode::UNAUTHORIZED => ("Unauthorized", "UNAUTHORIZED", ErrorClassification::Permanent),
-          StatusCode::FORBIDDEN => ("Forbidden", "FORBIDDEN", ErrorClassification::Permanent),
-          StatusCode::TOO_MANY_REQUESTS => ("Too many requests", "RATE_LIMIT_EXCEEDED", ErrorClassification::Overload),
-          StatusCode::INTERNAL_SERVER_ERROR => ("Internal server error", "INTERNAL_ERROR", ErrorClassification::Transient),
-          StatusCode::SERVICE_UNAVAILABLE => ("Service temporarily unavailable", "SERVICE_UNAVAILABLE", ErrorClassification::Overload),
-          StatusCode::GATEWAY_TIMEOUT => ("Gateway timeout", "GATEWAY_TIMEOUT", ErrorClassification::Timeout),
-          StatusCode::REQUEST_TIMEOUT => ("Request timeout", "REQUEST_TIMEOUT", ErrorClassification::Timeout),
-          _ if status.is_client_error() => ("Client error", "CLIENT_ERROR", ErrorClassification::Permanent),
-          _ if status.is_server_error() => ("Server error", "SERVER_ERROR", ErrorClassification::Transient),
-          _ => ("Unknown error", "UNKNOWN_ERROR", ErrorClassification::Transient),
       }
   }
 

@@ -63,6 +63,16 @@ impl ScenarioFactory {
         Ok(scenarios)
     }
 
+    /// Load a single scenario from database by slug
+    pub async fn load_one_from_db(&self, slug: &str) -> Result<Option<ScenarioDefinition>> {
+        if let Some(config) = self.repo.find_by_slug(slug).await? {
+            let definition = self.parse_scenario(&config)?;
+            Ok(Some(definition))
+        } else {
+            Ok(None)
+        }
+    }
+
     /// Parse scenario config into scenario definition
     fn parse_scenario(&self, config: &crate::db::models::ScenarioConfig) -> Result<ScenarioDefinition> {
         let pipeline: PipelineDefinition = serde_json::from_value(config.pipeline.clone())?;

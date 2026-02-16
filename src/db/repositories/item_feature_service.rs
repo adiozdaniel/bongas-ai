@@ -660,6 +660,43 @@ impl ItemFeatureService {
         Ok(rows)
     }
 
+    /// Fetch items by multiple genres using GenreItemRow for efficiency.
+    pub async fn get_items_by_genres(
+        &self,
+        genres: &[String],
+        limit: i64,
+    ) -> Result<Vec<GenreItemRow>> {
+        let start = std::time::Instant::now();
+        let genres_json = serde_json::to_value(genres)?;
+
+        let rows: Vec<GenreItemRow> = self
+            .pool
+            .execute(|pool| async move {
+                sqlx::query_as::<_, GenreItemRow>(
+                    r#"
+                    SELECT item_id, title, popularity_score
+                    FROM item_features
+                    WHERE genres ?| $1
+                        AND is_active = true
+                    ORDER BY popularity_score DESC NULLS LAST
+                    LIMIT $2
+                    "#,
+                )
+                .bind(&genres_json)
+                .bind(limit)
+                .fetch_all(&pool)
+                .await
+            })
+            .await?;
+
+        let duration = start.elapsed();
+        let metrics = self.metrics.registry().get_or_create("item_feature_service.by_genres");
+        metrics.latency.record_duration(duration);
+        metrics.successes.increment();
+
+        Ok(rows)
+    }
+
     /// Fetch new releases.
     pub async fn get_new_releases(&self, days: i32, limit: i64) -> Result<Vec<NewReleaseRow>> {
         let start = std::time::Instant::now();

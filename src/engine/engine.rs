@@ -2,7 +2,7 @@ use anyhow::{Result, Context};
 use std::sync::Arc;
 use std::collections::HashMap;
 use tokio::sync::RwLock;
-use tracing::info;
+use tracing::{info, warn};
 
 use crate::resilience::{ResilienceMetricsCollector, MetricsRegistry, ResilienceConfig};
 use crate::db::{ResilientPool, ResilientPoolConfig};
@@ -56,7 +56,7 @@ pub struct BongasEngine {
     pub(crate) clickhouse: Option<Arc<clickhouse::Client>>,
 
     // Ingestion
-    pub(crate) ingestion_manager: Arc<RwLock<Option<IngestionManager>>>,
+    pub(crate) ingestion_manager: Arc<RwLock<IngestionManager>>,
     pub(crate) ingestion_metrics: Arc<IngestionMetrics>,
 
     // Security
@@ -64,8 +64,6 @@ pub struct BongasEngine {
 
     // Resilience
     pub(crate) circuit_breaker_registry: Arc<CircuitBreakerRegistry>,
-    pub(crate) resilient_pool: Arc<ResilientPool>,
-    pub(crate) resilience_metrics: Arc<ResilienceMetricsCollector>,
 
     // Dependencies
     pub(crate) cache_manager: Arc<CacheManager>,
@@ -196,6 +194,16 @@ impl BongasEngine {
         // Create Ingestion metrics registry
         let ingestion_metrics = Arc::new(IngestionMetrics::new(Vec::new()));
 
+        // Create Ingestion manager
+        let ingestion_manager = IngestionManager::new(
+            config.ingestion.clone(),
+            resilient_pool.clone(),
+            resilience_metrics.clone(),
+            staleness_engine.clone(),
+            circuit_breaker_registry.clone(),
+            ingestion_metrics.clone(),
+        );
+
         // Create repositories & services
         let item_feature_service = Arc::new(ItemFeatureService::new(resilient_pool.clone(), resilience_metrics.clone()));
         let feature_repo = Arc::new(FeatureRepository::new(resilient_pool.clone(), resilience_metrics.clone()));
@@ -233,12 +241,10 @@ impl BongasEngine {
             feature_repo,
             cache_repo,
             clickhouse,
-            ingestion_manager: Arc::new(RwLock::new(None)),
+            ingestion_manager: Arc::new(RwLock::new(ingestion_manager)),
             ingestion_metrics,
             security_manager,
             circuit_breaker_registry,
-            resilient_pool,
-            resilience_metrics,
             cache_manager,
             metrics_collector,
         });
@@ -251,19 +257,12 @@ impl BongasEngine {
     /// Start activity ingestion from all configured sources
     pub async fn start_ingestion(
         self: &Arc<Self>,
-        config: &crate::config::IngestionConfig,
+        _config: &crate::config::IngestionConfig,
     ) -> Result<()> {
         info!("Starting activity ingestion...");
 
-        let manager = IngestionManager::start_legacy(
-            config.clone(),
-            self.resilient_pool.clone(),
-            self.resilience_metrics.clone(),
-            self.staleness_engine.clone(),
-            self.circuit_breaker_registry.clone(),
-        ).await?;
-
-        *self.ingestion_manager.write().await = Some(manager);
+        let mut manager = self.ingestion_manager.write().await;
+        manager.start().await?;
 
         info!("Activity ingestion started successfully");
         Ok(())
@@ -271,11 +270,10 @@ impl BongasEngine {
 
     /// Shutdown ingestion gracefully
     pub async fn shutdown_ingestion(&self) {
-        if let Some(manager) = self.ingestion_manager.write().await.take() {
-            info!("Shutting down activity ingestion...");
-            manager.shutdown().await;
-            info!("Activity ingestion shut down");
-        }
+        info!("Shutting down activity ingestion...");
+        let mut manager = self.ingestion_manager.write().await;
+        manager.shutdown().await;
+        info!("Activity ingestion shut down");
     }
 
     /// Get ingestion metrics
@@ -312,6 +310,29 @@ impl BongasEngine {
         );
 
         Ok(count)
+    }
+
+    /// HOT-RELOAD: Reload a single scenario from database without restart
+    pub async fn reload_scenario(&self, slug: &str) -> Result<bool> {
+        info!(slug = %slug, "Reloading scenario from database...");
+
+        if let Some(new_scenario) = self.scenario_factory.load_one_from_db(slug).await? {
+            let mut scenarios = self.scenarios.write().await;
+            scenarios.insert(slug.to_string(), new_scenario);
+            info!(slug = %slug, "Scenario reloaded");
+            Ok(true)
+        } else {
+            warn!(slug = %slug, "Scenario not found in database during reload");
+            Ok(false)
+        }
+    }
+
+    /// Remove a scenario from the active map
+    pub async fn remove_scenario(&self, slug: &str) {
+        let mut scenarios = self.scenarios.write().await;
+        if scenarios.remove(slug).is_some() {
+            info!(slug = %slug, "Scenario removed from active engine");
+        }
     }
 
     /// Execute scenario and return recommendations
@@ -551,8 +572,8 @@ impl BongasEngine {
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct RecommendationItem {
     pub item_id: i32,
-    score: f32,
-    metadata: serde_json::Value,
+    pub score: f32,
+    pub metadata: serde_json::Value,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]

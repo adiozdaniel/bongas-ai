@@ -124,38 +124,30 @@ impl Rate {
         let secs = elapsed.as_secs_f64();
 
         if secs > 0.0 {
-            if let Ok(mut guard) = self.write_rate() {
-                *guard = delta as f64 / secs;
-            }
+            *self.write_rate() = delta as f64 / secs;
         }
     }
 
     #[inline]
     pub fn get(&self) -> f64 {
-        self.read_rate().map(|g| *g).unwrap_or(0.0)
+        *self.read_rate()
     }
 
     #[inline]
     pub fn reset(&self) {
         self.last_count.store(0, Ordering::Relaxed);
-        if let Ok(mut guard) = self.write_rate() {
-            *guard = 0.0;
-        }
+        *self.write_rate() = 0.0;
     }
 
     // Lock poison recovery
     #[inline]
-    fn read_rate(&self) -> Result<RwLockReadGuard<'_, f64>, ()> {
-        self.rate.read().map_err(|_| ()).or_else(|_| {
-            Ok(self.rate.read().unwrap_or_else(PoisonError::into_inner))
-        })
+    fn read_rate(&self) -> RwLockReadGuard<'_, f64> {
+        self.rate.read().unwrap_or_else(PoisonError::into_inner)
     }
 
     #[inline]
-    fn write_rate(&self) -> Result<RwLockWriteGuard<'_, f64>, ()> {
-        self.rate.write().map_err(|_| ()).or_else(|_| {
-            Ok(self.rate.write().unwrap_or_else(PoisonError::into_inner))
-        })
+    fn write_rate(&self) -> RwLockWriteGuard<'_, f64> {
+        self.rate.write().unwrap_or_else(PoisonError::into_inner)
     }
 }
 

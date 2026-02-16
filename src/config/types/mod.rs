@@ -33,6 +33,6 @@ pub use kafka::KafkaConfig;
 pub use security::SecurityConfig;
 pub use ml::MlConfig;
 pub use pipeline::PipelineConfig;
-pub use ingestion::{IngestionConfig, KafkaSourceConfig, ApiSourceConfig, ClickHouseSourceConfig};
+pub use ingestion::{IngestionConfig, ApiSourceConfig, ClickHouseSourceConfig};
 pub use observability::ObservabilityConfig;
-pub use resilience::ResilienceConfig as ResilienceTypesConfig;
+pub use resilience::ResilienceConfig;

@@ -826,6 +826,8 @@
       Anyhow(#[from] anyhow::Error),
       #[error("internal error: {0}")]
       Internal(String),
+      #[error("not found: {0}")]
+      NotFound(String),
   }
 
   impl ErrorClassifier for AppError {
@@ -844,6 +846,7 @@
               AppError::Metrics(e) => e.classify(),
               AppError::Anyhow(_) => ErrorClassification::Transient,
               AppError::Internal(_) => ErrorClassification::Transient,
+              AppError::NotFound(_) => ErrorClassification::Permanent,
           }
       }
   }

@@ -11,6 +11,7 @@ use crate::resilience::ResilienceMetricsCollector;
 use crate::db::models::ScenarioConfig;
 use crate::db::ResilientPool;
 use crate::error::{AppError, AppResult, PostgresError};
+use crate::api::models::scenario::{CreateScenarioRequest, UpdateScenarioRequest};
 
 /// Repository for scenario configuration data with resilience patterns.
 pub struct ScenarioRepository {
@@ -28,6 +29,104 @@ impl ScenarioRepository {
             pool,
             metrics_collector,
         }
+    }
+
+    /// Create a new scenario configuration.
+    pub async fn create(&self, req: CreateScenarioRequest) -> AppResult<ScenarioConfig> {
+        self.pool
+            .execute(|pool| async move {
+                sqlx::query_as::<_, ScenarioConfig>(
+                    r#"
+                    INSERT INTO scenario_configs (
+                        slug, name, description, category, pipeline, 
+                        cache_ttl_seconds, use_l2_cache, priority, enabled
+                    )
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true)
+                    RETURNING *
+                    "#,
+                )
+                .bind(&req.slug)
+                .bind(&req.name)
+                .bind(&req.description)
+                .bind(&req.category)
+                .bind(&req.pipeline)
+                .bind(req.cache_ttl_seconds)
+                .bind(req.use_l2_cache)
+                .bind(req.priority)
+                .fetch_one(&pool)
+                .await
+            })
+            .await
+            .map_err(|e| {
+                AppError::Postgres(PostgresError::Query {
+                    message: format!("Failed to create scenario: {}", e),
+                    source: None,
+                })
+            })
+    }
+
+    /// Update an existing scenario configuration.
+    pub async fn update(&self, slug: &str, req: UpdateScenarioRequest) -> AppResult<ScenarioConfig> {
+        let slug = slug.to_string();
+        self.pool
+            .execute(|pool| async move {
+                sqlx::query_as::<_, ScenarioConfig>(
+                    r#"
+                    UPDATE scenario_configs
+                    SET name = COALESCE($2, name),
+                        description = COALESCE($3, description),
+                        category = COALESCE($4, category),
+                        pipeline = COALESCE($5, pipeline),
+                        cache_ttl_seconds = COALESCE($6, cache_ttl_seconds),
+                        use_l2_cache = COALESCE($7, use_l2_cache),
+                        priority = COALESCE($8, priority),
+                        enabled = COALESCE($9, enabled),
+                        updated_at = NOW()
+                    WHERE slug = $1
+                    RETURNING *
+                    "#,
+                )
+                .bind(&slug)
+                .bind(&req.name)
+                .bind(&req.description)
+                .bind(&req.category)
+                .bind(&req.pipeline)
+                .bind(req.cache_ttl_seconds)
+                .bind(req.use_l2_cache)
+                .bind(req.priority)
+                .bind(req.enabled)
+                .fetch_one(&pool)
+                .await
+            })
+            .await
+            .map_err(|e| {
+                AppError::Postgres(PostgresError::Query {
+                    message: format!("Failed to update scenario: {}", e),
+                    source: None,
+                })
+            })
+    }
+
+    /// Soft-delete a scenario configuration by setting enabled = false.
+    pub async fn delete(&self, slug: &str) -> AppResult<()> {
+        let slug = slug.to_string();
+        self.pool
+            .execute(|pool| async move {
+                sqlx::query(
+                    "UPDATE scenario_configs SET enabled = false, updated_at = NOW() WHERE slug = $1",
+                )
+                .bind(&slug)
+                .execute(&pool)
+                .await
+            })
+            .await
+            .map(|_| ())
+            .map_err(|e| {
+                AppError::Postgres(PostgresError::Query {
+                    message: format!("Failed to delete scenario: {}", e),
+                    source: None,
+                })
+            })
     }
 
     /// Load all enabled scenarios from database.

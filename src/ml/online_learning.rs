@@ -38,6 +38,12 @@ pub enum FeedbackType {
     Share,
 }
 
+/// Trait for persisting feedback events.
+#[async_trait::async_trait]
+pub trait FeedbackWriter: Send + Sync {
+    async fn write_batch(&self, events: &[FeedbackEvent]) -> anyhow::Result<()>;
+}
+
 /// Online learning manager with batched feedback ingestion.
 pub struct OnlineLearningManager {
     feedback_tx: mpsc::Sender<FeedbackEvent>,
@@ -51,6 +57,7 @@ pub struct OnlineLearningManager {
 impl OnlineLearningManager {
     pub fn new(
         config: &MlConfig,
+        writer: Arc<dyn FeedbackWriter>,
         analytics: Option<Arc<crate::analytics::types::PerformanceStats>>,
     ) -> Self {
         let buffer_size = config.feedback_batch_size * 4; // 4x batch size as buffer
@@ -65,6 +72,7 @@ impl OnlineLearningManager {
         let flush_interval = config.feedback_flush_interval;
         let analytics_clone = analytics.clone();
         let flushed_clone = stats_flushed.clone();
+        let writer_clone = writer.clone();
 
         let flush_handle = tokio::spawn(async move {
             let rx = feedback_rx;
@@ -86,14 +94,14 @@ impl OnlineLearningManager {
 
                         // Flush when batch is full or interval elapsed
                         if batch.len() >= batch_size || last_flush.elapsed() >= flush_interval {
-                            Self::flush_batch(&mut batch, &flushed_clone, &analytics_clone).await;
+                            Self::flush_batch(&mut batch, &writer_clone, &flushed_clone, &analytics_clone).await;
                             last_flush = Instant::now();
                         }
                     }
                     None => {
                         // Flush remaining on timeout or channel close
                         if !batch.is_empty() {
-                            Self::flush_batch(&mut batch, &flushed_clone, &analytics_clone).await;
+                            Self::flush_batch(&mut batch, &writer_clone, &flushed_clone, &analytics_clone).await;
                             last_flush = Instant::now();
                         }
 
@@ -180,6 +188,7 @@ impl OnlineLearningManager {
 
     async fn flush_batch(
         batch: &mut Vec<FeedbackEvent>,
+        writer: &Arc<dyn FeedbackWriter>,
         flushed_counter: &AtomicU64,
         analytics: &Option<Arc<crate::analytics::types::PerformanceStats>>,
     ) {
@@ -190,11 +199,17 @@ impl OnlineLearningManager {
         let start = Instant::now();
         let count = batch.len();
 
-        // TODO: Write batch to ClickHouse / Kafka for model retraining
         debug!(
             batch_size = count,
             "Flushing feedback batch"
         );
+
+        if let Err(e) = writer.write_batch(batch).await {
+            error!(error = %e, batch_size = count, "Failed to flush feedback batch");
+            return; // Don't clear batch on failure?
+            // Actually, we should probably decide based on error type.
+            // For now, let's keep it simple and just log.
+        }
 
         flushed_counter.fetch_add(count as u64, Ordering::Relaxed);
 

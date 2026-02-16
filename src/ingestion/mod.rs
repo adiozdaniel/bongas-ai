@@ -40,6 +40,11 @@ const ACTIVITY_CHANNEL_BUFFER: usize = 10_000;
 ///
 /// Owns the lifecycle of the ingestion pipeline: start, health, shutdown.
 pub struct IngestionManager {
+    config: crate::config::IngestionConfig,
+    resilient_pool: Arc<ResilientPool>,
+    metrics_collector: Arc<ResilienceMetricsCollector>,
+    staleness_engine: Arc<StalenessEngine>,
+    circuit_breaker_registry: Arc<CircuitBreakerRegistry>,
     handles: Vec<JoinHandle<()>>,
     api_source: Arc<ApiSource>,
     metrics: Arc<IngestionMetrics>,
@@ -48,17 +53,19 @@ pub struct IngestionManager {
 impl IngestionManager {
     /// Create a new IngestionManager and start all sources.
     pub fn new(
-        _config: crate::config::IngestionConfig,
-        _resilient_pool: Arc<ResilientPool>,
-        _metrics_collector: Arc<ResilienceMetricsCollector>,
-        _staleness_engine: Arc<StalenessEngine>,
-        _circuit_breaker_registry: Arc<CircuitBreakerRegistry>,
+        config: crate::config::IngestionConfig,
+        resilient_pool: Arc<ResilientPool>,
+        metrics_collector: Arc<ResilienceMetricsCollector>,
+        staleness_engine: Arc<StalenessEngine>,
+        circuit_breaker_registry: Arc<CircuitBreakerRegistry>,
         ingestion_metrics: Arc<IngestionMetrics>,
     ) -> Self {
-
-
-        // Store for later start()
         Self {
+            config,
+            resilient_pool,
+            metrics_collector,
+            staleness_engine,
+            circuit_breaker_registry,
             handles: Vec::new(),
             api_source: Arc::new(ApiSource::new()),
             metrics: ingestion_metrics,
@@ -67,8 +74,79 @@ impl IngestionManager {
 
     /// Start the ingestion pipeline with all configured sources.
     pub async fn start(&mut self) -> Result<()> {
-        // TODO: Start all sources - for now just return Ok
-        info!("Ingestion manager started (stub implementation)");
+        let (sender, receiver) = mpsc::channel::<UserActivity>(ACTIVITY_CHANNEL_BUFFER);
+
+        // ── Build sources ───────────────────────────────────────────────
+        let mut all_sources: Vec<Arc<dyn ActivitySource>> = Vec::new();
+
+        // 1. Kafka source (if brokers configured)
+        if !self.config.kafka.brokers.is_empty() {
+            let kafka = Arc::new(KafkaSource::new(
+                self.config.kafka.clone().into(),
+                self.circuit_breaker_registry.clone(),
+            ));
+            all_sources.push(kafka.clone());
+
+            let tx = sender.clone();
+            self.handles.push(tokio::spawn(async move {
+                if let Err(e) = kafka.start(tx).await {
+                    warn!(error = %e, "Kafka source exited with error");
+                }
+            }));
+
+            info!("Kafka activity source enabled");
+        }
+
+        // 2. API source
+        if self.config.api.enabled {
+            all_sources.push(self.api_source.clone());
+
+            let tx = sender.clone();
+            let api = self.api_source.clone();
+            self.handles.push(tokio::spawn(async move {
+                if let Err(e) = api.start(tx).await {
+                    warn!(error = %e, "API source exited with error");
+                }
+            }));
+
+            info!("API activity source enabled");
+        }
+
+        // 3. ClickHouse polling source
+        let clickhouse = Arc::new(ClickHouseSource::new(
+            self.config.clickhouse.clone().into(),
+            self.circuit_breaker_registry.clone(),
+        ));
+        all_sources.push(clickhouse.clone());
+
+        let tx = sender.clone();
+        self.handles.push(tokio::spawn(async move {
+            if let Err(e) = clickhouse.start(tx).await {
+                warn!(error = %e, "ClickHouse source exited with error");
+            }
+        }));
+
+        info!("ClickHouse polling enabled");
+
+        // ── Start processor ─────────────────────────────────────────────
+        let processor = Arc::new(ActivityProcessor::new(
+            self.resilient_pool.clone(),
+            self.metrics_collector.clone(),
+            self.staleness_engine.clone(),
+        ));
+
+        self.handles.push(tokio::spawn(async move {
+            processor.run(receiver).await;
+        }));
+
+        // Update metrics with actual sources
+        self.metrics.update_sources(all_sources);
+
+        info!(
+            source_count = self.handles.len() - 1,
+            "Ingestion pipeline started"
+        );
+
         Ok(())
     }
 
@@ -125,7 +203,7 @@ impl IngestionManager {
         // 3. ClickHouse polling source
         let clickhouse = Arc::new(ClickHouseSource::new(
             config.clickhouse.clone().into(),
-            circuit_breaker_registry,
+            circuit_breaker_registry.clone(),
         ));
         all_sources.push(clickhouse.clone());
 
@@ -140,9 +218,9 @@ impl IngestionManager {
 
         // ── Start processor ─────────────────────────────────────────────
         let processor = Arc::new(ActivityProcessor::new(
-            resilient_pool,
-            metrics_collector,
-            staleness_engine,
+            resilient_pool.clone(),
+            metrics_collector.clone(),
+            staleness_engine.clone(),
         ));
 
         handles.push(tokio::spawn(async move {
@@ -160,6 +238,11 @@ impl IngestionManager {
         );
 
         Ok(Self {
+            config,
+            resilient_pool,
+            metrics_collector,
+            staleness_engine,
+            circuit_breaker_registry,
             handles,
             api_source,
             metrics,
@@ -177,9 +260,9 @@ impl IngestionManager {
     }
 
     /// Shutdown all sources and the processor.
-    pub async fn shutdown(self) {
+    pub async fn shutdown(&mut self) {
         info!("Shutting down ingestion pipeline");
-        for handle in self.handles {
+        for handle in self.handles.drain(..) {
             handle.abort();
         }
         info!("Ingestion pipeline shut down");

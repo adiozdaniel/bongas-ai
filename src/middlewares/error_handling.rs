@@ -13,6 +13,7 @@
   use crate::error::ErrorClassification;
 
   /// Error handling middleware that provides consistent error responses with classification
+  #[deprecated(note = "Use unified_error_middleware instead")]
   pub async fn error_handling_middleware(
       req: Request<Body>,
       next: Next,
@@ -63,6 +64,7 @@
   pub struct EnhancedErrorMiddleware;
 
   impl EnhancedErrorMiddleware {
+      #[deprecated(note = "Use unified_error_middleware instead")]
       pub async fn layer(
           req: Request<Body>,
           next: Next,
@@ -194,7 +196,7 @@
   }
 
   /// Classify HTTP status code to ErrorClassification
-  fn classify_http_error(status: StatusCode) -> (&'static str, &'static str, ErrorClassification) {
+  pub fn classify_http_error(status: StatusCode) -> (&'static str, &'static str, ErrorClassification) {
       match status {
           StatusCode::NOT_FOUND => ("Resource not found", "RESOURCE_NOT_FOUND", ErrorClassification::Permanent),
           StatusCode::BAD_REQUEST => ("Bad request", "BAD_REQUEST", ErrorClassification::Permanent),

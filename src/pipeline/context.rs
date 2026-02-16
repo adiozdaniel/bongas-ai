@@ -20,6 +20,7 @@ use crate::ml::embeddings::EmbeddingManager;
 ///
 /// Stages use this context to access shared dependencies without
 /// creating their own connections or duplicating feature-fetching logic.
+#[derive(Clone)]
 pub struct ExecutionContext {
     // ── Request metadata ────────────────────────────────────────────────
     pub user_id: Option<i32>,
@@ -48,6 +49,17 @@ pub struct ExecutionContext {
 
     // ── Pipeline config ─────────────────────────────────────────────────
     pub pipeline_config: Arc<PipelineConfig>,
+}
+
+impl std::fmt::Debug for ExecutionContext {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ExecutionContext")
+            .field("user_id", &self.user_id)
+            .field("device_type", &self.device_type)
+            .field("location", &self.location)
+            .field("request_id", &self.request_id)
+            .finish_non_exhaustive()
+    }
 }
 
 impl ExecutionContext {

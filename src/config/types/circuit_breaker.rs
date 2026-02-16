@@ -4,13 +4,14 @@
 //! with support for error classification, retry hints, and metrics collection.
 
 use std::time::Duration;
+use serde::{Deserialize, Serialize};
 
 /// Circuit breaker configuration.
 ///
 /// Configuration for Netflix Hystrix-inspired circuit breaker that protects
 /// any async operation from cascading failures. Supports error classification
 /// and retry hints for intelligent tripping behavior.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CircuitBreakerConfig {
     pub enabled: bool,
     pub failure_rate_threshold: f64,
@@ -27,7 +28,7 @@ pub struct CircuitBreakerConfig {
 }
 
 /// Sliding window type for circuit breaker metrics.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum SlidingWindowType {
     CountBased,
     TimeBased,

@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use crate::pipeline::PipelineStage;
 use crate::pipeline::stages;
+use crate::scenarios::dynamic::stages as dynamic_stages;
 
 /// Build the registry of all available pipeline stages
 pub fn build_stage_registry() -> HashMap<String, Arc<dyn PipelineStage>> {
@@ -19,7 +20,7 @@ pub fn build_stage_registry() -> HashMap<String, Arc<dyn PipelineStage>> {
     registry.insert("fetch_by_category".into(), Arc::new(stages::fetch::FetchByCategoryStage));
     registry.insert("fetch_because_you_watched".into(), Arc::new(stages::fetch::FetchBecauseYouWatchedStage));
 
-    // Category 2: ML Inference (7 stages) - WITH ONNX SUPPORT
+    // Category 2: ML Inference (5 stages) - WITH ONNX SUPPORT
     registry.insert("onnx_inference".into(), Arc::new(stages::ml::ONNXInferenceStage));
     registry.insert("onnx_inference_similarity".into(), Arc::new(stages::ml::ONNXInferenceSimilarityStage));
     registry.insert("ml_inference_two_tower".into(), Arc::new(stages::ml::MLInferenceTwoTowerStage));
@@ -68,6 +69,15 @@ pub fn build_stage_registry() -> HashMap<String, Arc<dyn PipelineStage>> {
 
     // Category 7: Enrichment (1 stage)
     registry.insert("enrich_time_remaining".into(), Arc::new(stages::enrich::EnrichTimeRemainingStage));
+
+    // Category 8: Dynamic Stages (7 stages)
+    registry.insert("collaborative_filtering".into(), Arc::new(dynamic_stages::collaborative_filtering::CollaborativeFilteringStage));
+    registry.insert("content_based".into(), Arc::new(dynamic_stages::content_based::ContentBasedStage));
+    registry.insert("hybrid".into(), Arc::new(dynamic_stages::hybrid::HybridStage));
+    registry.insert("dynamic_filters".into(), Arc::new(dynamic_stages::filters::DynamicFiltersStage));
+    registry.insert("dynamic_boosters".into(), Arc::new(dynamic_stages::boosters::DynamicBoostersStage));
+    registry.insert("dynamic_diversifiers".into(), Arc::new(dynamic_stages::diversifiers::DynamicDiversifiersStage));
+    registry.insert("onnx_dynamic".into(), Arc::new(dynamic_stages::onnx_stages::ONNXDynamicStage));
 
     registry
 }

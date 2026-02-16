@@ -2,12 +2,15 @@
 //!
 //! Provides configuration for Kafka connection settings and topic management.
 
+use serde::{Deserialize, Serialize};
+
 /// Kafka configuration.
 ///
 /// Configuration for Kafka connection settings including brokers,
 /// group ID, and topic configurations.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KafkaConfig {
+    pub enabled: bool,
     pub brokers: String,
     pub group_id: String,
     pub profile_topic: String,
@@ -23,12 +26,13 @@ pub struct KafkaConfig {
 impl Default for KafkaConfig {
     fn default() -> Self {
         Self {
+            enabled: true,
             brokers: "localhost:9092".to_string(),
             group_id: "bongas-ai-consumers".to_string(),
-            profile_topic: "profile.events".to_string(),
-            reaction_topic: "reaction.events".to_string(),
-            notification_topic: "notification.events".to_string(),
-            playback_topic: "playback.events".to_string(),
+            profile_topic: "user.profiles".to_string(),
+            reaction_topic: "user.reactions".to_string(),
+            notification_topic: "notifications".to_string(),
+            playback_topic: "playback.sessions".to_string(),
             connection_timeout: 10,
             request_timeout: 30,
             max_retries: 3,

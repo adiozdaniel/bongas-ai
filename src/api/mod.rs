@@ -6,6 +6,7 @@ pub mod middleware;
 
 use axum::Router;
 use std::sync::Arc;
+use std::time::Instant;
 
 use crate::engine::BongasEngine;
 use crate::middlewares::metrics::MetricsCollector;
@@ -17,6 +18,7 @@ pub fn create_router(
     redis: Arc<redis::Client>,
     metrics_collector: Arc<MetricsCollector>,
     circuit_breaker_registry: Arc<CircuitBreakerRegistry>,
+    start_time: Arc<Instant>,
 ) -> Router {
     let routes = Router::new()
         .nest("/api/v1", v1::routes())
@@ -25,7 +27,8 @@ pub fn create_router(
         .layer(axum::Extension(engine))
         .layer(axum::Extension(redis))
         .layer(axum::Extension(circuit_breaker_registry.clone()))
-        .layer(axum::Extension(metrics_collector));
+        .layer(axum::Extension(metrics_collector))
+        .layer(axum::Extension(start_time));
 
     middleware::apply_middleware(routes, circuit_breaker_registry)
 }

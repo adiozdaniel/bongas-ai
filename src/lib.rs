@@ -47,7 +47,8 @@ pub mod middlewares;
 pub use config::{ConfigLoader, AppConfig};
 pub use config::{
     ServerConfig, DatabaseConfig, RedisConfig, ClickHouseConfig,
-    IngestionConfig, SecurityConfig, MlConfig
+    IngestionConfig, SecurityConfig, MlConfig,
+    PipelineConfig, AnalyticsConfig,
 };
 
 // Resilience types

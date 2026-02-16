@@ -4,6 +4,7 @@ pub mod recommendations;
 pub mod scenarios;
 pub mod features;
 pub mod health;
+pub mod admin;
 
 use axum::Router;
 
@@ -13,4 +14,5 @@ pub fn routes() -> Router {
         .nest("/recommendations", recommendations::routes())
         .nest("/scenarios", scenarios::routes())
         .nest("/features", features::routes())
+        .nest("/admin", admin::routes())
 }

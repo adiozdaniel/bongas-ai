@@ -1,11 +1,13 @@
 use anyhow::{Result, Context};
 use std::sync::Arc;
+use std::time::Instant;
 use tokio::net::TcpListener;
 use tracing::info;
 
 use crate::{ConfigLoader, AppConfig, initialize_telemetry, TelemetryConfig};
 use crate::circuit_breaker::{CircuitBreakerRegistry, CompositeObserver, TracingObserver};
-use crate::engine::{BongasEngine, EngineDependencies};
+use crate::engine::BongasEngine;
+use crate::engine::config::EngineDependencies;
 use crate::api::create_router;
 use crate::middlewares::metrics::MetricsCollector;
 
@@ -15,11 +17,13 @@ pub struct BongasRuntime {
     engine: Arc<BongasEngine>,
     circuit_breaker_registry: Arc<CircuitBreakerRegistry>,
     metrics_collector: Arc<MetricsCollector>,
+    start_time: Arc<Instant>,
 }
 
 impl BongasRuntime {
     /// Initialize the application and all its components
     pub async fn init() -> Result<Self> {
+        let start_time = Arc::new(Instant::now());
         // 1. Load config
         let config = Arc::new(
             ConfigLoader::new()
@@ -71,6 +75,7 @@ impl BongasRuntime {
             engine,
             circuit_breaker_registry,
             metrics_collector,
+            start_time,
         })
     }
 
@@ -86,6 +91,7 @@ impl BongasRuntime {
             redis_client,
             self.metrics_collector.clone(),
             self.circuit_breaker_registry.clone(),
+            self.start_time.clone(),
         );
 
         let bind_addr = format!("{}:{}", self.config.server.host, self.config.server.port);
