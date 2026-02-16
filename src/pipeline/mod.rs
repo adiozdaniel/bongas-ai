@@ -3,6 +3,7 @@ pub mod stages;
 pub mod context;
 pub mod registry;
 pub mod validator;
+pub mod optimizer;
 
 use async_trait::async_trait;
 use anyhow::Result;
@@ -107,6 +108,8 @@ impl std::fmt::Debug for BoundStage {
 pub enum ExecutionNode {
     Single(BoundStage),
     Parallel(Vec<BoundStage>),
+    /// A group of stages fused into a single pass (JIT-lite).
+    Fused(Vec<BoundStage>),
 }
 
 /// An executable pipeline where all stages have been pre-linked.

@@ -129,6 +129,24 @@ impl PipelineValidator {
                     }
                     current_output = first_output.unwrap_or(StageDataKind::Empty);
                 }
+                ExecutionNode::Fused(stages) => {
+                    for stage in stages {
+                        let input_req = stage.implementation.input_type();
+                        let output_prod = stage.implementation.output_type();
+
+                        if !self.are_types_compatible(current_output, input_req) {
+                            return Err(PipelineError::TypeMismatch {
+                                stage_index: if idx > 0 { idx - 1 } else { 0 },
+                                stage_type: "Previous Fused Stage".to_string(),
+                                output: current_output,
+                                next_stage_index: idx,
+                                next_stage_type: stage.stage_type.clone(),
+                                input: input_req,
+                            }.into());
+                        }
+                        current_output = output_prod;
+                    }
+                }
             }
         }
 

@@ -16,6 +16,7 @@ use crate::circuit_breaker::observer::{CircuitState, ResilienceObserver};
 use crate::config::PipelineConfig;
 use crate::pipeline::{PipelineStage, ScoredItem, BoundStage, ExecutionNode, ExecutablePipeline, PipelineError};
 use crate::pipeline::validator::PipelineValidator;
+use crate::pipeline::optimizer::PipelineOptimizer;
 use crate::pipeline::context::ExecutionContext;
 use crate::pipeline::registry::build_stage_registry;
 use crate::db::models::PipelineDefinition;
@@ -86,13 +87,15 @@ impl PipelineExecutor {
         self.validator.validate_definition(definition)?;
         
         let nodes = self.link_to_nodes(&definition.stages)?;
+        let optimized_nodes = PipelineOptimizer::optimize(nodes);
+
         let fallback_nodes = if let Some(ref fallback) = definition.fallback_stages {
-            Some(self.link_to_nodes(fallback)?)
+            Some(PipelineOptimizer::optimize(self.link_to_nodes(fallback)?))
         } else {
             None
         };
 
-        Ok(ExecutablePipeline { nodes, fallback_nodes })
+        Ok(ExecutablePipeline { nodes: optimized_nodes, fallback_nodes })
     }
 
     fn link_to_nodes(&self, stages: &[crate::db::models::PipelineStageConfig]) -> Result<Vec<ExecutionNode>> {
@@ -174,6 +177,14 @@ impl PipelineExecutor {
             match node {
                 ExecutionNode::Single(stage) => {
                     items = self.execute_single_stage(stage, context, items).await?;
+                }
+                ExecutionNode::Fused(stages) => {
+                    // JIT-lite: Fused Scoring Pass
+                    if !items.is_empty() {
+                        for stage in stages {
+                            items = self.execute_single_stage(stage, context, items).await?;
+                        }
+                    }
                 }
                 ExecutionNode::Parallel(stages) => {
                     let futures = stages.iter().map(|s| self.execute_single_stage(s, context, items.clone()));
