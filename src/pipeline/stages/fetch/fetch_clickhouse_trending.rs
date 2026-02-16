@@ -28,6 +28,10 @@ impl PipelineStage for FetchClickHouseTrendingStage {
         StageDataKind::ScoredItems
     }
 
+    fn can_parallelize(&self) -> bool {
+        true
+    }
+
     async fn execute(
         &self,
         _context: &ExecutionContext,

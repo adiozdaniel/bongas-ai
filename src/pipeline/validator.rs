@@ -63,21 +63,52 @@ impl PipelineValidator {
     pub fn validate_executable(&self, pipeline: &ExecutablePipeline) -> Result<()> {
         let mut current_output = StageDataKind::Empty;
 
-        for (idx, stage) in pipeline.stages.iter().enumerate() {
-            let input_req = stage.implementation.input_type();
-            let output_prod = stage.implementation.output_type();
+        for (idx, node) in pipeline.nodes.iter().enumerate() {
+            match node {
+                crate::pipeline::ExecutionNode::Single(stage) => {
+                    let input_req = stage.implementation.input_type();
+                    let output_prod = stage.implementation.output_type();
 
-            if !self.are_types_compatible(current_output, input_req) {
-                 return Err(PipelineError::TypeMismatch {
-                    stage_index: if idx > 0 { idx - 1 } else { 0 },
-                    stage_type: if idx > 0 { pipeline.stages[idx-1].stage_type.clone() } else { "Start".to_string() },
-                    output: current_output,
-                    next_stage_index: idx,
-                    next_stage_type: stage.stage_type.clone(),
-                    input: input_req,
-                }.into());
+                    if !self.are_types_compatible(current_output, input_req) {
+                        return Err(PipelineError::TypeMismatch {
+                            stage_index: if idx > 0 { idx - 1 } else { 0 },
+                            stage_type: "Previous Node".to_string(),
+                            output: current_output,
+                            next_stage_index: idx,
+                            next_stage_type: stage.stage_type.clone(),
+                            input: input_req,
+                        }.into());
+                    }
+                    current_output = output_prod;
+                }
+                crate::pipeline::ExecutionNode::Parallel(stages) => {
+                    let mut first_output = None;
+                    for stage in stages {
+                        let input_req = stage.implementation.input_type();
+                        let output_prod = stage.implementation.output_type();
+
+                        if !self.are_types_compatible(current_output, input_req) {
+                            return Err(PipelineError::TypeMismatch {
+                                stage_index: if idx > 0 { idx - 1 } else { 0 },
+                                stage_type: "Previous Node".to_string(),
+                                output: current_output,
+                                next_stage_index: idx,
+                                next_stage_type: stage.stage_type.clone(),
+                                input: input_req,
+                            }.into());
+                        }
+
+                        if let Some(prev_out) = first_output {
+                            if prev_out != output_prod {
+                                return Err(anyhow::anyhow!("Parallel stages in node {} produce inconsistent output types", idx));
+                            }
+                        } else {
+                            first_output = Some(output_prod);
+                        }
+                    }
+                    current_output = first_output.unwrap_or(StageDataKind::Empty);
+                }
             }
-            current_output = output_prod;
         }
 
         Ok(())

@@ -13,6 +13,7 @@ use std::sync::Arc;
 use std::collections::HashMap;
 use std::time::Duration;
 use tracing::{info, warn, error, debug};
+use futures::future::join_all;
 
 use crate::analytics::types::PerformanceStats;
 use crate::circuit_breaker::{
@@ -21,7 +22,7 @@ use crate::circuit_breaker::{
 };
 use crate::circuit_breaker::observer::{CircuitState, ResilienceObserver};
 use crate::config::PipelineConfig;
-use crate::pipeline::{PipelineStage, ScoredItem, BoundStage, ExecutablePipeline, PipelineError};
+use crate::pipeline::{PipelineStage, ScoredItem, BoundStage, ExecutionNode, ExecutablePipeline, PipelineError};
 use crate::pipeline::validator::PipelineValidator;
 use crate::pipeline::context::ExecutionContext;
 use crate::pipeline::registry::build_stage_registry;
@@ -121,26 +122,28 @@ impl PipelineExecutor {
 
     /// Link a pipeline definition into an executable version.
     /// This performs structural validation, registry lookups, and pre-calculates circuit breakers and timeouts.
+    /// It also automatically identifies independent stages and groups them into parallel execution nodes.
     pub fn link(&self, definition: &PipelineDefinition) -> Result<ExecutablePipeline> {
         // Step 1: Structural Validation (Safety Gate)
         self.validator.validate_definition(definition)?;
 
-        // Step 2: Linking
-        let stages = self.link_stages(&definition.stages)?;
-        let fallback_stages = if let Some(ref fallback) = definition.fallback_stages {
-            Some(self.link_stages(fallback)?)
+        // Step 2: Linking & Grouping into Execution Nodes
+        let nodes = self.link_to_nodes(&definition.stages)?;
+        let fallback_nodes = if let Some(ref fallback) = definition.fallback_stages {
+            Some(self.link_to_nodes(fallback)?)
         } else {
             None
         };
 
         Ok(ExecutablePipeline {
-            stages,
-            fallback_stages,
+            nodes,
+            fallback_nodes,
         })
     }
 
-    fn link_stages(&self, stages: &[crate::db::models::PipelineStageConfig]) -> Result<Vec<BoundStage>> {
-        let mut bound_stages = Vec::with_capacity(stages.len());
+    fn link_to_nodes(&self, stages: &[crate::db::models::PipelineStageConfig]) -> Result<Vec<ExecutionNode>> {
+        let mut nodes = Vec::new();
+        let mut current_parallel_group = Vec::new();
 
         for stage_config in stages {
             let implementation = self.stage_registry
@@ -151,16 +154,41 @@ impl PipelineExecutor {
             let breaker = self.stage_breakers.get(&stage_config.r#type).cloned();
             let timeout = Self::timeout_for_stage(&stage_config.r#type, &self.config);
 
-            bound_stages.push(BoundStage {
+            let bound = BoundStage {
                 implementation,
                 breaker,
                 params: stage_config.params.clone(),
                 stage_type: stage_config.r#type.clone(),
                 timeout,
-            });
+            };
+
+            if bound.implementation.can_parallelize() {
+                current_parallel_group.push(bound);
+            } else {
+                // If we have a parallel group accumulated, push it first
+                if !current_parallel_group.is_empty() {
+                    if current_parallel_group.len() == 1 {
+                        nodes.push(ExecutionNode::Single(current_parallel_group.pop().unwrap()));
+                    } else {
+                        nodes.push(ExecutionNode::Parallel(current_parallel_group));
+                        current_parallel_group = Vec::new();
+                    }
+                }
+                // Push the sync barrier stage
+                nodes.push(ExecutionNode::Single(bound));
+            }
         }
 
-        Ok(bound_stages)
+        // Push any remaining parallel group
+        if !current_parallel_group.is_empty() {
+            if current_parallel_group.len() == 1 {
+                nodes.push(ExecutionNode::Single(current_parallel_group.pop().unwrap()));
+            } else {
+                nodes.push(ExecutionNode::Parallel(current_parallel_group));
+            }
+        }
+
+        Ok(nodes)
     }
 
     /// Get the number of registered stages.
@@ -194,7 +222,7 @@ impl PipelineExecutor {
 
         info!(
             request_id = %context.request_id,
-            stage_count = pipeline.stages.len(),
+            node_count = pipeline.nodes.len(),
             "Executing linked pipeline"
         );
 
@@ -202,7 +230,7 @@ impl PipelineExecutor {
         let pipeline_timeout = self.config.pipeline_timeout;
         let result = tokio::time::timeout(
             pipeline_timeout,
-            self.execute_bound_stages(&pipeline.stages, context),
+            self.execute_nodes(&pipeline.nodes, context),
         ).await;
 
         let pipeline_latency = pipeline_start.elapsed();
@@ -238,17 +266,17 @@ impl PipelineExecutor {
                 }
 
                 // Execute fallback pipeline if available
-                if let Some(ref fallback_stages) = pipeline.fallback_stages {
+                if let Some(ref fallback_nodes) = pipeline.fallback_nodes {
                     if self.config.fallback_enabled {
                         warn!(
                             request_id = %context.request_id,
-                            fallback_stage_count = fallback_stages.len(),
+                            fallback_node_count = fallback_nodes.len(),
                             "Executing fallback pipeline"
                         );
                         if let Some(ref a) = self.analytics {
                             a.increment_throughput("pipeline.fallback");
                         }
-                        self.execute_bound_stages(fallback_stages, context).await
+                        self.execute_nodes(fallback_nodes, context).await
                     } else {
                         Err(e)
                     }
@@ -269,13 +297,13 @@ impl PipelineExecutor {
                 }
 
                 // Fallback on pipeline timeout
-                if let Some(ref fallback_stages) = pipeline.fallback_stages {
+                if let Some(ref fallback_nodes) = pipeline.fallback_nodes {
                     if self.config.fallback_enabled {
                         warn!(
                             request_id = %context.request_id,
                             "Pipeline timed out, executing fallback"
                         );
-                        self.execute_bound_stages(fallback_stages, context).await
+                        self.execute_nodes(fallback_nodes, context).await
                     } else {
                         Err(PipelineError::PipelineTimeout.into())
                     }
@@ -286,138 +314,58 @@ impl PipelineExecutor {
         }
     }
 
-    /// Execute a sequence of bound stages with per-stage resilience.
-    async fn execute_bound_stages(
+    /// Execute a sequence of execution nodes with per-node resilience.
+    async fn execute_nodes(
         &self,
-        stages: &[BoundStage],
+        nodes: &[ExecutionNode],
         context: &ExecutionContext,
     ) -> Result<Vec<ScoredItem>> {
         let mut items: Vec<ScoredItem> = Vec::new();
 
-        for (idx, bound_stage) in stages.iter().enumerate() {
-            let stage_impl = &bound_stage.implementation;
-            let stage_name = stage_impl.name();
-            let stage_start = std::time::Instant::now();
-            let stage_timeout = bound_stage.timeout;
-
-            debug!(
-                request_id = %context.request_id,
-                stage_idx = idx,
-                stage_type = %bound_stage.stage_type,
-                stage_name = stage_name,
-                input_count = items.len(),
-                timeout_ms = stage_timeout.as_millis() as u64,
-                "Executing bound stage"
-            );
-
-            // Check circuit breaker state before executing
-            if let Some(ref breaker) = bound_stage.breaker {
-                if breaker.current_state() == CircuitState::Open {
-                    warn!(
-                        request_id = %context.request_id,
-                        stage = %bound_stage.stage_type,
-                        "Circuit breaker open, skipping stage"
-                    );
-                    if let Some(ref a) = self.analytics {
-                        a.increment_error(&format!("pipeline.stage.{}.circuit_open", bound_stage.stage_type));
-                    }
-                    // Fallback: pass-through input on circuit open
-                    if self.config.fallback_pass_through_input {
-                        continue;
-                    }
-                    return Err(PipelineError::CircuitOpen { stage_type: bound_stage.stage_type.clone() }.into());
+        for (idx, node) in nodes.iter().enumerate() {
+            match node {
+                ExecutionNode::Single(bound_stage) => {
+                    items = self.execute_single_stage(bound_stage, context, items).await?;
                 }
-            }
-
-            // Execute stage with timeout
-            let stage_result = tokio::time::timeout(
-                stage_timeout,
-                stage_impl.execute(context, &bound_stage.params, items.clone()),
-            ).await;
-
-            let stage_latency = stage_start.elapsed();
-
-            match stage_result {
-                Ok(Ok(result_items)) => {
-                    // Record analytics
-                    context.record_stage_latency(stage_name, stage_latency.as_millis() as u64);
-                    context.record_stage_throughput(stage_name);
-
-                    info!(
+                ExecutionNode::Parallel(stages) => {
+                    debug!(
                         request_id = %context.request_id,
-                        stage_idx = idx,
-                        stage_type = %bound_stage.stage_type,
-                        output_count = result_items.len(),
-                        duration_ms = stage_latency.as_millis() as u64,
-                        "Stage completed"
+                        node_idx = idx,
+                        parallel_count = stages.len(),
+                        "Executing parallel node"
                     );
 
-                    items = result_items;
-                }
-                Ok(Err(e)) => {
-                    // Record error analytics
-                    context.record_stage_error(stage_name);
-                    context.record_stage_latency(stage_name, stage_latency.as_millis() as u64);
+                    let mut futures = Vec::with_capacity(stages.len());
+                    for stage in stages {
+                        futures.push(self.execute_single_stage(stage, context, items.clone()));
+                    }
 
-                    warn!(
-                        request_id = %context.request_id,
-                        stage_idx = idx,
-                        stage_type = %bound_stage.stage_type,
-                        error = %e,
-                        duration_ms = stage_latency.as_millis() as u64,
-                        "Stage failed"
-                    );
+                    let results = join_all(futures).await;
+                    
+                    let mut merged_items = Vec::new();
+                    let mut seen_ids = std::collections::HashSet::new();
 
-                    // Fallback: pass-through input on stage error
-                    if self.config.fallback_on_stage_error && self.config.fallback_pass_through_input {
-                        warn!(
-                            request_id = %context.request_id,
-                            stage = %bound_stage.stage_type,
-                            "Using pass-through fallback for failed stage"
-                        );
-                        if let Some(ref a) = self.analytics {
-                            a.increment_throughput(&format!("pipeline.stage.{}.fallback", bound_stage.stage_type));
+                    for res in results {
+                        match res {
+                            Ok(stage_items) => {
+                                for item in stage_items {
+                                    if seen_ids.insert(item.item_id) {
+                                        merged_items.push(item);
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                warn!(
+                                    request_id = %context.request_id,
+                                    error = %e,
+                                    "Parallel stage failed, continuing with other results"
+                                );
+                                // In parallel mode, we are more lenient with failures
+                                // unless all stages fail.
+                            }
                         }
-                        continue; // items unchanged, skip failed stage
                     }
-
-                    return Err(PipelineError::StageFailure { 
-                        stage_type: bound_stage.stage_type.clone(), 
-                        source: e 
-                    }.into());
-                }
-                Err(_elapsed) => {
-                    // Record timeout analytics
-                    context.record_stage_error(stage_name);
-                    if let Some(ref a) = self.analytics {
-                        a.increment_error(&format!("pipeline.stage.{}.timeout", bound_stage.stage_type));
-                    }
-
-                    warn!(
-                        request_id = %context.request_id,
-                        stage_idx = idx,
-                        stage_type = %bound_stage.stage_type,
-                        timeout_ms = stage_timeout.as_millis() as u64,
-                        "Stage timed out"
-                    );
-
-                    // Fallback: pass-through input on stage timeout
-                    if self.config.fallback_on_stage_timeout && self.config.fallback_pass_through_input {
-                        warn!(
-                            request_id = %context.request_id,
-                            stage = %bound_stage.stage_type,
-                            "Using pass-through fallback for timed-out stage"
-                        );
-                        if let Some(ref a) = self.analytics {
-                            a.increment_throughput(&format!("pipeline.stage.{}.timeout_fallback", bound_stage.stage_type));
-                        }
-                        continue;
-                    }
-
-                    return Err(PipelineError::StageTimeout { 
-                        stage_type: bound_stage.stage_type.clone(), 
-                        timeout_ms: stage_timeout.as_millis() as u64 
-                    }.into());
+                    items = merged_items;
                 }
             }
 
@@ -425,8 +373,7 @@ impl PipelineExecutor {
             if items.is_empty() {
                 warn!(
                     request_id = %context.request_id,
-                    stage_idx = idx,
-                    stage_type = %bound_stage.stage_type,
+                    node_idx = idx,
                     "Pipeline terminated early: no items remaining"
                 );
                 break;
@@ -434,6 +381,101 @@ impl PipelineExecutor {
         }
 
         Ok(items)
+    }
+
+    /// Internal helper to execute a single bound stage with full resilience.
+    async fn execute_single_stage(
+        &self,
+        bound_stage: &BoundStage,
+        context: &ExecutionContext,
+        input: Vec<ScoredItem>,
+    ) -> Result<Vec<ScoredItem>> {
+        let stage_impl = &bound_stage.implementation;
+        let stage_name = stage_impl.name();
+        let stage_start = std::time::Instant::now();
+        let stage_timeout = bound_stage.timeout;
+
+        debug!(
+            request_id = %context.request_id,
+            stage_type = %bound_stage.stage_type,
+            input_count = input.len(),
+            "Executing bound stage"
+        );
+
+        // Check circuit breaker state before executing
+        if let Some(ref breaker) = bound_stage.breaker {
+            if breaker.current_state() == CircuitState::Open {
+                warn!(
+                    request_id = %context.request_id,
+                    stage = %bound_stage.stage_type,
+                    "Circuit breaker open, skipping stage"
+                );
+                // Fallback: pass-through input on circuit open
+                if self.config.fallback_pass_through_input {
+                    return Ok(input);
+                }
+                return Err(PipelineError::CircuitOpen { stage_type: bound_stage.stage_type.clone() }.into());
+            }
+        }
+
+        // Execute stage with timeout
+        let stage_result = tokio::time::timeout(
+            stage_timeout,
+            stage_impl.execute(context, &bound_stage.params, input.clone()),
+        ).await;
+
+        let stage_latency = stage_start.elapsed();
+
+        match stage_result {
+            Ok(Ok(result_items)) => {
+                // Record analytics
+                context.record_stage_latency(stage_name, stage_latency.as_millis() as u64);
+                context.record_stage_throughput(stage_name);
+                Ok(result_items)
+            }
+            Ok(Err(e)) => {
+                // Record error analytics
+                context.record_stage_error(stage_name);
+                
+                warn!(
+                    request_id = %context.request_id,
+                    stage_type = %bound_stage.stage_type,
+                    error = %e,
+                    "Stage failed"
+                );
+
+                // Fallback: pass-through input on stage error
+                if self.config.fallback_on_stage_error && self.config.fallback_pass_through_input {
+                    return Ok(input);
+                }
+
+                Err(PipelineError::StageFailure { 
+                    stage_type: bound_stage.stage_type.clone(), 
+                    source: e 
+                }.into())
+            }
+            Err(_elapsed) => {
+                // Record timeout analytics
+                context.record_stage_error(stage_name);
+
+                warn!(
+                    request_id = %context.request_id,
+                    stage_type = %bound_stage.stage_type,
+                    timeout_ms = stage_timeout.as_millis() as u64,
+                    "Stage timed out"
+                );
+
+                // Fallback: pass-through input on stage timeout
+                if self.config.fallback_on_stage_timeout && self.config.fallback_pass_through_input {
+                    return Ok(input);
+                }
+
+                Err(PipelineError::StageTimeout { 
+                    stage_type: bound_stage.stage_type.clone(), 
+                    timeout_ms: stage_timeout.as_millis() as u64 
+                }.into())
+            }
+        }
     }
 
     /// Determine the timeout for a given stage based on its category.

@@ -28,6 +28,10 @@ impl PipelineStage for FetchPopularContentStage {
         StageDataKind::ScoredItems
     }
 
+    fn can_parallelize(&self) -> bool {
+        true
+    }
+
     async fn execute(
         &self,
         context: &ExecutionContext,

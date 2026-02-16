@@ -46,6 +46,12 @@ pub trait PipelineStage: Send + Sync {
         params: &JsonValue,
         input: Vec<ScoredItem>,
     ) -> Result<Vec<ScoredItem>>;
+
+    /// Returns true if this stage can be executed in parallel with other similar stages
+    /// (e.g. multiple fetchers or multiple enrichers).
+    fn can_parallelize(&self) -> bool {
+        false
+    }
 }
 
 /// Item with relevance score
@@ -75,11 +81,20 @@ impl std::fmt::Debug for BoundStage {
     }
 }
 
-/// An executable pipeline where all stages have been pre-linked.
+/// A node in the execution graph. Can be a single stage or a group of parallel stages.
+#[derive(Debug)]
+pub enum ExecutionNode {
+    /// A single stage that must run in sequence (a sync barrier).
+    Single(BoundStage),
+    /// A group of stages that can run in parallel.
+    Parallel(Vec<BoundStage>),
+}
+
+/// An executable pipeline where all stages have been pre-linked and grouped into execution nodes.
 #[derive(Debug)]
 pub struct ExecutablePipeline {
-    pub stages: Vec<BoundStage>,
-    pub fallback_stages: Option<Vec<BoundStage>>,
+    pub nodes: Vec<ExecutionNode>,
+    pub fallback_nodes: Option<Vec<ExecutionNode>>,
 }
 
 /// Specialized error for pipeline execution to aid in resilience routing.

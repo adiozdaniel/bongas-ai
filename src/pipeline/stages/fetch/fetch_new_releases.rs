@@ -57,6 +57,10 @@ impl PipelineStage for FetchNewReleasesStage {
         StageDataKind::ScoredItems
     }
 
+    fn can_parallelize(&self) -> bool {
+        true
+    }
+
     async fn execute(
         &self,
         context: &ExecutionContext,
