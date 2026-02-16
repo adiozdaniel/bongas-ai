@@ -29,6 +29,7 @@ use crate::analytics::types::PerformanceStats;
 use super::staging_manager::StagingManager;
 use super::staleness_engine::{StalenessEngine, UserEvent};
 use super::scenario_factory::ScenarioFactory;
+use super::predictive_warmer::PredictiveWarmer;
 use super::config::EngineDependencies;
 
 /// Central orchestrator for BONGAS-AI
@@ -108,6 +109,15 @@ impl BongasEngine {
                 cache_config.warm_scenarios.clone(),
                 cache_config.warming_interval,
             );
+
+            // Phase 6: Start Predictive Warmer
+            let predictive_warmer = Arc::new(PredictiveWarmer::new(
+                engine.clone(),
+                cache_config.warm_scenarios,
+            ));
+            tokio::spawn(async move {
+                predictive_warmer.start().await;
+            });
         }
 
         info!("BongasEngine bootstrapped successfully");

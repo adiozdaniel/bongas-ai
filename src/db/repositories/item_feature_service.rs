@@ -155,6 +155,10 @@ impl ItemFeatureService {
         Self { pool, metrics }
     }
 
+    pub fn pool(&self) -> &Arc<ResilientPool> {
+        &self.pool
+    }
+
     // ── Item feature queries ───────────────────────────────────────────
 
     /// Batch-fetch full item features for a set of item IDs.

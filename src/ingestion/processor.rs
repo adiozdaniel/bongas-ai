@@ -178,11 +178,15 @@ impl ActivityProcessor {
         // Batch insert interactions
         if !user_ids.is_empty() {
             if let Err(e) = self.interaction_repo.create_interactions_batch(
-                user_ids, item_ids, types, ratings, durations
+                user_ids.clone(), item_ids, types, ratings, durations
             ).await {
                 error!("Failed to batch insert interactions: {}", e);
-                // We continue to processing staleness even if DB write fails, 
-                // or we could retry. For now, we log and proceed (best effort).
+            }
+
+            // Update arrival patterns for all unique users in this batch
+            let unique_users: std::collections::HashSet<i32> = user_ids.into_iter().collect();
+            for uid in unique_users {
+                let _ = self.interaction_repo.update_arrival_pattern(uid).await;
             }
         }
 

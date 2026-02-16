@@ -1,11 +1,7 @@
-//! Interaction repository with Netflix-grade resilience patterns.
-//!
-//! Provides database access for user interactions with:
-//! - Circuit breaker protection against cascading failures
-//! - Bulkhead pattern for concurrency limiting
-//! - Comprehensive error classification and metrics
+//! Interaction repository with Netflix-grade resilience patterns and arrival tracking.
 
 use std::sync::Arc;
+use chrono::Timelike;
 
 use crate::resilience::ResilienceMetricsCollector;
 use crate::db::ResilientPool;
@@ -18,7 +14,6 @@ pub struct InteractionRepository {
 }
 
 impl InteractionRepository {
-    /// Create a new repository with resilient pool and metrics collector.
     pub fn new(
         pool: Arc<ResilientPool>,
         metrics_collector: Arc<ResilienceMetricsCollector>,
@@ -29,9 +24,6 @@ impl InteractionRepository {
         }
     }
 
-    /// Create an implicit rating from watch behavior.
-    ///
-    /// Executes through circuit breaker with bulkhead protection.
     pub async fn create_implicit_rating(
         &self,
         user_id: i32,
@@ -40,181 +32,66 @@ impl InteractionRepository {
         watch_duration_seconds: i32,
     ) -> AppResult<()> {
         let start_time = std::time::Instant::now();
-        
-        let result = self.pool
-            .execute(|pool| async move {
-                sqlx::query(
-                    r#"
-                    INSERT INTO user_interactions
-                        (user_id, item_id, interaction_type, rating, watch_duration_seconds, created_at)
-                    VALUES ($1, $2, 'implicit_rating', $3, $4, NOW())
-                    "#,
-                )
-                .bind(user_id)
-                .bind(item_id)
-                .bind(rating)
-                .bind(watch_duration_seconds)
-                .execute(&pool)
-                .await
-                .map(|_| ())
-            })
-            .await;
+        let result = self.pool.execute(|pool| async move {
+            sqlx::query(
+                r#"
+                INSERT INTO user_interactions
+                    (user_id, item_id, interaction_type, rating, watch_duration_seconds, created_at)
+                VALUES ($1, $2, 'implicit_rating', $3, $4, NOW())
+                "#,
+            )
+            .bind(user_id)
+            .bind(item_id)
+            .bind(rating)
+            .bind(watch_duration_seconds)
+            .execute(&pool)
+            .await
+            .map(|_| ())
+        }).await;
 
         let duration = start_time.elapsed();
-        
-        match result {
-            Ok(()) => {
-                // Record successful operation
-                let metrics = self.metrics_collector.registry().get_or_create("interaction_implicit");
-                metrics.latency.record_duration(duration);
-                metrics.successes.increment();
-                Ok(())
-            }
-            Err(e) => {
-                // Record failed operation
-                let metrics = self.metrics_collector.registry().get_or_create("interaction_implicit");
-                metrics.latency.record_duration(duration);
-                metrics.failures.increment();
-                
-                Err(AppError::Postgres(PostgresError::Query {
-                    message: format!(
-                        "Failed to create implicit rating for user={}, item={}: {}",
-                        user_id, item_id, e
-                    ),
-                    source: None,
-                }))
-            }
-        }
+        let metric_name = "interaction_implicit";
+        let metrics = self.metrics_collector.registry().get_or_create(metric_name);
+        metrics.latency.record_duration(duration);
+        if result.is_ok() { metrics.successes.increment(); } else { metrics.failures.increment(); }
+
+        result.map_err(|e| AppError::Postgres(PostgresError::Query {
+            message: format!("Failed to create implicit rating: {}", e),
+            source: None,
+        }))
     }
 
-    /// Create an explicit rating from user input.
-    pub async fn create_explicit_rating(
-        &self,
-        user_id: i32,
-        item_id: i32,
-        rating: f32,
-    ) -> AppResult<()> {
-        self.pool
-            .execute(|pool| async move {
-                sqlx::query(
-                    r#"
-                    INSERT INTO user_interactions
-                        (user_id, item_id, interaction_type, rating, created_at)
-                    VALUES ($1, $2, 'explicit_rating', $3, NOW())
-                    "#,
-                )
-                .bind(user_id)
-                .bind(item_id)
-                .bind(rating)
-                .execute(&pool)
-                .await
-                .map(|_| ())
-            })
-            .await
-            .map_err(|e| {
-                AppError::Postgres(PostgresError::Query {
-                    message: format!(
-                        "Failed to create explicit rating for user={}, item={}: {}",
-                        user_id, item_id, e
-                    ),
-                    source: None,
-                })
-            })
+    pub async fn create_explicit_rating(&self, user_id: i32, item_id: i32, rating: f32) -> AppResult<()> {
+        self.pool.execute(|pool| async move {
+            sqlx::query(
+                "INSERT INTO user_interactions (user_id, item_id, interaction_type, rating, created_at) VALUES ($1, $2, 'explicit_rating', $3, NOW())"
+            )
+            .bind(user_id).bind(item_id).bind(rating).execute(&pool).await.map(|_| ())
+        }).await.map_err(|e| AppError::Postgres(PostgresError::Query { message: e.to_string(), source: None }))
     }
 
-    /// Record a click interaction.
     pub async fn record_click(&self, user_id: i32, item_id: i32) -> AppResult<()> {
-        self.pool
-            .execute(|pool| async move {
-                sqlx::query(
-                    r#"
-                    INSERT INTO user_interactions
-                        (user_id, item_id, interaction_type, created_at)
-                    VALUES ($1, $2, 'click', NOW())
-                    "#,
-                )
-                .bind(user_id)
-                .bind(item_id)
-                .execute(&pool)
-                .await
-                .map(|_| ())
-            })
-            .await
-            .map_err(|e| {
-                AppError::Postgres(PostgresError::Query {
-                    message: format!(
-                        "Failed to record click for user={}, item={}: {}",
-                        user_id, item_id, e
-                    ),
-                    source: None,
-                })
-            })
+        self.pool.execute(|pool| async move {
+            sqlx::query("INSERT INTO user_interactions (user_id, item_id, interaction_type, created_at) VALUES ($1, $2, 'click', NOW())")
+            .bind(user_id).bind(item_id).execute(&pool).await.map(|_| ())
+        }).await.map_err(|e| AppError::Postgres(PostgresError::Query { message: e.to_string(), source: None }))
     }
 
-    /// Record an impression (item shown to user).
     pub async fn record_impression(&self, user_id: i32, item_id: i32) -> AppResult<()> {
-        self.pool
-            .execute(|pool| async move {
-                sqlx::query(
-                    r#"
-                    INSERT INTO user_interactions
-                        (user_id, item_id, interaction_type, created_at)
-                    VALUES ($1, $2, 'impression', NOW())
-                    "#,
-                )
-                .bind(user_id)
-                .bind(item_id)
-                .execute(&pool)
-                .await
-                .map(|_| ())
-            })
-            .await
-            .map_err(|e| {
-                AppError::Postgres(PostgresError::Query {
-                    message: format!(
-                        "Failed to record impression for user={}, item={}: {}",
-                        user_id, item_id, e
-                    ),
-                    source: None,
-                })
-            })
+        self.pool.execute(|pool| async move {
+            sqlx::query("INSERT INTO user_interactions (user_id, item_id, interaction_type, created_at) VALUES ($1, $2, 'impression', NOW())")
+            .bind(user_id).bind(item_id).execute(&pool).await.map(|_| ())
+        }).await.map_err(|e| AppError::Postgres(PostgresError::Query { message: e.to_string(), source: None }))
     }
 
-    /// Batch record impressions for multiple items.
-    pub async fn record_impressions_batch(
-        &self,
-        user_id: i32,
-        item_ids: &[i32],
-    ) -> AppResult<u64> {
-        let item_ids = item_ids.to_vec();
-        self.pool
-            .execute(|pool| async move {
-                // Use unnest for efficient batch insert
-                sqlx::query(
-                    r#"
-                    INSERT INTO user_interactions (user_id, item_id, interaction_type, created_at)
-                    SELECT $1, unnest($2::int[]), 'impression', NOW()
-                    "#,
-                )
-                .bind(user_id)
-                .bind(&item_ids)
-                .execute(&pool)
-                .await
-                .map(|r| r.rows_affected())
-            })
-            .await
-            .map_err(|e| {
-                AppError::Postgres(PostgresError::Query {
-                    message: format!(
-                        "Failed to batch record impressions for user={}: {}",
-                        user_id, e
-                    ),
-                    source: None,
-                })
-            })
+    pub async fn record_impressions_batch(&self, user_id: i32, item_ids: &[i32]) -> AppResult<u64> {
+        let ids = item_ids.to_vec();
+        self.pool.execute(|pool| async move {
+            sqlx::query("INSERT INTO user_interactions (user_id, item_id, interaction_type, created_at) SELECT $1, unnest($2::int[]), 'impression', NOW()")
+            .bind(user_id).bind(&ids).execute(&pool).await.map(|r| r.rows_affected())
+        }).await.map_err(|e| AppError::Postgres(PostgresError::Query { message: e.to_string(), source: None }))
     }
 
-    /// Batch insert multiple interactions of any type.
     pub async fn create_interactions_batch(
         &self,
         user_ids: Vec<i32>,
@@ -223,35 +100,39 @@ impl InteractionRepository {
         ratings: Vec<Option<f32>>,
         watch_durations: Vec<Option<i32>>,
     ) -> AppResult<u64> {
-        if user_ids.is_empty() {
-            return Ok(0);
-        }
+        if user_ids.is_empty() { return Ok(0); }
+        self.pool.execute(|pool| async move {
+            sqlx::query(
+                r#"
+                INSERT INTO user_interactions (user_id, item_id, interaction_type, rating, watch_duration_seconds, created_at)
+                SELECT * FROM unnest($1::int[], $2::int[], $3::text[], $4::float4[], $5::int[], $6::timestamptz[])
+                "#
+            )
+            .bind(&user_ids).bind(&item_ids).bind(&types).bind(&ratings).bind(&watch_durations)
+            .bind(vec![chrono::Utc::now(); user_ids.len()])
+            .execute(&pool).await.map(|r| r.rows_affected())
+        }).await.map_err(|e| AppError::Postgres(PostgresError::Query { message: e.to_string(), source: None }))
+    }
 
-        self.pool
-            .execute(|pool| async move {
-                sqlx::query(
-                    r#"
-                    INSERT INTO user_interactions 
-                        (user_id, item_id, interaction_type, rating, watch_duration_seconds, created_at)
-                    SELECT * FROM unnest($1::int[], $2::int[], $3::text[], $4::float4[], $5::int[], $6::timestamptz[])
-                    "#
-                )
-                .bind(&user_ids)
-                .bind(&item_ids)
-                .bind(&types)
-                .bind(&ratings)
-                .bind(&watch_durations)
-                .bind(vec![chrono::Utc::now(); user_ids.len()])
-                .execute(&pool)
-                .await
-                .map(|r| r.rows_affected())
-            })
-            .await
-            .map_err(|e| {
-                AppError::Postgres(PostgresError::Query {
-                    message: format!("Failed to batch insert interactions: {}", e),
-                    source: None,
-                })
-            })
+    pub async fn update_arrival_pattern(&self, user_id: i32) -> AppResult<()> {
+        let hour = chrono::Utc::now().hour() as i32;
+        let bit_mask = 1i64 << hour;
+        self.pool.execute(|pool| async move {
+            sqlx::query(
+                r#"
+                INSERT INTO user_arrival_patterns (user_id, hour_mask, last_active_at)
+                VALUES ($1, $2, NOW())
+                ON CONFLICT (user_id) DO UPDATE SET hour_mask = user_arrival_patterns.hour_mask | $2, last_active_at = NOW()
+                "#
+            ).bind(user_id).bind(bit_mask).execute(&pool).await.map(|_| ())
+        }).await.map_err(|e| AppError::Postgres(PostgresError::Query { message: e.to_string(), source: None }))
+    }
+
+    pub async fn get_likely_arrivals(&self, target_hour: u32) -> AppResult<Vec<i32>> {
+        let bit_mask = 1i64 << target_hour;
+        self.pool.execute(|pool| async move {
+            sqlx::query_as::<_, (i32,)>("SELECT user_id FROM user_arrival_patterns WHERE (hour_mask & $1) != 0")
+            .bind(bit_mask).fetch_all(&pool).await.map(|rows| rows.into_iter().map(|r| r.0).collect())
+        }).await.map_err(|e| AppError::Postgres(PostgresError::Query { message: e.to_string(), source: None }))
     }
 }
