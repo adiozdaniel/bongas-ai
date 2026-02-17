@@ -25,6 +25,7 @@ pub enum UserActivity {
         total_duration_seconds: i32,
         watch_percentage: f32,
         completed: bool,
+        scenario_slug: Option<String>,
         timestamp: chrono::DateTime<chrono::Utc>,
     },
 
@@ -34,6 +35,7 @@ pub enum UserActivity {
         item_id: i32,
         /// "like", "dislike", or other reaction types.
         reaction_type: String,
+        scenario_slug: Option<String>,
         timestamp: chrono::DateTime<chrono::Utc>,
     },
 
@@ -62,6 +64,7 @@ pub enum UserActivity {
     Click {
         user_id: i32,
         item_id: i32,
+        scenario_slug: Option<String>,
         timestamp: chrono::DateTime<chrono::Utc>,
     },
 
@@ -69,6 +72,7 @@ pub enum UserActivity {
     Impression {
         user_id: i32,
         item_id: i32,
+        scenario_slug: Option<String>,
         timestamp: chrono::DateTime<chrono::Utc>,
     },
 }

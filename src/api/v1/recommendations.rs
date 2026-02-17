@@ -12,9 +12,11 @@ use crate::engine::BongasEngine;
 use crate::api::models::{StandardResponse, RecommendationItem};
 use crate::api::models::recommendation::{HomeFeedResponse, FeedRow};
 use crate::error::AppError;
+use crate::ingestion::types::UserActivity;
 
 /// Mount all recommendation routes.
 pub fn routes() -> Router {
+// ... (rest of routes)
     Router::new()
         .route("/home/:user_id", get(get_home_recommendations))
         .route("/continue-watching/:user_id", get(get_continue_watching))
@@ -40,7 +42,7 @@ async fn execute_and_map(
         .execute_scenario_with_stats(scenario_slug, user_id, context)
         .await?;
 
-    Ok(items
+    let final_items: Vec<RecommendationItem> = items
         .into_iter()
         .skip(offset)
         .take(limit)
@@ -59,7 +61,31 @@ async fn execute_and_map(
             rank: (offset + idx + 1) as i32,
             metadata: item.metadata.clone(),
         })
-        .collect())
+        .collect();
+
+    // ─── Impression Tracking (Baze-Style) ──────────────────────────────
+    if let Some(uid) = user_id {
+        let activities: Vec<UserActivity> = final_items.iter().map(|item| {
+            UserActivity::Impression {
+                user_id: uid,
+                item_id: item.item_id,
+                scenario_slug: Some(scenario_slug.to_string()),
+                timestamp: chrono::Utc::now(),
+            }
+        }).collect();
+
+        // Ingest activities asynchronously
+        let engine_clone = engine.ingestion_manager.clone();
+        tokio::spawn(async move {
+            let manager = engine_clone.read().await;
+            let api_source = manager.api_source();
+            for act in activities {
+                let _ = api_source.ingest(act).await;
+            }
+        });
+    }
+
+    Ok(final_items)
 }
 
 // ─── Handlers ───────────────────────────────────────────────────────────────

@@ -170,6 +170,7 @@ impl ActivitySource for KafkaSource {
                         total_duration_seconds: v.get("total_duration_seconds")?.as_i64()? as i32,
                         watch_percentage: v.get("watch_percentage")?.as_f64()? as f32,
                         completed: v.get("completed")?.as_bool()?,
+                        scenario_slug: None,
                         timestamp: chrono::Utc::now(),
                     })
                 })
@@ -180,6 +181,7 @@ impl ActivitySource for KafkaSource {
                         user_id: v.get("user_id")?.as_i64()? as i32,
                         item_id: v.get("item_id")?.as_i64()? as i32,
                         reaction_type: v.get("reaction_type")?.as_str()?.to_string(),
+                        scenario_slug: None,
                         timestamp: chrono::Utc::now(),
                     })
                 })

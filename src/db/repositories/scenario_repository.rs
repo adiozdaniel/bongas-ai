@@ -39,9 +39,10 @@ impl ScenarioRepository {
                     r#"
                     INSERT INTO scenario_configs (
                         slug, name, description, category, pipeline, 
+                        initial_display_limit, scope,
                         cache_ttl_seconds, use_l2_cache, priority, enabled
                     )
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, true)
                     RETURNING *
                     "#,
                 )
@@ -50,6 +51,8 @@ impl ScenarioRepository {
                 .bind(&req.description)
                 .bind(&req.category)
                 .bind(&req.pipeline)
+                .bind(req.initial_display_limit.unwrap_or(5))
+                .bind(req.scope.unwrap_or_else(|| serde_json::json!({})))
                 .bind(req.cache_ttl_seconds)
                 .bind(req.use_l2_cache)
                 .bind(req.priority)
@@ -77,10 +80,12 @@ impl ScenarioRepository {
                         description = COALESCE($3, description),
                         category = COALESCE($4, category),
                         pipeline = COALESCE($5, pipeline),
-                        cache_ttl_seconds = COALESCE($6, cache_ttl_seconds),
-                        use_l2_cache = COALESCE($7, use_l2_cache),
-                        priority = COALESCE($8, priority),
-                        enabled = COALESCE($9, enabled),
+                        initial_display_limit = COALESCE($6, initial_display_limit),
+                        scope = COALESCE($7, scope),
+                        cache_ttl_seconds = COALESCE($8, cache_ttl_seconds),
+                        use_l2_cache = COALESCE($9, use_l2_cache),
+                        priority = COALESCE($10, priority),
+                        enabled = COALESCE($11, enabled),
                         updated_at = NOW()
                     WHERE slug = $1
                     RETURNING *
@@ -91,6 +96,8 @@ impl ScenarioRepository {
                 .bind(&req.description)
                 .bind(&req.category)
                 .bind(&req.pipeline)
+                .bind(req.initial_display_limit)
+                .bind(req.scope)
                 .bind(req.cache_ttl_seconds)
                 .bind(req.use_l2_cache)
                 .bind(req.priority)

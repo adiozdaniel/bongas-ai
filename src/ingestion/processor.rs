@@ -10,7 +10,7 @@
 use anyhow::Result;
 use std::sync::Arc;
 use tokio::sync::mpsc;
-use tracing::{info, warn, error};
+use tracing::{info, warn, error, debug};
 
 use crate::db::ResilientPool;
 use crate::db::repositories::interaction_repository::InteractionRepository;
@@ -18,12 +18,26 @@ use crate::engine::staleness_engine::{StalenessEngine, UserEvent};
 use crate::resilience::ResilienceMetricsCollector;
 
 use super::types::UserActivity;
+use clickhouse::Row;
+use serde::{Serialize, Deserialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize, Row)]
+pub struct ClickHouseInteraction {
+    pub user_id: i32,
+    pub item_id: i32,
+    pub interaction_type: String,
+    pub scenario_slug: String,
+    pub rating: f32,
+    pub watch_duration_seconds: i32,
+    pub created_at: u64, // Unix timestamp for ClickHouse
+}
 
 /// Processes activities from any source and routes them to DB + staleness engine.
 pub struct ActivityProcessor {
     interaction_repo: Arc<InteractionRepository>,
     pool: Arc<ResilientPool>,
     staleness_engine: Arc<StalenessEngine>,
+    clickhouse: Option<Arc<clickhouse::Client>>,
 }
 
 impl ActivityProcessor {
@@ -31,11 +45,13 @@ impl ActivityProcessor {
         resilient_pool: Arc<ResilientPool>,
         metrics_collector: Arc<ResilienceMetricsCollector>,
         staleness_engine: Arc<StalenessEngine>,
+        clickhouse: Option<Arc<clickhouse::Client>>,
     ) -> Self {
         Self {
             interaction_repo: Arc::new(InteractionRepository::new(resilient_pool.clone(), metrics_collector)),
             pool: resilient_pool,
             staleness_engine,
+            clickhouse,
         }
     }
 
@@ -108,10 +124,15 @@ impl ActivityProcessor {
         let mut durations = Vec::with_capacity(buffer.len());
 
         let mut processed_indices = Vec::new();
+        let mut clickhouse_rows = Vec::with_capacity(buffer.len());
+        let now_ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
 
         for (i, activity) in buffer.iter().enumerate() {
             match activity {
-                UserActivity::Playback { user_id, item_id, watch_percentage, watch_duration_seconds, completed, .. } => {
+                UserActivity::Playback { user_id, item_id, watch_percentage, watch_duration_seconds, completed, scenario_slug, .. } => {
                     // Logic from process_playback
                     let mut rating = match watch_percentage {
                         p if *p < 0.25 => 1.0,
@@ -129,8 +150,18 @@ impl ActivityProcessor {
                     ratings.push(Some(rating));
                     durations.push(Some(*watch_duration_seconds));
                     processed_indices.push(i);
+
+                    clickhouse_rows.push(ClickHouseInteraction {
+                        user_id: *user_id,
+                        item_id: *item_id,
+                        interaction_type: "playback".to_string(),
+                        scenario_slug: scenario_slug.clone().unwrap_or_else(|| "unknown".to_string()),
+                        rating,
+                        watch_duration_seconds: *watch_duration_seconds,
+                        created_at: now_ts,
+                    });
                 }
-                UserActivity::Reaction { user_id, item_id, reaction_type, .. } => {
+                UserActivity::Reaction { user_id, item_id, reaction_type, scenario_slug, .. } => {
                     // Logic from process_reaction
                     let rating = match reaction_type.as_str() {
                         "like" => 5.0,
@@ -144,22 +175,52 @@ impl ActivityProcessor {
                     ratings.push(Some(rating));
                     durations.push(None);
                     processed_indices.push(i);
+
+                    clickhouse_rows.push(ClickHouseInteraction {
+                        user_id: *user_id,
+                        item_id: *item_id,
+                        interaction_type: reaction_type.clone(),
+                        scenario_slug: scenario_slug.clone().unwrap_or_else(|| "unknown".to_string()),
+                        rating,
+                        watch_duration_seconds: 0,
+                        created_at: now_ts,
+                    });
                 }
-                UserActivity::Click { user_id, item_id, .. } => {
+                UserActivity::Click { user_id, item_id, scenario_slug, .. } => {
                     user_ids.push(*user_id);
                     item_ids.push(*item_id);
                     types.push("click".to_string());
                     ratings.push(None);
                     durations.push(None);
                     processed_indices.push(i);
+
+                    clickhouse_rows.push(ClickHouseInteraction {
+                        user_id: *user_id,
+                        item_id: *item_id,
+                        interaction_type: "click".to_string(),
+                        scenario_slug: scenario_slug.clone().unwrap_or_else(|| "unknown".to_string()),
+                        rating: 0.0,
+                        watch_duration_seconds: 0,
+                        created_at: now_ts,
+                    });
                 }
-                UserActivity::Impression { user_id, item_id, .. } => {
+                UserActivity::Impression { user_id, item_id, scenario_slug, .. } => {
                     user_ids.push(*user_id);
                     item_ids.push(*item_id);
                     types.push("impression".to_string());
                     ratings.push(None);
                     durations.push(None);
                     processed_indices.push(i);
+
+                    clickhouse_rows.push(ClickHouseInteraction {
+                        user_id: *user_id,
+                        item_id: *item_id,
+                        interaction_type: "impression".to_string(),
+                        scenario_slug: scenario_slug.clone().unwrap_or_else(|| "unknown".to_string()),
+                        rating: 0.0,
+                        watch_duration_seconds: 0,
+                        created_at: now_ts,
+                    });
                 }
                 // Handle complex types individually
                 UserActivity::ProfileUpdate { user_id, update_type, data, .. } => {
@@ -175,7 +236,7 @@ impl ActivityProcessor {
             }
         }
 
-        // Batch insert interactions
+        // Batch insert interactions into Postgres
         if !user_ids.is_empty() {
             if let Err(e) = self.interaction_repo.create_interactions_batch(
                 user_ids.clone(), item_ids, types, ratings, durations
@@ -187,6 +248,24 @@ impl ActivityProcessor {
             let unique_users: std::collections::HashSet<i32> = user_ids.into_iter().collect();
             for uid in unique_users {
                 let _ = self.interaction_repo.update_arrival_pattern(uid).await;
+            }
+        }
+
+        // Batch insert into ClickHouse (The OLAP Path)
+        if !clickhouse_rows.is_empty() {
+            if let Some(ref ch) = self.clickhouse {
+                let mut inserter = ch.insert::<ClickHouseInteraction>("user_interactions").await
+                    .map_err(|e| anyhow::anyhow!("ClickHouse insert preparation failed: {}", e))?;
+
+                for row in clickhouse_rows {
+                    inserter.write(&row).await
+                        .map_err(|e| anyhow::anyhow!("ClickHouse write failed: {}", e))?;
+                }
+
+                inserter.end().await
+                    .map_err(|e| anyhow::anyhow!("ClickHouse commit failed: {}", e))?;
+
+                debug!(count = buffer.len(), "Batch inserted into ClickHouse");
             }
         }
 

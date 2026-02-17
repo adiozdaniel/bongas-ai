@@ -18,6 +18,10 @@ pub struct ScenarioConfig {
     // JSONB pipeline definition
     pub pipeline: JsonValue,
 
+    // Governance & Scoping (Phase 10)
+    pub initial_display_limit: i32,
+    pub scope: JsonValue,
+
     // Caching
     pub cache_ttl_seconds: Option<i32>,
     pub use_l2_cache: bool,

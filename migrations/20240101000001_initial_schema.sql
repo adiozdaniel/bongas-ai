@@ -21,6 +21,10 @@ CREATE TABLE scenario_configs (
     -- JSONB pipeline definition (zero hardcoded logic!)
     pipeline JSONB NOT NULL,
 
+    -- Governance & Scoping (Phase 10)
+    initial_display_limit INTEGER DEFAULT 5,
+    scope JSONB DEFAULT '{}'::jsonb, -- {"regions": ["KE"], "content_types": ["video"]}
+
     -- Caching configuration
     cache_ttl_seconds INTEGER DEFAULT 300,
     use_l2_cache BOOLEAN DEFAULT true,
@@ -315,3 +319,16 @@ CREATE TRIGGER update_onnx_sessions_updated_at
     BEFORE UPDATE ON onnx_sessions
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
+
+-- ============================================================================
+-- 9. system_settings (Global Platform Governance)
+-- ============================================================================
+CREATE TABLE system_settings (
+    key VARCHAR(100) PRIMARY KEY,
+    value JSONB NOT NULL,
+    description TEXT,
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+INSERT INTO system_settings (key, value, description) VALUES
+('max_active_scenarios', '20'::jsonb, 'Maximum allowed scenarios with enabled=true');

@@ -141,6 +141,7 @@ impl IngestionManager {
             self.resilient_pool.clone(),
             self.metrics_collector.clone(),
             self.staleness_engine.clone(),
+            self.clickhouse_client.clone(),
         ));
 
         self.handles.push(tokio::spawn(async move {
@@ -165,6 +166,7 @@ impl IngestionManager {
         metrics_collector: Arc<ResilienceMetricsCollector>,
         staleness_engine: Arc<StalenessEngine>,
         circuit_breaker_registry: Arc<CircuitBreakerRegistry>,
+        clickhouse_client: Option<Arc<clickhouse::Client>>,
     ) -> Result<Self> {
         let (sender, receiver) = mpsc::channel::<UserActivity>(ACTIVITY_CHANNEL_BUFFER);
 
@@ -218,6 +220,7 @@ impl IngestionManager {
             resilient_pool.clone(),
             metrics_collector.clone(),
             staleness_engine.clone(),
+            clickhouse_client.clone(),
         ));
 
         handles.push(tokio::spawn(async move {
@@ -243,7 +246,7 @@ impl IngestionManager {
             handles,
             api_source,
             metrics,
-            clickhouse_client: None,
+            clickhouse_client,
         })
     }
 

@@ -1,5 +1,6 @@
 use anyhow::{Result, Context};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::collections::HashMap;
 use tokio::sync::RwLock;
 use tracing::{info, warn, debug};
@@ -68,6 +69,9 @@ pub struct BongasEngine {
     // Experiments
     pub(crate) experiment_coordinator: Arc<ExperimentCoordinator>,
 
+    // Governance
+    pub(crate) max_active_scenarios: Arc<AtomicUsize>,
+
     // Security
     pub(crate) security_manager: Arc<SecurityManager>,
 
@@ -86,6 +90,8 @@ pub struct ScenarioDefinition {
     pub pipeline: PipelineDefinition,
     pub cache_ttl_seconds: i32,
     pub use_l2_cache: bool,
+    pub initial_display_limit: i32,
+    pub scope: serde_json::Value,
     pub linked_pipeline: Option<Arc<ExecutablePipeline>>,
 }
 
@@ -254,6 +260,13 @@ impl BongasEngine {
         // Create experiment coordinator
         let experiment_coordinator = Arc::new(ExperimentCoordinator::new(config.experiments.clone()));
 
+        // Governance: Load max active scenarios from settings
+        let max_scenarios_val: i32 = sqlx::query_scalar("SELECT (value->>0)::int FROM system_settings WHERE key = 'max_active_scenarios'")
+            .fetch_one(&db_pool)
+            .await
+            .unwrap_or(20);
+        let max_active_scenarios = Arc::new(AtomicUsize::new(max_scenarios_val as usize));
+
         let engine = Arc::new(Self {
             config: config.clone(),
             scenarios: Arc::new(RwLock::new(HashMap::new())),
@@ -272,6 +285,7 @@ impl BongasEngine {
             ingestion_manager: Arc::new(RwLock::new(ingestion_manager)),
             ingestion_metrics,
             experiment_coordinator,
+            max_active_scenarios,
             security_manager,
             circuit_breaker_registry,
             cache_manager,
@@ -360,6 +374,30 @@ impl BongasEngine {
         info!("Reloading scenarios from database...");
 
         let mut new_scenarios = self.scenario_factory.load_all_from_db().await?;
+        let max_cap = self.max_active_scenarios.load(Ordering::SeqCst);
+
+        // Enforce Cap: If more scenarios are enabled than the limit, prioritize by priority field
+        if new_scenarios.len() > max_cap {
+            warn!(
+                count = new_scenarios.len(),
+                limit = max_cap,
+                "Maximum active scenarios exceeded! Pruning based on priority..."
+            );
+            
+            let mut sorted_scenarios: Vec<_> = new_scenarios.values().collect();
+            // Higher priority first
+            sorted_scenarios.sort_by(|a, b| b.pipeline.stages.len().cmp(&a.pipeline.stages.len())); // Simplified priority for now
+            
+            let keys_to_remove: Vec<String> = new_scenarios.keys()
+                .filter(|k| !sorted_scenarios.iter().take(max_cap).any(|s| &s.slug == *k))
+                .cloned()
+                .collect();
+
+            for key in keys_to_remove {
+                new_scenarios.remove(&key);
+            }
+        }
+
         let mut linked_map = HashMap::new();
 
         for scenario in new_scenarios.values_mut() {
@@ -480,6 +518,18 @@ impl BongasEngine {
                 .cloned()
                 .ok_or_else(|| anyhow::anyhow!("Scenario '{}' not found", scenario_slug))?
         };
+
+        // 2. Enforce Scope (Phase 10)
+        // Check if user's region/context matches scenario scope
+        if let Some(scope_obj) = scenario.scope.as_object() {
+            if let Some(allowed_regions) = scope_obj.get("regions").and_then(|v| v.as_array()) {
+                let user_region = context_params.get("region").and_then(|v| v.as_str()).unwrap_or("UNKNOWN");
+                if !allowed_regions.iter().any(|r| r.as_str() == Some(user_region)) {
+                    warn!(scenario = %scenario_slug, user_region, "Scenario scope mismatch: Region not allowed");
+                    return Err(anyhow::anyhow!("Scenario not available in your region"));
+                }
+            }
+        }
 
         let uses_onnx = scenario.pipeline.stages.iter()
             .any(|stage| stage.r#type.starts_with("onnx_"));
@@ -621,6 +671,43 @@ impl BongasEngine {
     /// List loaded scenario slugs
     pub async fn list_scenarios(&self) -> Vec<String> {
         self.scenarios.read().await.keys().cloned().collect()
+    }
+
+    /// Identify low-performing scenarios based on Click-Through Rate (CTR) from ClickHouse.
+    /// Returns the bottom 3 scenario slugs.
+    pub async fn get_low_performing_scenarios(&self) -> Vec<String> {
+        if let Some(ref ch) = self.clickhouse {
+            info!("Querying ClickHouse for scenario performance...");
+            
+            // Query CTR per scenario in the last 7 days from the OLAP path
+            // CTR = clicks / impressions
+            // We use the new user_interactions table we are now ingesting into.
+            let query = r#"
+                SELECT 
+                    scenario_slug,
+                    countIf(interaction_type = 'click') / GREATEST(countIf(interaction_type = 'impression'), 1) as ctr
+                FROM user_interactions
+                WHERE created_at >= (now() - INTERVAL 7 DAY)
+                  AND scenario_slug != 'unknown'
+                GROUP BY scenario_slug
+                HAVING countIf(interaction_type = 'impression') > 100
+                ORDER BY ctr ASC
+                LIMIT 3
+            "#;
+
+            match ch.query(query).fetch_all::<(String, f64)>().await {
+                Ok(results) => {
+                    results.into_iter().map(|(slug, _)| slug).collect()
+                }
+                Err(e) => {
+                    warn!(error = %e, "Failed to fetch scenario CTR from ClickHouse user_interactions table");
+                    Vec::new()
+                }
+            }
+        } else {
+            warn!("ClickHouse not available for performance pruning");
+            Vec::new()
+        }
     }
 
     /// Start cache warming background task
