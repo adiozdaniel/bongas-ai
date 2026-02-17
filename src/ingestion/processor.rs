@@ -272,11 +272,20 @@ impl ActivityProcessor {
         // Update staleness engine for all events
         for activity in buffer.iter() {
             let event = match activity {
-                UserActivity::Playback { user_id, item_id, watch_percentage, .. } => Some(UserEvent::WatchEvent {
-                    user_id: *user_id,
-                    item_id: *item_id,
-                    completion_rate: *watch_percentage,
-                }),
+                UserActivity::Playback { user_id, item_id, watch_percentage, watch_duration_seconds, .. } => {
+                    if *watch_duration_seconds < 5 {
+                        Some(UserEvent::NegativeSignal {
+                            user_id: *user_id,
+                            item_id: *item_id,
+                        })
+                    } else {
+                        Some(UserEvent::WatchEvent {
+                            user_id: *user_id,
+                            item_id: *item_id,
+                            completion_rate: *watch_percentage,
+                        })
+                    }
+                },
                 UserActivity::Reaction { user_id, item_id, reaction_type, .. } => {
                     let rating = match reaction_type.as_str() {
                         "like" => 5.0,

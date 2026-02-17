@@ -37,6 +37,12 @@ pub enum UserEvent {
         genre: String,
     },
 
+    /// User explicitly skipped content (negative signal)
+    NegativeSignal {
+        user_id: i32,
+        item_id: i32,
+    },
+
     /// Hourly tick for time-based invalidation
     HourlyTick,
 }
@@ -123,6 +129,9 @@ impl StalenessEngine {
             }
             UserEvent::NewContentInGenre { genre } => {
                 self.handle_new_content(genre).await?;
+            }
+            UserEvent::NegativeSignal { user_id, item_id } => {
+                self.handle_negative_signal(*user_id, *item_id).await?;
             }
             UserEvent::HourlyTick => {
                 self.handle_hourly_tick().await?;
@@ -224,6 +233,26 @@ impl StalenessEngine {
 
         // Genre-based invalidation is handled by background workers
         // or by marking trending scenarios as stale globally
+        Ok(())
+    }
+
+    async fn handle_negative_signal(
+        &self,
+        user_id: i32,
+        item_id: i32,
+    ) -> Result<()> {
+        info!(user_id, item_id, "Processing negative signal (Skip)");
+        
+        // 1. Invalidate caches immediately
+        self.staging_manager.invalidate("supreme_ranker", user_id).await?;
+        self.staging_manager.invalidate("for_you_personalized", user_id).await?;
+
+        // 2. Record penalty (Genre Burn)
+        // Note: In a production environment, we'd fetch the genre from the item repository.
+        // For this phase, we'll implement a placeholder genre extraction.
+        let genres = vec!["unknown".to_string()]; // Placeholder: Logic to fetch genres from DB goes here
+        self.staging_manager.record_negative_signal(user_id, genres).await?;
+
         Ok(())
     }
 

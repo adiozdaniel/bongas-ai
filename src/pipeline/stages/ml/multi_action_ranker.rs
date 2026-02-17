@@ -106,8 +106,9 @@ impl PipelineStage for MultiActionRankerStage {
             all_action_probs.extend(chunk_probs);
         }
 
-        // 5. Compute Weighted Scores (Grok-style)
+        // 5. Compute Weighted Scores (Grok-style) + Skip Burner (Phase 11)
         let mut scored_results: Vec<ScoredItem> = Vec::with_capacity(input.len());
+        let genre_penalties = context.cache_manager.get::<HashMap<String, f32>>(&format!("penalties:{}", user_id)).await?.unwrap_or_default();
         
         for (i, item) in input.iter().enumerate() {
             let action_probs = &all_action_probs[i];
@@ -119,6 +120,18 @@ impl PipelineStage for MultiActionRankerStage {
                     let weight = params.engagement_weights.get(engagement_type).cloned().unwrap_or(0.0);
                     final_score += prob * weight;
                     debug_info.insert(engagement_type.clone(), *prob);
+                }
+            }
+
+            // Apply Skip Burner Penalty
+            if let Some(genres) = item.metadata.get("genres").and_then(|v| v.as_array()) {
+                for genre in genres {
+                    if let Some(g_str) = genre.as_str() {
+                        if let Some(penalty) = genre_penalties.get(g_str) {
+                            final_score *= penalty;
+                            debug_info.insert(format!("penalty_{}", g_str), *penalty);
+                        }
+                    }
                 }
             }
 
