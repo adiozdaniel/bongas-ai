@@ -484,7 +484,7 @@ impl BongasEngine {
         user_id: Option<i32>,
         context_params: serde_json::Value,
     ) -> Result<Vec<RecommendationItem>> {
-        let (items, _) = self.execute_scenario_with_stats(scenario_slug, user_id, context_params).await?;
+        let (items, _) = self.execute_scenario_with_stats(scenario_slug, user_id, context_params, None).await?;
         Ok(items)
     }
 
@@ -494,6 +494,7 @@ impl BongasEngine {
         scenario_slug: &str,
         user_id: Option<i32>,
         context_params: serde_json::Value,
+        limit: Option<usize>,
     ) -> Result<(Vec<RecommendationItem>, ScenarioExecutionStats)> {
         let start_time = std::time::Instant::now();
 
@@ -632,7 +633,12 @@ impl BongasEngine {
             "Scenario executed"
         );
 
-        Ok((Self::convert_to_recommendation_items(scored_items), stats))
+        let mut final_scored_items = scored_items;
+        if let Some(l) = limit {
+            final_scored_items.truncate(l);
+        }
+
+        Ok((Self::convert_to_recommendation_items(final_scored_items), stats))
     }
 
     /// Handle user event and trigger cache invalidation
