@@ -29,6 +29,11 @@ playback_topic = "playback.events"
 license_key = ""
 license_server_url = "https://license.example.com"
 hardware_id_salt = ""
+api_key_mobile = "example.AQCgwMoKSL74XErUhGRRcEPmpHUgNjOi"
+api_key_web = "example.AQB6yIpbUufNPdoXj5ZTHtuSBC+Gr9m6Rx6"
+api_key_tv = "example.AQBc6/fsiuXinBvMRLlY9UV1dcouxgQCSLt5"
+api_key_system = "example.AQC5DashChLVmDh2a4aEOE5y9b2BxuQU"
+jwt_secret_key = "example.AQAnudV+IfZzOHjN2tBJ3FCyoEXxOnIZ"
 
 [spring_cloud]
 enabled = false

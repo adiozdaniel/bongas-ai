@@ -20,6 +20,13 @@ pub struct SecurityConfig {
     pub binary_protection_enabled: bool,
     pub license_validation_interval: u64,
 
+    // Platform Keys (Phase 11)
+    pub mobile_api_key: String,
+    pub web_api_key: String,
+    pub tv_api_key: String,
+    pub system_api_key: String,
+    pub jwt_secret_key: String,
+
     // Per-layer circuit breaker configuration
     pub circuit_breaker_enabled: bool,
     pub license_server_failure_rate: f64,
@@ -60,6 +67,13 @@ impl Default for SecurityConfig {
             anti_debug_enabled: true,
             binary_protection_enabled: true,
             license_validation_interval: 3600,
+
+            // Platform Keys
+            mobile_api_key: "".to_string(),
+            web_api_key: "".to_string(),
+            tv_api_key: "".to_string(),
+            system_api_key: "".to_string(),
+            jwt_secret_key: "".to_string(),
 
             // Per-layer circuit breaker configuration
             circuit_breaker_enabled: true,

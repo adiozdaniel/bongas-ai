@@ -43,6 +43,7 @@ pub fn build_stage_registry() -> HashMap<String, Arc<dyn PipelineStage>> {
     registry.insert("filter_by_subscription_tier".into(), Arc::new(stages::filter::FilterBySubscriptionTierStage));
     registry.insert("filter_explicit_content".into(), Arc::new(stages::filter::FilterExplicitContentStage));
     registry.insert("filter_by_quality".into(), Arc::new(stages::filter::FilterByQualityStage));
+    registry.insert("maturity_filter".into(), Arc::new(stages::filter::MaturityFilterStage));
 
     // Category 4: Boosting/Scoring (10 stages)
     registry.insert("boost_by_recency".into(), Arc::new(stages::boost::BoostByRecencyStage));

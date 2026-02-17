@@ -10,6 +10,7 @@ mod filter_by_availability;
 mod filter_by_subscription_tier;
 mod filter_explicit_content;
 mod filter_by_quality;
+mod maturity_filter;
 
 pub use filter_already_watched::FilterAlreadyWatchedStage;
 pub use filter_by_genre::FilterByGenreStage;
@@ -23,3 +24,4 @@ pub use filter_by_availability::FilterByAvailabilityStage;
 pub use filter_by_subscription_tier::FilterBySubscriptionTierStage;
 pub use filter_explicit_content::FilterExplicitContentStage;
 pub use filter_by_quality::FilterByQualityStage;
+pub use maturity_filter::MaturityFilterStage;

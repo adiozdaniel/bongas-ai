@@ -289,6 +289,21 @@ use std::time::Duration;
           if let Some(v) = config_map.get("security.hardware_id_salt") {
               security.hardware_id_salt = v.clone();
           }
+          if let Some(v) = config_map.get("security.api_key_mobile") {
+              security.mobile_api_key = v.clone();
+          }
+          if let Some(v) = config_map.get("security.api_key_web") {
+              security.web_api_key = v.clone();
+          }
+          if let Some(v) = config_map.get("security.api_key_tv") {
+              security.tv_api_key = v.clone();
+          }
+          if let Some(v) = config_map.get("security.api_key_system") {
+              security.system_api_key = v.clone();
+          }
+          if let Some(v) = config_map.get("security.jwt_secret_key") {
+              security.jwt_secret_key = v.clone();
+          }
           if let Some(v) = config_map.get("security.anti_debug_enabled").and_then(|s| s.parse().ok()) {
               security.anti_debug_enabled = v;
           }

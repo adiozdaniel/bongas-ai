@@ -22,6 +22,7 @@ use crate::middlewares::{
     rate_limit::{RateLimiter, RateLimitResult},
     resilience::ResilienceMiddleware,
     bulkhead::BulkheadMiddleware,
+    platform_security::platform_security_middleware,
 };
 use crate::config::{CompressionConfig, CorsConfig};
 use crate::circuit_breaker::CircuitBreakerRegistry;
@@ -49,6 +50,9 @@ pub fn apply_middleware(
     router
         // 1. Unified error handling (outermost — catches all errors)
         .layer(from_fn(unified_error_middleware))
+
+        // 1.1 Platform Security (Checks X-Platform headers)
+        .layer(from_fn(platform_security_middleware))
 
         // 2. Resilience middleware (circuit breaker)
         .layer(from_fn(move |req: Request<Body>, next: Next| {

@@ -2,6 +2,7 @@
   pub mod error_handling;
   pub mod metrics;
   pub mod unified_error;
+  pub mod platform_security;
 
   // Netflix-grade resilience middleware
   pub mod resilience;

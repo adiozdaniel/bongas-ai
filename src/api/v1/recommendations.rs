@@ -4,19 +4,21 @@ use axum::{
     extract::{Path, Extension},
     routing::get,
     Json, Router,
+    response::sse::{Event, Sse},
 };
+use futures::stream::{self, Stream};
+use std::convert::Infallible;
 use std::sync::Arc;
 use tracing::info;
 
 use crate::engine::BongasEngine;
 use crate::api::models::{StandardResponse, RecommendationItem};
-use crate::api::models::recommendation::{HomeFeedResponse, FeedRow};
+use crate::api::models::recommendation::FeedRow;
 use crate::error::AppError;
 use crate::ingestion::types::UserActivity;
 
 /// Mount all recommendation routes.
 pub fn routes() -> Router {
-// ... (rest of routes)
     Router::new()
         .route("/home/:user_id", get(get_home_recommendations))
         .route("/continue-watching/:user_id", get(get_continue_watching))
@@ -86,9 +88,9 @@ async fn execute_and_map(
         }).collect();
 
         // Ingest activities asynchronously
-        let engine_clone = engine_ref.ingestion_manager.clone();
+        let engine_clone_for_ingestion = engine_ref.ingestion_manager.clone();
         tokio::spawn(async move {
-            let manager = engine_clone.read().await;
+            let manager = engine_clone_for_ingestion.read().await;
             let api_source = manager.api_source();
             for act in activities {
                 let _ = api_source.ingest(act).await;
@@ -96,27 +98,26 @@ async fn execute_and_map(
         });
 
         // ─── Ecosystem Synergy (Phase 14) ──────────────────────────────────
-        let engine_clone = engine.clone();
+        let engine_clone_for_synergy = engine.clone();
         let uid = uid;
         let slug = scenario_slug.to_string();
         let item_ids: Vec<i32> = final_items.iter().map(|i| i.item_id).collect();
         
         tokio::spawn(async move {
-            let manager = engine_clone.ingestion_manager.read().await;
+            let manager = engine_clone_for_synergy.ingestion_manager.read().await;
             manager.broadcast_recommendations(uid, slug, item_ids).await;
         });
     }
 
     // 3. ─── Background Pre-Warming (Phase 12) ───────────────────────────
     if offset == 0 {
-        let engine_clone = engine.clone();
+        let engine_clone_for_warming = engine.clone();
         let slug = scenario_slug.to_string();
         let ctx = context.clone();
         
         tokio::spawn(async move {
             // We force a refresh of the cache by executing the scenario with a larger internal limit (None)
-            // Note: The execute_scenario logic already handles saving to StagingManager.
-            let _ = engine_clone.execute_scenario_with_stats(&slug, user_id, ctx, None).await;
+            let _ = engine_clone_for_warming.execute_scenario_with_stats(&slug, user_id, ctx, None).await;
         });
     }
 
@@ -128,54 +129,60 @@ async fn execute_and_map(
 async fn get_home_recommendations(
     Path(user_id): Path<i32>,
     Extension(engine): Extension<Arc<BongasEngine>>,
-) -> Result<Json<StandardResponse<HomeFeedResponse>>, AppError> {
-    // Concurrently fetch multiple scenarios for the home feed
-    let (continue_watching, supreme_ranker, trending) = tokio::join!(
-        execute_and_map(engine.clone(), "continue_watching", Some(user_id), serde_json::json!({}), 0, 10),
-        execute_and_map(engine.clone(), "supreme_ranker", Some(user_id), serde_json::json!({}), 0, 20),
-        execute_and_map(engine.clone(), "trending_now", None, serde_json::json!({}), 0, 20),
+) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
+    let engine_clone = engine.clone();
+
+    let stream = stream::unfold(
+        vec!["continue_watching", "supreme_ranker", "trending_now"],
+        move |mut slugs| {
+            let engine = engine_clone.clone();
+            async move {
+                if slugs.is_empty() {
+                    return None;
+                }
+                let slug = slugs.remove(0);
+                
+                // Execute scenario
+                let items_res = execute_and_map(
+                    engine,
+                    slug,
+                    Some(user_id),
+                    serde_json::json!({}),
+                    0,
+                    20,
+                ).await;
+
+                if let Ok(items) = items_res {
+                    if items.is_empty() && slug == "continue_watching" {
+                        // Return empty row for Continue Watching instead of skip to keep client logic simple
+                        // or just return the next row.
+                        // Let's recurse or just return an empty row.
+                    }
+
+                    let row = FeedRow {
+                        title: match slug {
+                            "continue_watching" => "Continue Watching".to_string(),
+                            "supreme_ranker" => "Picked For You".to_string(),
+                            _ => "Trending Now".to_string(),
+                        },
+                        row_type: "horizontal_list".to_string(),
+                        scenario: slug.to_string(),
+                        items,
+                    };
+
+                    let event = Event::default()
+                        .json_data(&row)
+                        .unwrap_or_else(|_| Event::default().comment("error"));
+                    
+                    Some((Ok(event), slugs))
+                } else {
+                    Some((Ok(Event::default().comment("error")), slugs))
+                }
+            }
+        },
     );
 
-    let mut rows = Vec::new();
-
-    // 1. Continue Watching (if items exist)
-    if let Ok(items) = continue_watching {
-        if !items.is_empty() {
-            rows.push(FeedRow {
-                title: "Continue Watching".to_string(),
-                row_type: "horizontal_list".to_string(),
-                scenario: "continue_watching".to_string(),
-                items,
-            });
-        }
-    }
-
-    // 2. Supreme Ranker (Grok-style personalized feed)
-    if let Ok(items) = supreme_ranker {
-        rows.push(FeedRow {
-            title: "Picked For You".to_string(),
-            row_type: "horizontal_list".to_string(),
-            scenario: "supreme_ranker".to_string(),
-            items,
-        });
-    }
-
-    // 3. Trending Now
-    if let Ok(items) = trending {
-        rows.push(FeedRow {
-            title: "Trending Now".to_string(),
-            row_type: "horizontal_list".to_string(),
-            scenario: "trending_now".to_string(),
-            items,
-        });
-    }
-
-    info!(user_id, row_count = rows.len(), "Master Home Feed assembled");
-    
-    Ok(Json(StandardResponse::success(HomeFeedResponse {
-        rows,
-        experiment_id: None,
-    })))
+    Sse::new(stream).keep_alive(axum::response::sse::KeepAlive::default())
 }
 
 async fn get_continue_watching(
