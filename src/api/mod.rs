@@ -9,22 +9,25 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use crate::engine::BongasEngine;
+use crate::config::AppConfig;
 use crate::middlewares::metrics::MetricsCollector;
 use crate::circuit_breaker::CircuitBreakerRegistry;
 
 /// Build the complete API router with routes, shared state, and middleware.
 pub fn create_router(
     engine: Arc<BongasEngine>,
+    config: Arc<AppConfig>,
     redis: Arc<redis::Client>,
     metrics_collector: Arc<MetricsCollector>,
     circuit_breaker_registry: Arc<CircuitBreakerRegistry>,
     start_time: Arc<Instant>,
 ) -> Router {
     let routes = Router::new()
-        .nest("/api/v1", v1::routes())
+        .nest("/api/v1", v1::routes(config.clone()))
         .nest("/health", v1::health::routes())
         // Inject shared state
         .layer(axum::Extension(engine))
+        .layer(axum::Extension(config))
         .layer(axum::Extension(redis))
         .layer(axum::Extension(circuit_breaker_registry.clone()))
         .layer(axum::Extension(metrics_collector))

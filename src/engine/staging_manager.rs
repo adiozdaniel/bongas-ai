@@ -50,15 +50,23 @@ impl StagingManager {
 
         // Try L1 (LRU) and L2 (Redis) via CacheManager
         if let Some(items) = self.cache_manager.get::<Vec<ScoredItem>>(&cache_key).await? {
-            let _duration = start_time.elapsed();
-            info!(cache_key = %cache_key, "Cache hit (L1/L2)");
+            let duration = start_time.elapsed();
+            info!(
+                cache_key = %cache_key,
+                duration_ms = duration.as_millis(),
+                "Cache hit (L1/L2)"
+            );
             return Ok(Some(items));
         }
 
         // Try L3 (PostgreSQL)
         if let Some(items) = self.get_from_l3(&cache_key).await? {
-            let _duration = start_time.elapsed();
-            info!(cache_key = %cache_key, "L3 cache hit (PostgreSQL)");
+            let duration = start_time.elapsed();
+            info!(
+                cache_key = %cache_key,
+                duration_ms = duration.as_millis(),
+                "L3 cache hit (PostgreSQL)"
+            );
 
             // Promote to L1/L2
             let _ = self.cache_manager.set(&cache_key, &items).await;
@@ -66,8 +74,12 @@ impl StagingManager {
             return Ok(Some(items));
         }
 
-        let _duration = start_time.elapsed();
-        debug!(cache_key = %cache_key, "Cache miss");
+        let duration = start_time.elapsed();
+        debug!(
+            cache_key = %cache_key,
+            duration_ms = duration.as_millis(),
+            "Cache miss"
+        );
         Ok(None)
     }
 
@@ -155,12 +167,13 @@ impl StagingManager {
         // Invalidate L3 (PostgreSQL)
         let rows_affected = self.cache_repo.mark_stale(user_id, Some(scenario_slug), "invalidate").await?;
 
-        let _duration = start_time.elapsed();
+        let duration = start_time.elapsed();
 
         info!(
             scenario_slug = scenario_slug,
             user_id = user_id,
             rows_affected = rows_affected,
+            duration_ms = duration.as_millis(),
             "Invalidated all cache tiers"
         );
 

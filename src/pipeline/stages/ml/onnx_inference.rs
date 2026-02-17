@@ -51,8 +51,18 @@ impl PipelineStage for ONNXInferenceStage {
         params: &JsonValue,
         input: Vec<ScoredItem>,
     ) -> Result<Vec<ScoredItem>> {
-        let params: Params = serde_json::from_value(params.clone())
+        let mut params: Params = serde_json::from_value(params.clone())
             .context("Failed to parse onnx_inference params")?;
+
+        // Apply Experiment Overrides
+        if let Some(over_model) = context.experiment_overrides.get("model_name").and_then(|v| v.as_str()) {
+            debug!(request_id = %context.request_id, old = %params.model_name, new = %over_model, "Experiment override: model_name");
+            params.model_name = over_model.to_string();
+        }
+        if let Some(over_top_k) = context.experiment_overrides.get("top_k").and_then(|v| v.as_u64()) {
+            debug!(request_id = %context.request_id, old = %params.top_k, new = %over_top_k, "Experiment override: top_k");
+            params.top_k = over_top_k as usize;
+        }
 
         let user_id = context.user_id
             .ok_or_else(|| anyhow::anyhow!("user_id required for ONNX inference"))?;

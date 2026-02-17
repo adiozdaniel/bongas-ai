@@ -441,6 +441,16 @@ use std::time::Duration;
               pipeline.analytics_per_stage = v;
           }
 
+          // Parse Experiments configuration
+          let experiments = super::types::experiments::ExperimentsConfig {
+              enabled: config_map.get("experiments.enabled")
+                  .and_then(|s| s.parse().ok())
+                  .unwrap_or(false),
+              assignment_method: config_map.get("experiments.assignment_method")
+                  .cloned()
+                  .unwrap_or_else(|| "random".to_string()),
+          };
+
           // Circuit breaker, error, and analytics configs use defaults
           // These are configured in code, not in TOML
           let circuit_breaker = CircuitBreakerConfig::default();
@@ -476,6 +486,7 @@ use std::time::Duration;
               analytics,
               observability,
               resilience,
+              experiments,
           ))
       }
 

@@ -7,6 +7,7 @@
 //! - Performance analytics for per-stage metrics
 //! - Pipeline resilience configuration
 
+use std::collections::HashMap;
 use std::sync::Arc;
 use crate::analytics::types::PerformanceStats;
 use crate::cache::{CacheManager, HotRegistry};
@@ -48,6 +49,9 @@ pub struct ExecutionContext {
     // ── Analytics ───────────────────────────────────────────────────────
     pub analytics: Option<Arc<PerformanceStats>>,
 
+    // ── Experiments ─────────────────────────────────────────────────────
+    pub experiment_overrides: HashMap<String, serde_json::Value>,
+
     // ── Pipeline config ─────────────────────────────────────────────────
     pub pipeline_config: Arc<PipelineConfig>,
 }
@@ -86,6 +90,7 @@ impl ExecutionContext {
             feature_store,
             embedding_manager: None,
             analytics: None,
+            experiment_overrides: HashMap::new(),
             pipeline_config: Arc::new(PipelineConfig::default()),
         }
     }
@@ -180,6 +185,11 @@ impl ExecutionContext {
 
     pub fn with_analytics(mut self, analytics: Arc<PerformanceStats>) -> Self {
         self.analytics = Some(analytics);
+        self
+    }
+
+    pub fn with_experiment_overrides(mut self, overrides: HashMap<String, serde_json::Value>) -> Self {
+        self.experiment_overrides = overrides;
         self
     }
 

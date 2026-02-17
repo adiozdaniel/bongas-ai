@@ -59,3 +59,7 @@ warm_scenarios = [
 
 [logging]
 level = "info"
+
+[experiments]
+enabled = false
+assignment_method = "random"

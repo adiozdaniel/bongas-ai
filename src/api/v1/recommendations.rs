@@ -1,7 +1,7 @@
 //! Recommendation endpoints and handlers.
 
 use axum::{
-    extract::{Path, Query, Extension},
+    extract::{Path, Extension},
     routing::get,
     Json, Router,
 };
@@ -9,7 +9,8 @@ use std::sync::Arc;
 use tracing::info;
 
 use crate::engine::BongasEngine;
-use crate::api::models::{StandardResponse, RecommendationItem, PaginationParams};
+use crate::api::models::{StandardResponse, RecommendationItem};
+use crate::api::models::recommendation::{HomeFeedResponse, FeedRow};
 use crate::error::AppError;
 
 /// Mount all recommendation routes.
@@ -62,10 +63,6 @@ async fn execute_and_map(
 }
 
 // ─── Handlers ───────────────────────────────────────────────────────────────
-
-use crate::api::models::{StandardResponse, RecommendationItem, PaginationParams, HomeFeedResponse, FeedRow};
-
-// ... (other handlers)
 
 async fn get_home_recommendations(
     Path(user_id): Path<i32>,

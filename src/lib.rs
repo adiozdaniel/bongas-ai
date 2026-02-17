@@ -38,6 +38,7 @@ pub mod ml;
 pub mod engine;
 pub mod scenarios;
 pub mod pipeline;
+pub mod experiments;
 
 // API and infrastructure
 pub mod api;
@@ -48,7 +49,7 @@ pub use config::{ConfigLoader, AppConfig};
 pub use config::{
     ServerConfig, DatabaseConfig, RedisConfig, ClickHouseConfig,
     IngestionConfig, SecurityConfig, MlConfig,
-    PipelineConfig, AnalyticsConfig,
+    PipelineConfig, AnalyticsConfig, ExperimentsConfig,
 };
 
 // Resilience types

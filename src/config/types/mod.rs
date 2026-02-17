@@ -19,6 +19,7 @@ pub mod pipeline;
 pub mod ingestion;
 pub mod observability;
 pub mod resilience;
+pub mod experiments;
 
 // Re-export commonly used types
 pub use app::AppConfig;
@@ -36,3 +37,4 @@ pub use pipeline::PipelineConfig;
 pub use ingestion::{IngestionConfig, ApiSourceConfig, ClickHouseSourceConfig};
 pub use observability::ObservabilityConfig;
 pub use resilience::ResilienceConfig;
+pub use experiments::ExperimentsConfig;

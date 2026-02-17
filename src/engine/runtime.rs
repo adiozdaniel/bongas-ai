@@ -88,6 +88,7 @@ impl BongasRuntime {
 
         let router = create_router(
             self.engine.clone(),
+            self.config.clone(),
             redis_client,
             self.metrics_collector.clone(),
             self.circuit_breaker_registry.clone(),

@@ -25,6 +25,7 @@ use crate::db::repositories::item_feature_service::ItemFeatureService;
 use crate::security::SecurityManager;
 use crate::middlewares::MetricsCollector;
 use crate::analytics::types::PerformanceStats;
+use crate::experiments::ExperimentCoordinator;
 
 use super::staging_manager::StagingManager;
 use super::staleness_engine::{StalenessEngine, UserEvent};
@@ -63,6 +64,9 @@ pub struct BongasEngine {
     // Ingestion
     pub(crate) ingestion_manager: Arc<RwLock<IngestionManager>>,
     pub(crate) ingestion_metrics: Arc<IngestionMetrics>,
+
+    // Experiments
+    pub(crate) experiment_coordinator: Arc<ExperimentCoordinator>,
 
     // Security
     pub(crate) security_manager: Arc<SecurityManager>,
@@ -247,6 +251,9 @@ impl BongasEngine {
             None, // Analytics wired separately when PerformanceStats is available
         ));
 
+        // Create experiment coordinator
+        let experiment_coordinator = Arc::new(ExperimentCoordinator::new(config.experiments.clone()));
+
         let engine = Arc::new(Self {
             config: config.clone(),
             scenarios: Arc::new(RwLock::new(HashMap::new())),
@@ -264,6 +271,7 @@ impl BongasEngine {
             clickhouse,
             ingestion_manager: Arc::new(RwLock::new(ingestion_manager)),
             ingestion_metrics,
+            experiment_coordinator,
             security_manager,
             circuit_breaker_registry,
             cache_manager,
@@ -312,9 +320,14 @@ impl BongasEngine {
     /// Start activity ingestion from all configured sources
     pub async fn start_ingestion(
         self: &Arc<Self>,
-        _config: &crate::config::IngestionConfig,
+        config: &crate::config::IngestionConfig,
     ) -> Result<()> {
-        info!("Starting activity ingestion...");
+        info!(
+            kafka_enabled = config.kafka.enabled,
+            api_enabled = config.api.enabled,
+            clickhouse_enabled = config.clickhouse.enabled,
+            "Starting activity ingestion..."
+        );
 
         let mut manager = self.ingestion_manager.write().await;
         manager.start().await?;
@@ -433,7 +446,7 @@ impl BongasEngine {
         user_id: Option<i32>,
         context_params: serde_json::Value,
     ) -> Result<Vec<RecommendationItem>> {
-        let (items, _stats) = self.execute_scenario_with_stats(scenario_slug, user_id, context_params).await?;
+        let (items, _) = self.execute_scenario_with_stats(scenario_slug, user_id, context_params).await?;
         Ok(items)
     }
 
@@ -445,6 +458,18 @@ impl BongasEngine {
         context_params: serde_json::Value,
     ) -> Result<(Vec<RecommendationItem>, ScenarioExecutionStats)> {
         let start_time = std::time::Instant::now();
+
+        // 1. Check for A/B Testing Experiments
+        let mut experiment_overrides = HashMap::new();
+        let mut _assignments = Vec::new();
+        
+        if self.config.experiments.enabled {
+            if let Some(uid) = user_id {
+                let (assigned, overrides) = self.experiment_coordinator.assign(scenario_slug, uid);
+                _assignments = assigned;
+                experiment_overrides = overrides;
+            }
+        }
 
         // Check for linked scenario first (Fast Path)
         let linked_pipeline = self.linked_scenarios.load().get(scenario_slug).cloned();
@@ -503,6 +528,7 @@ impl BongasEngine {
         )
         .with_hot_registry(self.hot_registry.clone())
         .with_analytics(self.performance_stats.clone())
+        .with_experiment_overrides(experiment_overrides)
         .with_device_type(
             context_params.get("device_type")
                 .and_then(|v| v.as_str())
