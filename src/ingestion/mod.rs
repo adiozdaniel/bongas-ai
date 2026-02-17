@@ -13,6 +13,7 @@ pub mod types;
 pub mod processor;
 pub mod sources;
 pub mod metrics;
+pub mod producer;
 
 use anyhow::Result;
 use std::sync::Arc;
@@ -29,6 +30,7 @@ use self::types::{ActivitySource, UserActivity};
 use self::processor::ActivityProcessor;
 use self::metrics::{IngestionMetrics, IngestionHealth};
 use self::sources::{KafkaSource, ApiSource, ClickHouseSource};
+use self::producer::RecommendationProducer;
 
 
 /// Channel buffer size for the activity pipeline.
@@ -49,6 +51,7 @@ pub struct IngestionManager {
     api_source: Arc<ApiSource>,
     metrics: Arc<IngestionMetrics>,
     clickhouse_client: Option<Arc<clickhouse::Client>>,
+    recommendation_producer: Arc<RecommendationProducer>,
 }
 
 impl IngestionManager {
@@ -62,6 +65,8 @@ impl IngestionManager {
         ingestion_metrics: Arc<IngestionMetrics>,
         clickhouse_client: Option<Arc<clickhouse::Client>>,
     ) -> Self {
+        let recommendation_producer = Arc::new(RecommendationProducer::new(&config.kafka));
+        
         Self {
             config,
             resilient_pool,
@@ -72,6 +77,7 @@ impl IngestionManager {
             api_source: Arc::new(ApiSource::new()),
             metrics: ingestion_metrics,
             clickhouse_client,
+            recommendation_producer,
         }
     }
 
@@ -237,6 +243,8 @@ impl IngestionManager {
             "Ingestion pipeline started"
         );
 
+        let recommendation_producer = Arc::new(RecommendationProducer::new(&config.kafka));
+
         Ok(Self {
             config,
             resilient_pool,
@@ -247,12 +255,18 @@ impl IngestionManager {
             api_source,
             metrics,
             clickhouse_client,
+            recommendation_producer,
         })
     }
 
     /// Get a reference to the API source for handler integration.
     pub fn api_source(&self) -> Arc<ApiSource> {
         self.api_source.clone()
+    }
+
+    /// Broadcast recommendation results to the ecosystem.
+    pub async fn broadcast_recommendations(&self, user_id: i32, scenario: String, item_ids: Vec<i32>) {
+        self.recommendation_producer.broadcast_results(user_id, scenario, item_ids).await;
     }
 
     /// Get aggregated health across all sources.

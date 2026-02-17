@@ -11,7 +11,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::mpsc;
 use tokio::time::Duration;
-use tracing::{info, error, warn};
+use tracing::{info, error, warn, debug};
 
 use crate::circuit_breaker::{CircuitBreakerRegistry, CircuitBreakerId, CircuitBreakerConfig};
 use super::super::types::{ActivitySource, SourceHealth, UserActivity};
@@ -41,12 +41,15 @@ impl From<config_kafka::KafkaConfig> for KafkaSourceConfig {
     }
 }
 
+use rdkafka::producer::{FutureProducer, FutureRecord};
+
 /// Kafka-based activity source.
 pub struct KafkaSource {
     config: KafkaSourceConfig,
     circuit_breaker_registry: Arc<CircuitBreakerRegistry>,
     messages_ingested: AtomicU64,
     errors: AtomicU64,
+    dlq_producer: FutureProducer,
 }
 
 impl KafkaSource {
@@ -54,11 +57,18 @@ impl KafkaSource {
         config: KafkaSourceConfig,
         circuit_breaker_registry: Arc<CircuitBreakerRegistry>,
     ) -> Self {
+        let dlq_producer: FutureProducer = ClientConfig::new()
+            .set("bootstrap.servers", &config.brokers)
+            .set("message.timeout.ms", "5000")
+            .create()
+            .expect("Kafka DLQ producer creation error");
+
         Self {
             config,
             circuit_breaker_registry,
             messages_ingested: AtomicU64::new(0),
             errors: AtomicU64::new(0),
+            dlq_producer,
         }
     }
 
@@ -103,9 +113,7 @@ impl KafkaSource {
             CircuitBreakerConfig::default(),
         );
 
-        info!(topic, "Kafka consumer started");
-
-
+        info!(topic, "Kafka consumer started with DLQ protection");
 
         loop {
             // Check if circuit is open before processing
@@ -119,10 +127,40 @@ impl KafkaSource {
             match tokio::time::timeout(Duration::from_millis(100), consumer.recv()).await {
                 Ok(Ok(message)) => {
                     if let Some(payload) = message.payload() {
-                        if let Some(activity) = parse(payload) {
-                            if sender.send(activity).await.is_ok() {
-                                self.messages_ingested.fetch_add(1, Ordering::Relaxed);
+                        let mut success = false;
+                        let mut attempts = 0;
+                        const MAX_ATTEMPTS: u32 = 3;
+
+                        while !success && attempts < MAX_ATTEMPTS {
+                            attempts += 1;
+                            match parse(payload) {
+                                Some(activity) => {
+                                    if sender.send(activity).await.is_ok() {
+                                        self.messages_ingested.fetch_add(1, Ordering::Relaxed);
+                                        success = true;
+                                    }
+                                }
+                                None => {
+                                    // Parsing failed - retry or DLQ
+                                    if attempts < MAX_ATTEMPTS {
+                                        debug!(topic, attempts, "Parsing failed, retrying...");
+                                        tokio::time::sleep(Duration::from_millis(50)).await;
+                                    }
+                                }
                             }
+                        }
+
+                        if !success {
+                            // POISON MESSAGE DETECTED after retries
+                            self.errors.fetch_add(1, Ordering::Relaxed);
+                            let dlq_topic = format!("{}.dlq", topic);
+                            warn!(topic, dlq_topic, attempts, "Poison message failed after retries, moving to DLQ");
+                            
+                            let record = FutureRecord::to(&dlq_topic)
+                                .payload(payload)
+                                .key("poison");
+                            
+                            let _ = self.dlq_producer.send(record, Duration::from_secs(0)).await;
                         }
                     }
                 }

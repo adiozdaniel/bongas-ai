@@ -94,6 +94,17 @@ async fn execute_and_map(
                 let _ = api_source.ingest(act).await;
             }
         });
+
+        // ─── Ecosystem Synergy (Phase 14) ──────────────────────────────────
+        let engine_clone = engine.clone();
+        let uid = uid;
+        let slug = scenario_slug.to_string();
+        let item_ids: Vec<i32> = final_items.iter().map(|i| i.item_id).collect();
+        
+        tokio::spawn(async move {
+            let manager = engine_clone.ingestion_manager.read().await;
+            manager.broadcast_recommendations(uid, slug, item_ids).await;
+        });
     }
 
     // 3. ─── Background Pre-Warming (Phase 12) ───────────────────────────

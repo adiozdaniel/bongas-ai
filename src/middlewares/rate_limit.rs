@@ -1,115 +1,236 @@
-  //! Netflix-grade rate limiting with circuit breaker protection.
-  //!
-  //! Integrates with CircuitBreakerRegistry for Redis resilience.
+//! Phase 4: "Nuclear" Edge Security (Multi-Tier Limiter)
+//!
+//! Protects the engine from scrapers and DDoS via:
+//! 1. L1 Local Limiter: DashMap-based sub-100ns lookups.
+//! 2. L2 Global Promotion: Redis-based bans for repeat offenders.
+//! 3. Shadow Ban: Misleading 200 OK responses with empty feeds.
 
-  use axum::http::StatusCode;
-  use std::sync::Arc;
-  use tracing::error;
+use axum::http::StatusCode;
+use std::sync::Arc;
+use std::time::{Instant, Duration};
+use dashmap::DashMap;
+use tracing::{warn, error};
+use serde::{Serialize, Deserialize};
 
-  use crate::circuit_breaker::{CircuitBreaker, CircuitBreakerConfig, CircuitBreakerId, CircuitBreakerRegistry};
-  use crate::error::ErrorClassifier;
+use crate::circuit_breaker::{CircuitBreaker, CircuitBreakerConfig, CircuitBreakerId, CircuitBreakerRegistry};
+use crate::error::ErrorClassifier;
 
-  pub struct RateLimiter {
-      redis_breaker: Arc<CircuitBreaker>,
-      redis_client: Arc<redis::Client>,
-      max_requests: u64,
-      window_seconds: u64,
-  }
+const L1_THRESHOLD: u64 = 10; // 10 req/s
+const L1_PENALTY_DURATION: Duration = Duration::from_secs(120); // 2 minutes
+const L2_PROMOTION_THRESHOLD: u32 = 3; // 3 local blocks = L2 promotion
 
-  impl RateLimiter {
-      /// Create a new rate limiter with circuit breaker protection.
-      pub fn new(
-          redis: Arc<redis::Client>,
-          registry: Arc<CircuitBreakerRegistry>,
-          max_requests: u64,
-          window_seconds: u64,
-      ) -> Self {
-          // Get or create circuit breaker for Redis
-          let breaker = registry.get_or_create(
-              CircuitBreakerId::new("redis_rate_limit"),
-              CircuitBreakerConfig::default(),
-          );
+pub struct RateLimiter {
+    l1: DashMap<String, L1State>,
+    redis_breaker: Arc<CircuitBreaker>,
+    redis_client: Arc<redis::Client>,
+    max_requests: u64,
+    window_seconds: u64,
+}
 
-          Self {
-              redis_breaker: breaker,
-              redis_client: redis,
-              max_requests,
-              window_seconds,
-          }
-      }
+struct L1State {
+    count: u64,
+    window_start: Instant,
+    blocked_until: Option<Instant>,
+    local_block_count: u32,
+}
 
-      /// Get current rate limit status for an IP with circuit breaker protection.
-      pub async fn get_status(&self, ip: &str) -> Result<RateLimitStatus, StatusCode> {
-          let key = format!("rate_limit:{}", ip);
-          let redis_client = self.redis_client.clone();
-          let key_clone = key.clone();
+#[derive(Debug, Clone)]
+pub enum RateLimitResult {
+    Allowed,
+    ShadowBan,
+    RateLimited(RateLimitStatus),
+}
 
-          // Execute through circuit breaker
-          let result = self
-              .redis_breaker
-              .call(|| async move {
-                  let mut conn = redis_client
-                      .get_multiplexed_async_connection()
-                      .await
-                      .map_err(RateLimitError::Connection)?;
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RateLimitStatus {
+    pub limit: u64,
+    pub window_seconds: u64,
+    pub reset_in_seconds: u64,
+    pub is_limited: bool,
+}
 
-                  let count: u64 = redis::AsyncCommands::get(&mut conn, &key_clone)
-                      .await
-                      .unwrap_or(0);
+impl RateLimiter {
+    pub fn new(
+        redis: Arc<redis::Client>,
+        registry: Arc<CircuitBreakerRegistry>,
+        max_requests: u64,
+        window_seconds: u64,
+    ) -> Self {
+        let breaker = registry.get_or_create(
+            CircuitBreakerId::new("redis_rate_limit"),
+            CircuitBreakerConfig::default(),
+        );
 
-                  let ttl: i64 = redis::AsyncCommands::ttl(&mut conn, &key_clone)
-                      .await
-                      .unwrap_or(-1);
+        Self {
+            l1: DashMap::new(),
+            redis_breaker: breaker,
+            redis_client: redis,
+            max_requests,
+            window_seconds,
+        }
+    }
 
-                  Ok::<(u64, i64), RateLimitError>((count, ttl))
-              })
-              .await;
+    /// Check rate limit status for an IP.
+    pub async fn check(&self, ip: &str) -> RateLimitResult {
+        let now = Instant::now();
 
-          match result {
-              Ok((count, ttl)) => Ok(RateLimitStatus {
-                  limit: self.max_requests,
-                  window_seconds: self.window_seconds,
-                  reset_in_seconds: ttl.max(0) as u64,
-                  is_limited: count >= self.max_requests,
-              }),
-              Err(e) => {
-                  error!(error = ?e, ip = %ip, "Rate limit check failed");
-                  Err(StatusCode::INTERNAL_SERVER_ERROR)
-              }
-          }
-      }
-  }
+        // 1. L1 Local Check (Sub-100ns path)
+        if let Some(mut entry) = self.l1.get_mut(ip) {
+            let state = entry.value_mut();
 
-  #[derive(Debug, Clone)]
-  pub struct RateLimitStatus {
-      pub limit: u64,
-      pub window_seconds: u64,
-      pub reset_in_seconds: u64,
-      pub is_limited: bool,
-  }
+            // Check if currently blocked locally
+            if let Some(until) = state.blocked_until {
+                if now < until {
+                    return RateLimitResult::ShadowBan;
+                } else {
+                    state.blocked_until = None;
+                }
+            }
 
-  /// Rate limit error for circuit breaker integration.
-  #[derive(Debug)]
-  enum RateLimitError {
-      Connection(redis::RedisError),
-  }
+            // Simple 1s window for L1
+            if now.duration_since(state.window_start) >= Duration::from_secs(1) {
+                state.count = 1;
+                state.window_start = now;
+            } else {
+                state.count += 1;
+            }
 
-  impl std::fmt::Display for RateLimitError {
-      fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-          match self {
-              Self::Connection(e) => write!(f, "Redis connection error: {}", e),
-          }
-      }
-  }
+            if state.count > L1_THRESHOLD {
+                state.blocked_until = Some(now + L1_PENALTY_DURATION);
+                state.local_block_count += 1;
+                let local_blocks = state.local_block_count;
 
-  impl std::error::Error for RateLimitError {}
+                warn!(ip = %ip, local_blocks, "L1 Rate Limit Tripped: Local block active");
 
-  impl ErrorClassifier for RateLimitError {
-      fn classify(&self) -> crate::error::ErrorClassification {
-          use crate::error::ErrorClassification;
-          match self {
-              Self::Connection(_) => ErrorClassification::Transient,
-          }
-      }
-  }
+                if local_blocks >= L2_PROMOTION_THRESHOLD {
+                    self.promote_to_l2(ip, local_blocks).await;
+                }
 
+                return RateLimitResult::ShadowBan;
+            }
+        } else {
+            self.l1.insert(ip.to_string(), L1State {
+                count: 1,
+                window_start: now,
+                blocked_until: None,
+                local_block_count: 0,
+            });
+        }
+
+        // 2. L2 Global Check (Redis)
+        match self.check_l2(ip).await {
+            Ok(status) => {
+                if status.is_limited {
+                    // Global bans are always shadow banned
+                    RateLimitResult::ShadowBan
+                } else {
+                    RateLimitResult::Allowed
+                }
+            }
+            Err(_) => RateLimitResult::Allowed, // Fallback to allow if Redis is down
+        }
+    }
+
+    async fn check_l2(&self, ip: &str) -> Result<RateLimitStatus, StatusCode> {
+        let key = format!("global_ban:{}", ip);
+        let redis_client = self.redis_client.clone();
+        let key_clone = key.clone();
+
+        let result = self.redis_breaker.call(|| async move {
+            let mut conn = redis_client
+                .get_multiplexed_async_connection()
+                .await
+                .map_err(RateLimitError::Connection)?;
+
+            let is_banned: bool = redis::AsyncCommands::exists(&mut conn, &key_clone)
+                .await
+                .unwrap_or(false);
+
+            if is_banned {
+                let ttl: i64 = redis::AsyncCommands::ttl(&mut conn, &key_clone)
+                    .await
+                    .unwrap_or(0);
+                
+                Ok::<RateLimitStatus, RateLimitError>(RateLimitStatus {
+                    limit: 0,
+                    window_seconds: 0,
+                    reset_in_seconds: ttl.max(0) as u64,
+                    is_limited: true,
+                })
+            } else {
+                Ok::<RateLimitStatus, RateLimitError>(RateLimitStatus {
+                    limit: self.max_requests,
+                    window_seconds: self.window_seconds,
+                    reset_in_seconds: 0,
+                    is_limited: false,
+                })
+            }
+        }).await;
+
+        match result {
+            Ok(status) => Ok(status),
+            Err(e) => {
+                error!(error = ?e, ip = %ip, "L2 Rate limit check failed");
+                Err(StatusCode::INTERNAL_SERVER_ERROR)
+            }
+        }
+    }
+
+    async fn promote_to_l2(&self, ip: &str, local_blocks: u32) {
+        let key = format!("global_ban:{}", ip);
+        let strike_key = format!("strikes:{}", ip);
+        let redis_client = self.redis_client.clone();
+        
+        let result = self.redis_breaker.call(|| async move {
+            let mut conn = redis_client
+                .get_multiplexed_async_connection()
+                .await
+                .map_err(RateLimitError::Connection)?;
+
+            let strikes: u32 = redis::AsyncCommands::incr(&mut conn, &strike_key, 1)
+                .await
+                .unwrap_or(1);
+
+            let ban_duration = match strikes {
+                1 => Duration::from_secs(24 * 3600), // 24 Hours
+                _ => Duration::from_secs(7 * 24 * 3600), // 7 Days
+            };
+
+            let _: () = redis::AsyncCommands::set_ex(&mut conn, &key, "1", ban_duration.as_secs())
+                .await
+                .unwrap_or(());
+
+            Ok::<(), RateLimitError>(())
+        }).await;
+
+        match result {
+            Ok(_) => warn!(ip = %ip, local_blocks, "Promoted to L2: Nuclear Ban active"),
+            Err(e) => error!(error = ?e, ip = %ip, "Failed to promote IP to L2"),
+        }
+    }
+}
+
+/// Rate limit error for circuit breaker integration.
+#[derive(Debug)]
+enum RateLimitError {
+    Connection(redis::RedisError),
+}
+
+impl std::fmt::Display for RateLimitError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Connection(e) => write!(f, "Redis connection error: {}", e),
+        }
+    }
+}
+
+impl std::error::Error for RateLimitError {}
+
+impl ErrorClassifier for RateLimitError {
+    fn classify(&self) -> crate::error::ErrorClassification {
+        use crate::error::ErrorClassification;
+        match self {
+            Self::Connection(_) => ErrorClassification::Transient,
+        }
+    }
+}

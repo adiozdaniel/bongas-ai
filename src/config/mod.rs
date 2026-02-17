@@ -25,7 +25,7 @@ pub use types::{
     AnalyticsConfig, CircuitBreakerConfig, ClickHouseConfig, DatabaseConfig,
     ErrorConfig, IngestionConfig, ApiSourceConfig, ClickHouseSourceConfig,
     MlConfig, PipelineConfig, RedisConfig, SecurityConfig, ServerConfig,
-    ExperimentsConfig,
+    ExperimentsConfig, KafkaConfig,
 };
 
 // Re-export source types

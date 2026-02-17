@@ -11,6 +11,7 @@ use std::time::Instant;
 use crate::engine::BongasEngine;
 use crate::config::AppConfig;
 use crate::middlewares::metrics::MetricsCollector;
+use crate::middlewares::rate_limit::RateLimiter;
 use crate::circuit_breaker::CircuitBreakerRegistry;
 
 /// Build the complete API router with routes, shared state, and middleware.
@@ -22,6 +23,13 @@ pub fn create_router(
     circuit_breaker_registry: Arc<CircuitBreakerRegistry>,
     start_time: Arc<Instant>,
 ) -> Router {
+    let rate_limiter = Arc::new(RateLimiter::new(
+        redis.clone(),
+        circuit_breaker_registry.clone(),
+        100, // max requests per minute (L2 threshold)
+        60,  // window seconds
+    ));
+
     let routes = Router::new()
         .nest("/api/v1", v1::routes(config.clone()))
         .nest("/health", v1::health::routes())
@@ -29,6 +37,7 @@ pub fn create_router(
         .layer(axum::Extension(engine))
         .layer(axum::Extension(config))
         .layer(axum::Extension(redis))
+        .layer(axum::Extension(rate_limiter))
         .layer(axum::Extension(circuit_breaker_registry.clone()))
         .layer(axum::Extension(metrics_collector))
         .layer(axum::Extension(start_time));

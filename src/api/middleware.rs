@@ -19,7 +19,7 @@ use serde_json::json;
 use crate::middlewares::{
     unified_error::unified_error_middleware,
     metrics::{DurationTracker, EndpointMetrics},
-    rate_limit::RateLimiter,
+    rate_limit::{RateLimiter, RateLimitResult},
     resilience::ResilienceMiddleware,
     bulkhead::BulkheadMiddleware,
 };
@@ -96,17 +96,35 @@ pub fn apply_middleware(
 
 /// Rate-limit middleware extracted as a named function for readability.
 async fn rate_limit_layer(req: Request<Body>, next: Next) -> Response {
-    let redis = req.extensions().get::<Arc<redis::Client>>().unwrap().clone();
-    let circuit_breaker = req.extensions().get::<Arc<CircuitBreakerRegistry>>().unwrap().clone();
-    let rate_limiter = RateLimiter::new(redis, circuit_breaker, 60, 100);
+    let rate_limiter = req.extensions().get::<Arc<RateLimiter>>().expect("RateLimiter extension missing").clone();
 
     let ip = req.headers()
         .get("X-Forwarded-For")
         .and_then(|h| h.to_str().ok())
         .unwrap_or("127.0.0.1");
 
-    match rate_limiter.get_status(ip).await {
-        Ok(status) if status.is_limited => {
+    match rate_limiter.check(ip).await {
+        RateLimitResult::Allowed => next.run(req).await,
+        RateLimitResult::ShadowBan => {
+            // Shadow Ban: Return 200 OK with a generic/empty feed to mislead bots
+            Response::builder()
+                .status(StatusCode::OK)
+                .header("Content-Type", "application/json")
+                .header("X-Bongas-Status", "ShadowBanned")
+                .body(Body::from(json!({
+                    "success": true,
+                    "data": [],
+                    "message": "Recommendations refreshed",
+                    "metadata": {
+                        "count": 0,
+                        "source": "cache",
+                        "request_id": uuid::Uuid::new_v4().to_string(),
+                        "timestamp": chrono::Utc::now().to_rfc3339()
+                    }
+                }).to_string()))
+                .unwrap()
+        }
+        RateLimitResult::RateLimited(status) => {
             Response::builder()
                 .status(StatusCode::TOO_MANY_REQUESTS)
                 .header("X-RateLimit-Limit", status.limit.to_string())
@@ -128,6 +146,5 @@ async fn rate_limit_layer(req: Request<Body>, next: Next) -> Response {
                 }).to_string()))
                 .unwrap()
         }
-        _ => next.run(req).await,
     }
 }
