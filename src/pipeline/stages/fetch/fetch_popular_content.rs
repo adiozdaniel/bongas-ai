@@ -75,6 +75,9 @@ impl PipelineStage for FetchPopularContentStage {
                 json!({
                     "view_count": row.view_count,
                     "completion_rate": row.completion_rate,
+                    "age_rating": row.age_rating,
+                    "published_at": row.published_at,
+                    "genres": row.genres,
                 }),
             )
         }).collect();

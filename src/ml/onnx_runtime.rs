@@ -76,7 +76,7 @@ impl OnnxInferenceEngine {
             .map_err(|e| ModelError::LoadFailed(format!("optimization level: {e}")))?
             .with_intra_threads(config.onnx_intra_threads)
             .map_err(|e| ModelError::LoadFailed(format!("intra threads: {e}")))?
-            .with_memory_pattern(true)
+            .with_memory_pattern(config.onnx_memory_map)
             .map_err(|e| ModelError::LoadFailed(format!("memory pattern: {e}")))?
             .commit_from_file(model_path)
             .map_err(|e| ModelError::LoadFailed(format!("commit from file: {e}")))?;

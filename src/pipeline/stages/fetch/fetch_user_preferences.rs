@@ -100,6 +100,9 @@ impl PipelineStage for FetchUserPreferencesStage {
                         "matched_genre": genre,
                         "genre_affinity": affinity,
                         "title": item.title,
+                        "age_rating": item.age_rating,
+                        "published_at": item.published_at.or(item.release_date).map(|d| d.to_rfc3339()),
+                        "genres": item.genres,
                     }),
                 ));
             }

@@ -24,12 +24,13 @@ use crate::ml::model_loader::ModelLoader;
 pub struct HarvestedInteraction {
     pub user_id: i32,
     pub item_id: i32,
-    pub event_type: String,
+    pub interaction_type: String,
     pub device_type: String,
     pub profile_id: String,
     pub maturity_rating: String,
-    pub watch_duration: i32,
-    pub event_time: u32,
+    pub genre: String,
+    pub watch_duration_seconds: i32,
+    pub created_at: u64,
 }
 
 /// Orchestrates the data harvest and training loop.
@@ -90,27 +91,26 @@ impl TrainingOrchestrator {
     /// Extract historical data with persona and device context.
     async fn harvest_historical_data(&self) -> Result<Vec<HarvestedInteraction>> {
         // Query historical interactions joined with session context if available.
-        // Use the configured time window from config for the first harvest.
-        // Default to 90 days if not specified in config
-        let days = 90;
-        let query = format!(r#"
+        // Table synchronized with ingestion processor: user_interactions
+        let query = r#"
             SELECT 
                 user_id, 
                 item_id, 
-                event_type, 
-                COALESCE(device_type, 'unknown') as device_type,
-                COALESCE(profile_id, 'default') as profile_id,
-                COALESCE(maturity_rating, 'GE') as maturity_rating,
-                watch_duration,
-                toUnixTimestamp(event_time) as event_time
-            FROM user_events
-            WHERE event_time > (now() - INTERVAL {} DAY)
-            ORDER BY user_id, event_time ASC
+                interaction_type, 
+                'unknown' as device_type,
+                'default' as profile_id,
+                'GE' as maturity_rating,
+                'unknown' as genre,
+                watch_duration_seconds,
+                created_at
+            FROM user_interactions
+            WHERE created_at > (toUnixTimestamp(now()) - 7776000)
+            ORDER BY user_id, created_at ASC
             LIMIT 1000000
-        "#, days);
+        "#;
 
         let rows: Vec<HarvestedInteraction> = self.clickhouse
-            .query(&query)
+            .query(query)
             .fetch_all()
             .await
             .context("Failed to harvest data from ClickHouse")?;

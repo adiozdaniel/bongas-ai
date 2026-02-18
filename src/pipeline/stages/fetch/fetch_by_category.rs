@@ -88,6 +88,9 @@ impl PipelineStage for FetchByCategoryStage {
                         "category": params.category,
                         "title": row.title,
                         "rating": row.user_rating,
+                        "age_rating": row.age_rating,
+                        "published_at": row.published_at.or(row.release_date).map(|d| d.to_rfc3339()),
+                        "genres": row.genres,
                         "release_date": row.release_date.map(|d: chrono::DateTime<chrono::Utc>| d.to_rfc3339()),
                     }),
                 )

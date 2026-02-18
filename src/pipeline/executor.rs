@@ -341,6 +341,13 @@ impl PipelineExecutor {
             "context.location" => context.location.as_deref().map(|s| serde_json::json!(s)),
             "context.profile_id" => context.profile_id.as_deref().map(|s| serde_json::json!(s)),
             "context.maturity_rating" => context.maturity_rating.as_deref().map(|s| serde_json::json!(s)),
+            "user.top_affinity" => {
+                // Heuristic: If we had a top_affinity field in ExecutionContext, we'd use it.
+                // For now, we allow the condition to check if it's set in experiment_overrides 
+                // or we could potentially fetch it here (blocking, so not ideal).
+                // Let's check experiment_overrides as a dynamic store.
+                context.experiment_overrides.get("top_affinity").cloned()
+            },
             _ => None,
         }.unwrap_or(serde_json::Value::Null);
 

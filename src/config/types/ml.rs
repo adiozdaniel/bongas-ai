@@ -19,6 +19,7 @@ pub struct MlConfig {
     pub onnx_enabled: bool,
     pub onnx_execution_provider: String,
     pub onnx_graph_optimization: bool,
+    pub onnx_memory_map: bool,
     pub onnx_intra_threads: usize,
 
     // ── Feature Store ────────────────────────────────────────────────────────
@@ -82,6 +83,7 @@ impl Default for MlConfig {
             onnx_enabled: true,
             onnx_execution_provider: "cpu".to_string(),
             onnx_graph_optimization: true,
+            onnx_memory_map: true,
             onnx_intra_threads: 4,
 
             // Feature Store
@@ -146,6 +148,7 @@ impl MlConfig {
             onnx_enabled: true,
             onnx_execution_provider: "cpu".to_string(), // DevOps can change to "cuda"
             onnx_graph_optimization: true,
+            onnx_memory_map: true,
             onnx_intra_threads: 8, // 2x threads
 
             // Feature Store

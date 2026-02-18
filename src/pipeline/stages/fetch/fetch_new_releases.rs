@@ -93,6 +93,8 @@ impl PipelineStage for FetchNewReleasesStage {
                         "title": row.title,
                         "release_date": row.release_date.map(|d| d.to_rfc3339()),
                         "added_date": row.added_date.map(|d| d.to_rfc3339()),
+                        "published_at": row.published_at.or(row.added_date).or(row.release_date).map(|d| d.to_rfc3339()),
+                        "age_rating": row.age_rating,
                         "content_type": row.content_type,
                         "genres": row.genres,
                         "recency_score": recency_score,
