@@ -25,7 +25,7 @@
               l1_ttl: Duration::from_secs(300), // 5 minutes
 
               l2_enabled: true,
-              l2_ttl: Duration::from_secs(3600), // 1 hour
+              l2_ttl: Duration::from_secs(3600), // 1 hour retention
 
               warming_enabled: true,
               warming_interval: Duration::from_secs(1800), // 30 minutes

@@ -362,22 +362,33 @@ impl PipelineExecutor {
     fn interleave_results(&self, pattern: &[String], sources: &HashMap<String, Vec<ScoredItem>>) -> Vec<ScoredItem> {
         let mut result = Vec::new();
         let mut pointers: HashMap<String, usize> = sources.keys().map(|k| (k.clone(), 0)).collect();
-        let max_items = sources.values().map(|v| v.len()).sum::<usize>();
+        let total_available = sources.values().map(|v| v.len()).sum::<usize>();
+        
+        let mut pattern_idx = 0;
+        for _ in 0..total_available {
+            let mut added_in_this_round = false;
+            
+            // Try to find the next item according to the pattern
+            for _ in 0..pattern.len() {
+                let source_name = &pattern[pattern_idx % pattern.len()];
+                pattern_idx += 1;
 
-        for _ in 0..max_items {
-            let mut added = false;
-            for source_name in pattern {
                 if let Some(source_items) = sources.get(source_name) {
                     let ptr = pointers.get_mut(source_name).unwrap();
                     if *ptr < source_items.len() {
                         result.push(source_items[*ptr].clone());
                         *ptr += 1;
-                        added = true;
+                        added_in_this_round = true;
                         break;
                     }
                 }
             }
-            if !added { break; }
+
+            // If we've exhausted the pattern but still have items in ANY source, 
+            // the loop continues and pattern_idx keeps moving to find the next available source.
+            if !added_in_this_round {
+                break;
+            }
         }
         result
     }

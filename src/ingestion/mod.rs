@@ -265,8 +265,8 @@ impl IngestionManager {
     }
 
     /// Broadcast recommendation results to the ecosystem.
-    pub async fn broadcast_recommendations(&self, user_id: i32, scenario: String, item_ids: Vec<i32>) {
-        self.recommendation_producer.broadcast_results(user_id, scenario, item_ids).await;
+    pub async fn broadcast_recommendations(&self, user_id: i32, profile_id: Option<String>, scenario: String, item_ids: Vec<i32>) {
+        self.recommendation_producer.broadcast_results(user_id, profile_id, scenario, item_ids).await;
     }
 
     /// Get aggregated health across all sources.

@@ -63,9 +63,9 @@ async fn execute_and_map(
         .execute_scenario_with_stats_contextual(
             scenario_slug, 
             user_id, 
-            profile_id,
-            maturity_rating,
-            device_type,
+            profile_id.clone(),
+            maturity_rating.clone(),
+            device_type.clone(),
             context_data.clone(), 
             Some(display_limit)
         )
@@ -116,12 +116,13 @@ async fn execute_and_map(
         // ─── Ecosystem Synergy (Phase 14) ──────────────────────────────────
         let engine_clone_for_synergy = engine.clone();
         let uid = uid;
+        let pid = profile_id.clone();
         let slug = scenario_slug.to_string();
         let item_ids: Vec<i32> = final_items.iter().map(|i| i.item_id).collect();
         
         tokio::spawn(async move {
             let manager = engine_clone_for_synergy.ingestion_manager.read().await;
-            manager.broadcast_recommendations(uid, slug, item_ids).await;
+            manager.broadcast_recommendations(uid, pid, slug, item_ids).await;
         });
     }
 

@@ -842,6 +842,7 @@ impl BongasEngine {
             item_id: item.item_id,
             score: item.score,
             metadata: item.metadata,
+            reasoning: item.reasoning,
         }).collect()
     }
 }
@@ -851,6 +852,7 @@ pub struct RecommendationItem {
     pub item_id: i32,
     pub score: f32,
     pub metadata: serde_json::Value,
+    pub reasoning: Vec<String>,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]

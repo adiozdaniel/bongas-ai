@@ -61,6 +61,8 @@ pub struct ScoredItem {
     pub item_id: i32,
     pub score: f32,
     pub metadata: JsonValue,
+    #[serde(default)]
+    pub reasoning: Vec<String>,
     #[serde(skip)]
     pub fast_metadata: Option<Vec<u8>>,
 }
@@ -71,6 +73,7 @@ impl ScoredItem {
             item_id,
             score,
             metadata,
+            reasoning: Vec::new(),
             fast_metadata: None,
         }
     }

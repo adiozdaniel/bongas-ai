@@ -29,7 +29,10 @@ pub struct ClickHouseInteraction {
     pub scenario_slug: String,
     pub rating: f32,
     pub watch_duration_seconds: i32,
-    pub created_at: u64, // Unix timestamp for ClickHouse
+    /// Unix timestamp. 
+    /// RECOMMENDATION: Use TTL created_at + INTERVAL 90 DAY DELETE 
+    /// to reduce AWS EBS/S3 storage costs.
+    pub created_at: u64, 
 }
 
 /// Processes activities from any source and routes them to DB + staleness engine.

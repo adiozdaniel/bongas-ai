@@ -14,6 +14,7 @@ use crate::config::KafkaConfig;
 #[derive(Debug, Serialize)]
 pub struct RecommendationSyncEvent {
     pub user_id: i32,
+    pub profile_id: Option<String>,
     pub scenario: String,
     pub item_ids: Vec<i32>,
     pub timestamp: u64,
@@ -28,7 +29,9 @@ impl RecommendationProducer {
     pub fn new(config: &KafkaConfig) -> Self {
         let producer: FutureProducer = ClientConfig::new()
             .set("bootstrap.servers", &config.brokers)
-            .set("message.timeout.ms", "5000")
+            .set("message.timeout.ms", "3600000") // 1 hour delivery timeout
+            .set("compression.type", "zstd") // 60% bandwidth reduction
+            .set("linger.ms", "20")          // Better batching, lower IOPS cost
             .create()
             .expect("Producer creation error");
 
@@ -42,11 +45,13 @@ impl RecommendationProducer {
     pub async fn broadcast_results(
         &self,
         user_id: i32,
+        profile_id: Option<String>,
         scenario: String,
         item_ids: Vec<i32>,
     ) {
         let event = RecommendationSyncEvent {
             user_id,
+            profile_id,
             scenario,
             item_ids,
             timestamp: std::time::SystemTime::now()

@@ -50,14 +50,19 @@ impl PipelineStage for MaturityFilterStage {
         let before_count = input.len();
         
         let filtered: Vec<ScoredItem> = input.into_iter()
-            .filter(|item| {
+            .filter_map(|mut item| {
                 let item_rating_str = item.metadata.get("age_rating")
                     .and_then(|v| v.as_str())
                     .unwrap_or("18"); // If item has no rating, assume it's for adults
                 
                 let item_age_req = Self::rating_to_age(item_rating_str);
                 
-                item_age_req <= user_age_limit
+                if item_age_req <= user_age_limit {
+                    item.reasoning.push(format!("MaturityFilter: OK ({} <= {})", item_rating_str, user_rating_str));
+                    Some(item)
+                } else {
+                    None
+                }
             })
             .collect();
 

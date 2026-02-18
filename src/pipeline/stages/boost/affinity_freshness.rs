@@ -104,6 +104,10 @@ impl PipelineStage for AffinityFreshnessStage {
                     let boost = 1.0 + (params.max_boost - 1.0) * freshness_factor * affinity_match;
                     item.score *= boost;
                     item.metadata["discovery_boost"] = serde_json::json!(boost);
+                    item.reasoning.push(format!(
+                        "AffinityFreshness: +{:.2}x (freshness={:.2}, affinity={:.2})", 
+                        boost, freshness_factor, affinity_match
+                    ));
                 }
 
                 item
