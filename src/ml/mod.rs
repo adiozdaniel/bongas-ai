@@ -16,6 +16,7 @@ pub mod embeddings;
 pub mod model_registry;
 pub mod worker_queue;
 pub mod online_learning;
+pub mod training_orchestrator;
 pub mod utils;
 
 pub use onnx_runtime::OnnxInferenceEngine;
@@ -25,3 +26,4 @@ pub use embeddings::EmbeddingManager;
 pub use model_registry::{VersionedModelRegistry, ModelVersion, ModelStatus, ModelHealth};
 pub use worker_queue::{MlWorkerQueue, MlTask, MlTaskType, MlTaskResult, WorkerQueueStats};
 pub use online_learning::{OnlineLearningManager, FeedbackEvent, FeedbackType, OnlineLearningStats};
+pub use training_orchestrator::TrainingOrchestrator;

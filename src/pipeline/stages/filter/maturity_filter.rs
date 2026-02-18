@@ -35,11 +35,10 @@ impl PipelineStage for MaturityFilterStage {
         _params: &JsonValue,
         input: Vec<ScoredItem>,
     ) -> Result<Vec<ScoredItem>> {
-        // Extract user maturity from context (set by middleware from header)
-        // If not present, we default to the strictest (18) or GE?
-        // Baze defaults to GE for safety if header is missing but usually it's mandatory.
-        let user_rating_str = context.experiment_overrides.get("user_maturity_rating")
-            .and_then(|v| v.as_str())
+        // Extract user maturity from context
+        // Priority: 1. Explicit context.maturity_rating, 2. Experiment override (legacy), 3. Default "GE"
+        let user_rating_str = context.maturity_rating.as_deref()
+            .or_else(|| context.experiment_overrides.get("user_maturity_rating").and_then(|v| v.as_str()))
             .unwrap_or("GE");
         
         let user_age_limit = Self::rating_to_age(user_rating_str);

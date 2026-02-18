@@ -6,7 +6,7 @@ pub mod system;
 pub mod scenario;
 
 // Re-export all types for convenience
-pub use response::{StandardResponse, ErrorBody, ResponseMeta, PaginationMeta, PaginationParams};
+pub use response::{StandardResponse, ErrorBody, ResponseMeta, PaginationMeta, PaginationParams, ContextParams};
 pub use recommendation::RecommendationItem;
 pub use scenario::{CreateScenarioRequest, UpdateScenarioRequest};
 pub use system::{

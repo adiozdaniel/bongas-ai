@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::collections::HashMap;
 use tokio::sync::RwLock;
-use tracing::{info, warn, debug};
+use tracing::{info, warn, debug, error};
 use arc_swap::ArcSwap;
 
 use crate::resilience::{ResilienceMetricsCollector, MetricsRegistry, ResilienceConfig};
@@ -54,6 +54,7 @@ pub struct BongasEngine {
 
     // ML Model Management
     pub(crate) model_loader: Arc<ModelLoader>,
+    pub(crate) training_orchestrator: Arc<crate::ml::TrainingOrchestrator>,
 
     // Repositories & services
     pub(crate) item_feature_service: Arc<ItemFeatureService>,
@@ -129,6 +130,14 @@ impl BongasEngine {
                 predictive_warmer.start().await;
             });
         }
+
+        // Phase 15: Run One-Shot Harvest for first launch
+        let engine_for_harvest = engine.clone();
+        tokio::spawn(async move {
+            if let Err(e) = engine_for_harvest.training_orchestrator.run_one_shot_harvest().await {
+                error!(error = %e, "One-Shot Harvest failed");
+            }
+        });
 
         info!("BongasEngine bootstrapped successfully");
         Ok(engine)
@@ -257,6 +266,17 @@ impl BongasEngine {
             None, // Analytics wired separately when PerformanceStats is available
         ));
 
+        // Create training orchestrator
+        let training_orchestrator = Arc::new(crate::ml::TrainingOrchestrator::new(
+            config.ml.clone(),
+            clickhouse.as_ref().map(|c| (**c).clone()).unwrap_or_else(|| {
+                // Fallback client if ClickHouse is not configured (will fail gracefully on harvest)
+                clickhouse::Client::default()
+            }),
+            security_manager.clone(),
+            model_loader.clone(),
+        ));
+
         // Create experiment coordinator
         let experiment_coordinator = Arc::new(ExperimentCoordinator::new(config.experiments.clone()));
 
@@ -277,6 +297,7 @@ impl BongasEngine {
             staleness_engine,
             hot_registry: hot_registry.clone(),
             model_loader,
+            training_orchestrator,
             item_feature_service,
             feature_store,
             feature_repo,
@@ -488,11 +509,14 @@ impl BongasEngine {
         Ok(items)
     }
 
-    /// Execute scenario with execution stats
-    pub async fn execute_scenario_with_stats(
+    /// Execute scenario with execution stats and persona context
+    pub async fn execute_scenario_with_stats_contextual(
         &self,
         scenario_slug: &str,
         user_id: Option<i32>,
+        profile_id: Option<String>,
+        maturity_rating: Option<String>,
+        device_type: Option<String>,
         context_params: serde_json::Value,
         limit: Option<usize>,
     ) -> Result<(Vec<RecommendationItem>, ScenarioExecutionStats)> {
@@ -547,7 +571,19 @@ impl BongasEngine {
         };
 
         // Try cache first
-        let context_hash = StagingManager::hash_context(&context_params);
+        // Note: L2 cache key includes context_hash, which should probably include profile/maturity if they affect results
+        let mut cache_params = context_params.clone();
+        if let Some(ref pid) = profile_id {
+            cache_params["profile_id"] = serde_json::json!(pid);
+        }
+        if let Some(ref mat) = maturity_rating {
+            cache_params["maturity_rating"] = serde_json::json!(mat);
+        }
+        if let Some(ref dev) = device_type {
+            cache_params["device_type"] = serde_json::json!(dev);
+        }
+
+        let context_hash = StagingManager::hash_context(&cache_params);
         if scenario.use_l2_cache {
             if let Some(cached_items) = self.staging_manager
                 .get_cached(scenario_slug, user_id, &context_hash)
@@ -580,11 +616,14 @@ impl BongasEngine {
         .with_hot_registry(self.hot_registry.clone())
         .with_analytics(self.performance_stats.clone())
         .with_experiment_overrides(experiment_overrides)
+        .with_profile_id(profile_id.unwrap_or_default())
+        .with_maturity_rating(maturity_rating.unwrap_or_else(|| "GE".to_string()))
         .with_device_type(
-            context_params.get("device_type")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string())
-                .unwrap_or_default()
+            device_type.or_else(|| {
+                context_params.get("device_type")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string())
+            }).unwrap_or_default()
         )
         .with_location(
             context_params.get("location")
@@ -639,6 +678,25 @@ impl BongasEngine {
         }
 
         Ok((Self::convert_to_recommendation_items(final_scored_items), stats))
+    }
+
+    /// Execute scenario with execution stats
+    pub async fn execute_scenario_with_stats(
+        &self,
+        scenario_slug: &str,
+        user_id: Option<i32>,
+        context_params: serde_json::Value,
+        limit: Option<usize>,
+    ) -> Result<(Vec<RecommendationItem>, ScenarioExecutionStats)> {
+        self.execute_scenario_with_stats_contextual(
+            scenario_slug,
+            user_id,
+            None,
+            None,
+            None,
+            context_params,
+            limit,
+        ).await
     }
 
     /// Handle user event and trigger cache invalidation

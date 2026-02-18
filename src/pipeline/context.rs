@@ -25,6 +25,8 @@ use crate::ml::embeddings::EmbeddingManager;
 pub struct ExecutionContext {
     // ── Request metadata ────────────────────────────────────────────────
     pub user_id: Option<i32>,
+    pub profile_id: Option<String>,
+    pub maturity_rating: Option<String>,
     pub device_type: Option<String>,
     pub location: Option<String>,
     pub request_id: String,
@@ -79,6 +81,8 @@ impl ExecutionContext {
     ) -> Self {
         Self {
             user_id,
+            profile_id: None,
+            maturity_rating: None,
             device_type: None,
             location: None,
             request_id,
@@ -163,6 +167,16 @@ impl ExecutionContext {
 
     pub fn with_clickhouse_client(mut self, client: Arc<clickhouse::Client>) -> Self {
         self.clickhouse_client = Some(client);
+        self
+    }
+
+    pub fn with_profile_id(mut self, profile_id: String) -> Self {
+        self.profile_id = Some(profile_id);
+        self
+    }
+
+    pub fn with_maturity_rating(mut self, maturity_rating: String) -> Self {
+        self.maturity_rating = Some(maturity_rating);
         self
     }
 

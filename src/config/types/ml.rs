@@ -68,6 +68,9 @@ pub struct MlConfig {
     // ── Analytics ────────────────────────────────────────────────────────────
     pub analytics_enabled: bool,
     pub analytics_sample_rate: f64,
+
+    // ── Training Orchestrator (One-Shot Harvest) ─────────────────────────────
+    pub central_server_url: String,
 }
 
 impl Default for MlConfig {
@@ -128,6 +131,7 @@ impl Default for MlConfig {
             // Analytics
             analytics_enabled: true,
             analytics_sample_rate: 1.0,
+            central_server_url: "https://ml.bongas-ai.com".to_string(),
         }
     }
 }
@@ -191,6 +195,7 @@ impl MlConfig {
             // Analytics
             analytics_enabled: true,
             analytics_sample_rate: 0.1, // Sample 10% in production to reduce overhead
+            central_server_url: "https://ml.bongas-ai.com".to_string(),
         }
     }
 }

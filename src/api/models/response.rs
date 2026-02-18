@@ -11,6 +11,13 @@ pub struct PaginationParams {
     pub offset: Option<usize>,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct ContextParams {
+    pub profile_id: Option<String>,
+    pub maturity_rating: Option<String>,
+    pub device_type: Option<String>,
+}
+
 // ─── Response Envelope ──────────────────────────────────────────────────────
 
 /// Standard response envelope for all API endpoints.
