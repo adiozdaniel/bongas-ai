@@ -298,12 +298,13 @@ impl OnnxInferenceEngine {
     /// Run multi-action inference (multi-head output).
     /// Returns a Vec of Vecs, where each inner vec contains all predicted action probabilities for an item.
     pub async fn predict_multi_action(
-        &self,
+        self: Arc<Self>,
         user_features: Array2<f32>,
         item_features: Array2<f32>,
     ) -> Result<Vec<Vec<f32>>, ModelError> {
         let start = Instant::now();
         let batch_size = user_features.nrows();
+        let engine = self.clone();
         let metric_key = format!("ml.inference.multi.{}", self.model_name);
 
         let _permit = self.bulkhead.clone().try_acquire_owned()
@@ -312,39 +313,41 @@ impl OnnxInferenceEngine {
                 queue_depth: self.bulkhead.available_permits(),
             })?;
 
-        // Execute via circuit breaker
-        let result = self.breaker.call(|| async {
-            let mut session = self.session.lock().map_err(|_| ModelError::InferenceFailed("session mutex poisoned".to_string()))?;
+        // Execute via circuit breaker + spawn_blocking
+        let result = self.breaker.call(|| async move {
+            tokio::task::spawn_blocking(move || {
+                let mut session = engine.session.lock().map_err(|_| ModelError::InferenceFailed("session mutex poisoned".to_string()))?;
 
-            let user_input = TensorRef::from_array_view(user_features.view())
-                .map_err(|e| ModelError::InferenceFailed(format!("user tensor: {e}")))?;
-            let item_input = TensorRef::from_array_view(item_features.view())
-                .map_err(|e| ModelError::InferenceFailed(format!("item tensor: {e}")))?;
+                let user_input = TensorRef::from_array_view(user_features.view())
+                    .map_err(|e| ModelError::InferenceFailed(format!("user tensor: {e}")))?;
+                let item_input = TensorRef::from_array_view(item_features.view())
+                    .map_err(|e| ModelError::InferenceFailed(format!("item tensor: {e}")))?;
 
-            let outputs = session.run(ort::inputs![
-                self.input_names[0].clone() => user_input,
-                self.input_names[1].clone() => item_input,
-            ])
-            .map_err(|e| ModelError::InferenceFailed(format!("session run: {e}")))?;
+                let outputs = session.run(ort::inputs![
+                    engine.input_names[0].clone() => user_input,
+                    engine.input_names[1].clone() => item_input,
+                ])
+                .map_err(|e| ModelError::InferenceFailed(format!("session run: {e}")))?;
 
-            // Extract multi-dimensional output (Batch x Actions)
-            let (shape, flat_scores) = outputs[0]
-                .try_extract_tensor::<f32>()
-                .map_err(|e| ModelError::InferenceFailed(format!("extract tensor: {e}")))?;
+                // Extract multi-dimensional output (Batch x Actions)
+                let (shape, flat_scores) = outputs[0]
+                    .try_extract_tensor::<f32>()
+                    .map_err(|e| ModelError::InferenceFailed(format!("extract tensor: {e}")))?;
 
-            if shape.len() < 2 {
-                return Err(ModelError::InferenceFailed(format!("Unexpected output shape: {:?}", shape)));
-            }
+                if shape.len() < 2 {
+                    return Err(ModelError::InferenceFailed(format!("Unexpected output shape: {:?}", shape)));
+                }
 
-            let actions_dim = shape[1] as usize;
-            let mut results = Vec::with_capacity(batch_size);
-            
-            for i in 0..batch_size {
-                let start = i * actions_dim;
-                let end = start + actions_dim;
-                results.push(flat_scores[start..end].to_vec());
-            }
-            Ok(results)
+                let actions_dim = shape[1] as usize;
+                let mut results = Vec::with_capacity(batch_size);
+                
+                for i in 0..batch_size {
+                    let start = i * actions_dim;
+                    let end = start + actions_dim;
+                    results.push(flat_scores[start..end].to_vec());
+                }
+                Ok(results)
+            }).await.map_err(|e| ModelError::InferenceFailed(format!("spawn_blocking failed: {e}")))?
         }).await.map_err(|e| match e {
             crate::circuit_breaker::CircuitBreakerError::ExecutionFailed { source, .. } => source,
             crate::circuit_breaker::CircuitBreakerError::Rejected { .. } => ModelError::CircuitOpen(self.model_name.clone()),
