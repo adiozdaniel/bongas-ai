@@ -56,6 +56,7 @@ pub fn build_stage_registry() -> HashMap<String, Arc<dyn PipelineStage>> {
     registry.insert("boost_completion_rate".into(), Arc::new(stages::boost::BoostCompletionRateStage));
     registry.insert("boost_promoted".into(), Arc::new(stages::boost::BoostPromotedStage));
     registry.insert("boost_personalization".into(), Arc::new(stages::boost::BoostPersonalizationStage));
+    registry.insert("affinity_freshness".into(), Arc::new(stages::boost::AffinityFreshnessStage));
 
     // Category 5: Diversification (5 stages)
     registry.insert("diversify_genres".into(), Arc::new(stages::diversify::DiversifyGenresStage));

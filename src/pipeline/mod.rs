@@ -110,6 +110,37 @@ pub enum ExecutionNode {
     Parallel(Vec<BoundStage>),
     /// A group of stages fused into a single pass (JIT-lite).
     Fused(Vec<BoundStage>),
+    /// A conditional branch point.
+    Branch {
+        condition: BranchCondition,
+        if_true: Vec<ExecutionNode>,
+        if_false: Vec<ExecutionNode>,
+    },
+    /// A weighted ensemble of multiple source branches.
+    Ensemble {
+        sources: Vec<EnsembleSource>,
+    },
+    /// A slot-based interleaver for discovery and retention.
+    Interleave {
+        pattern: Vec<String>,
+        sources: std::collections::HashMap<String, Vec<ExecutionNode>>,
+    },
+}
+
+/// Condition for pipeline branching.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct BranchCondition {
+    pub key: String,
+    pub operator: String,
+    pub value: serde_json::Value,
+}
+
+/// A weighted source for an ensemble node.
+#[derive(Debug)]
+pub struct EnsembleSource {
+    pub nodes: Vec<ExecutionNode>,
+    pub weight: f32,
+    pub name: String,
 }
 
 /// An executable pipeline where all stages have been pre-linked.

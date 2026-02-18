@@ -8,6 +8,7 @@ mod boost_engagement;
 mod boost_completion_rate;
 mod boost_promoted;
 mod boost_personalization;
+mod affinity_freshness;
 
 pub use boost_by_recency::BoostByRecencyStage;
 pub use boost_by_popularity::BoostByPopularityStage;
@@ -19,3 +20,4 @@ pub use boost_engagement::BoostEngagementStage;
 pub use boost_completion_rate::BoostCompletionRateStage;
 pub use boost_promoted::BoostPromotedStage;
 pub use boost_personalization::BoostPersonalizationStage;
+pub use affinity_freshness::AffinityFreshnessStage;

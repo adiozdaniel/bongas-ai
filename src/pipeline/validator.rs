@@ -147,10 +147,79 @@ impl PipelineValidator {
                         current_output = output_prod;
                     }
                 }
+                ExecutionNode::Branch { if_true, if_false, .. } => {
+                    // Recursive validation: both branches must be compatible with current input
+                    self.validate_nodes_internal(if_true, current_output)?;
+                    self.validate_nodes_internal(if_false, current_output)?;
+                    // We assume branches eventually produce ScoredItems
+                    current_output = StageDataKind::ScoredItems;
+                }
+                ExecutionNode::Ensemble { sources } => {
+                    for source in sources {
+                        self.validate_nodes_internal(&source.nodes, current_output)?;
+                    }
+                    current_output = StageDataKind::ScoredItems;
+                }
+                ExecutionNode::Interleave { sources, .. } => {
+                    for nodes in sources.values() {
+                        self.validate_nodes_internal(nodes, current_output)?;
+                    }
+                    current_output = StageDataKind::ScoredItems;
+                }
             }
         }
 
         Ok(())
+    }
+
+    /// Internal recursive validator for ExecutionNodes.
+    fn validate_nodes_internal(&self, nodes: &[ExecutionNode], mut current_output: StageDataKind) -> Result<StageDataKind> {
+        for node in nodes {
+            match node {
+                ExecutionNode::Single(stage) => {
+                    let input_req = stage.implementation.input_type();
+                    let output_prod = stage.implementation.output_type();
+                    if !self.are_types_compatible(current_output, input_req) {
+                        return Err(anyhow::anyhow!("Type mismatch in structural node: expected {:?}, got {:?}", input_req, current_output));
+                    }
+                    current_output = output_prod;
+                }
+                ExecutionNode::Parallel(stages) => {
+                    for stage in stages {
+                        if !self.are_types_compatible(current_output, stage.implementation.input_type()) {
+                            return Err(anyhow::anyhow!("Type mismatch in structural parallel node"));
+                        }
+                    }
+                    current_output = StageDataKind::ScoredItems;
+                }
+                ExecutionNode::Fused(stages) => {
+                    for stage in stages {
+                        if !self.are_types_compatible(current_output, stage.implementation.input_type()) {
+                            return Err(anyhow::anyhow!("Type mismatch in structural fused node"));
+                        }
+                        current_output = stage.implementation.output_type();
+                    }
+                }
+                ExecutionNode::Branch { if_true, if_false, .. } => {
+                    self.validate_nodes_internal(if_true, current_output)?;
+                    self.validate_nodes_internal(if_false, current_output)?;
+                    current_output = StageDataKind::ScoredItems;
+                }
+                ExecutionNode::Ensemble { sources } => {
+                    for source in sources {
+                        self.validate_nodes_internal(&source.nodes, current_output)?;
+                    }
+                    current_output = StageDataKind::ScoredItems;
+                }
+                ExecutionNode::Interleave { sources, .. } => {
+                    for nodes in sources.values() {
+                        self.validate_nodes_internal(nodes, current_output)?;
+                    }
+                    current_output = StageDataKind::ScoredItems;
+                }
+            }
+        }
+        Ok(current_output)
     }
 
     /// Helper to check if two data kinds are compatible.

@@ -103,6 +103,75 @@ impl PipelineExecutor {
         let mut current_parallel = Vec::new();
 
         for stage_config in stages {
+            // Handle Structural Nodes
+            match stage_config.r#type.as_str() {
+                "branch" => {
+                    if !current_parallel.is_empty() {
+                        nodes.push(self.flush_parallel(&mut current_parallel));
+                    }
+                    let condition: crate::pipeline::BranchCondition = serde_json::from_value(
+                        stage_config.params.get("condition").cloned().unwrap_or_default()
+                    )?;
+                    let if_true_configs: Vec<crate::db::models::PipelineStageConfig> = serde_json::from_value(
+                        stage_config.params.get("if_true").cloned().unwrap_or_default()
+                    )?;
+                    let if_false_configs: Vec<crate::db::models::PipelineStageConfig> = serde_json::from_value(
+                        stage_config.params.get("if_false").cloned().unwrap_or_default()
+                    )?;
+                    
+                    nodes.push(ExecutionNode::Branch {
+                        condition,
+                        if_true: self.link_to_nodes(&if_true_configs)?,
+                        if_false: self.link_to_nodes(&if_false_configs)?,
+                    });
+                    continue;
+                }
+                "ensemble" => {
+                    if !current_parallel.is_empty() {
+                        nodes.push(self.flush_parallel(&mut current_parallel));
+                    }
+                    let source_configs: Vec<serde_json::Value> = serde_json::from_value(
+                        stage_config.params.get("sources").cloned().unwrap_or_default()
+                    )?;
+                    
+                    let mut sources = Vec::new();
+                    for sc in source_configs {
+                        let name = sc.get("name").and_then(|v| v.as_str()).unwrap_or("unknown").to_string();
+                        let weight = sc.get("weight").and_then(|v| v.as_f64()).unwrap_or(1.0) as f32;
+                        let inner_stages: Vec<crate::db::models::PipelineStageConfig> = serde_json::from_value(
+                            sc.get("stages").cloned().unwrap_or_default()
+                        )?;
+                        sources.push(crate::pipeline::EnsembleSource {
+                            nodes: self.link_to_nodes(&inner_stages)?,
+                            weight,
+                            name,
+                        });
+                    }
+                    nodes.push(ExecutionNode::Ensemble { sources });
+                    continue;
+                }
+                "interleave" => {
+                    if !current_parallel.is_empty() {
+                        nodes.push(self.flush_parallel(&mut current_parallel));
+                    }
+                    let pattern: Vec<String> = serde_json::from_value(
+                        stage_config.params.get("pattern").cloned().unwrap_or_default()
+                    )?;
+                    let source_map: HashMap<String, Vec<crate::db::models::PipelineStageConfig>> = serde_json::from_value(
+                        stage_config.params.get("sources").cloned().unwrap_or_default()
+                    )?;
+                    
+                    let mut sources = HashMap::new();
+                    for (name, inner_stages) in source_map {
+                        sources.insert(name, self.link_to_nodes(&inner_stages)?);
+                    }
+                    nodes.push(ExecutionNode::Interleave { pattern, sources });
+                    continue;
+                }
+                _ => {}
+            }
+
+            // Handle Standard Stages
             let implementation = self.stage_registry.get(&stage_config.r#type).cloned()
                 .with_context(|| format!("Stage '{}' not found", stage_config.r#type))?;
             
@@ -121,25 +190,25 @@ impl PipelineExecutor {
                 current_parallel.push(bound);
             } else {
                 if !current_parallel.is_empty() {
-                    nodes.push(if current_parallel.len() == 1 {
-                        ExecutionNode::Single(current_parallel.pop().unwrap())
-                    } else {
-                        ExecutionNode::Parallel(std::mem::take(&mut current_parallel))
-                    });
+                    nodes.push(self.flush_parallel(&mut current_parallel));
                 }
                 nodes.push(ExecutionNode::Single(bound));
             }
         }
 
         if !current_parallel.is_empty() {
-            nodes.push(if current_parallel.len() == 1 {
-                ExecutionNode::Single(current_parallel.pop().unwrap())
-            } else {
-                ExecutionNode::Parallel(current_parallel)
-            });
+            nodes.push(self.flush_parallel(&mut current_parallel));
         }
 
         Ok(nodes)
+    }
+
+    fn flush_parallel(&self, current_parallel: &mut Vec<BoundStage>) -> ExecutionNode {
+        if current_parallel.len() == 1 {
+            ExecutionNode::Single(current_parallel.pop().unwrap())
+        } else {
+            ExecutionNode::Parallel(std::mem::take(current_parallel))
+        }
     }
 
     pub async fn execute(&self, pipeline: &PipelineDefinition, context: &ExecutionContext) -> Result<Vec<ScoredItem>> {
@@ -203,10 +272,107 @@ impl PipelineExecutor {
                     }
                     items = merged_map.into_values().collect();
                 }
+                ExecutionNode::Branch { condition, if_true, if_false } => {
+                    let branch = if self.evaluate_condition(condition, context) {
+                        if_true
+                    } else {
+                        if_false
+                    };
+                    // Use Box::pin to handle recursion in async function
+                    let fut = self.execute_nodes(branch, context);
+                    items = Box::pin(fut).await?;
+                }
+                ExecutionNode::Ensemble { sources } => {
+                    let futures = sources.iter().map(|source| {
+                        async move {
+                            let result = Box::pin(self.execute_nodes(&source.nodes, context)).await;
+                            (source.weight, result)
+                        }
+                    });
+                    let results = join_all(futures).await;
+                    
+                    let mut ensemble_map: HashMap<i32, ScoredItem> = HashMap::new();
+                    for (weight, res) in results {
+                        if let Ok(source_items) = res {
+                            for mut item in source_items {
+                                item.score *= weight;
+                                ensemble_map.entry(item.item_id)
+                                    .and_modify(|e| e.score += item.score)
+                                    .or_insert(item);
+                            }
+                        }
+                    }
+                    items = ensemble_map.into_values().collect();
+                }
+                ExecutionNode::Interleave { pattern, sources } => {
+                    let futures = sources.iter().map(|(name, nodes)| {
+                        async move {
+                            let result = Box::pin(self.execute_nodes(nodes, context)).await;
+                            (name.clone(), result)
+                        }
+                    });
+                    let results = join_all(futures).await;
+                    
+                    let mut source_results = HashMap::new();
+                    for (name, res) in results {
+                        if let Ok(source_items) = res {
+                            source_results.insert(name, source_items);
+                        }
+                    }
+                    
+                    items = self.interleave_results(pattern, &source_results);
+                }
             }
-            if items.is_empty() { break; }
+            if items.is_empty() && self.is_input_required(node) { break; }
         }
         Ok(items)
+    }
+
+    fn is_input_required(&self, node: &ExecutionNode) -> bool {
+        match node {
+            ExecutionNode::Single(s) => s.implementation.input_type() != crate::pipeline::StageDataKind::Empty,
+            _ => true,
+        }
+    }
+
+    fn evaluate_condition(&self, condition: &crate::pipeline::BranchCondition, context: &ExecutionContext) -> bool {
+        let actual_value = match condition.key.as_str() {
+            "context.device_type" => context.device_type.as_deref().map(|s| serde_json::json!(s)),
+            "context.location" => context.location.as_deref().map(|s| serde_json::json!(s)),
+            "context.profile_id" => context.profile_id.as_deref().map(|s| serde_json::json!(s)),
+            "context.maturity_rating" => context.maturity_rating.as_deref().map(|s| serde_json::json!(s)),
+            _ => None,
+        }.unwrap_or(serde_json::Value::Null);
+
+        match condition.operator.as_str() {
+            "==" => actual_value == condition.value,
+            "!=" => actual_value != condition.value,
+            "exists" => !actual_value.is_null(),
+            _ => false,
+        }
+    }
+
+    fn interleave_results(&self, pattern: &[String], sources: &HashMap<String, Vec<ScoredItem>>) -> Vec<ScoredItem> {
+        let mut result = Vec::new();
+        let mut pointers: HashMap<String, usize> = sources.keys().map(|k| (k.clone(), 0)).collect();
+        let max_items = sources.values().map(|v| v.len()).sum::<usize>();
+
+        for _ in 0..max_items {
+            let mut added = false;
+            for source_name in pattern {
+                if let Some(source_items) = sources.get(source_name) {
+                    let ptr = pointers.get_mut(source_name).unwrap();
+                    if *ptr < source_items.len() {
+                        result.push(source_items[*ptr].clone());
+                        *ptr += 1;
+                        added = true;
+                        break;
+                    }
+                }
+            }
+            if !added { break; }
+        }
+        result
     }
 
     async fn execute_single_stage(&self, bound: &BoundStage, context: &ExecutionContext, input: Vec<ScoredItem>) -> Result<Vec<ScoredItem>> {

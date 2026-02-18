@@ -51,6 +51,34 @@ impl PipelineOptimizer {
                     }
                     optimized.push(ExecutionNode::Fused(stages));
                 }
+                ExecutionNode::Branch { condition, if_true, if_false } => {
+                    if !current_fusion_batch.is_empty() {
+                        optimized.push(Self::create_fused_node(std::mem::take(&mut current_fusion_batch)));
+                    }
+                    optimized.push(ExecutionNode::Branch {
+                        condition,
+                        if_true: Self::optimize(if_true),
+                        if_false: Self::optimize(if_false),
+                    });
+                }
+                ExecutionNode::Ensemble { mut sources } => {
+                    if !current_fusion_batch.is_empty() {
+                        optimized.push(Self::create_fused_node(std::mem::take(&mut current_fusion_batch)));
+                    }
+                    for source in &mut sources {
+                        source.nodes = Self::optimize(std::mem::take(&mut source.nodes));
+                    }
+                    optimized.push(ExecutionNode::Ensemble { sources });
+                }
+                ExecutionNode::Interleave { pattern, mut sources } => {
+                    if !current_fusion_batch.is_empty() {
+                        optimized.push(Self::create_fused_node(std::mem::take(&mut current_fusion_batch)));
+                    }
+                    for nodes in sources.values_mut() {
+                        *nodes = Self::optimize(std::mem::take(nodes));
+                    }
+                    optimized.push(ExecutionNode::Interleave { pattern, sources });
+                }
             }
         }
 
