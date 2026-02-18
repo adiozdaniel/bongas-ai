@@ -2,7 +2,7 @@ use anyhow::{Result, Context};
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::net::TcpListener;
-use tracing::info;
+use tracing::{info, error};
 
 use crate::{ConfigLoader, AppConfig, initialize_telemetry, TelemetryConfig};
 use crate::circuit_breaker::{CircuitBreakerRegistry, CompositeObserver, TracingObserver};
@@ -24,7 +24,9 @@ impl BongasRuntime {
     /// Initialize the application and all its components
     pub async fn init() -> Result<Self> {
         let start_time = Arc::new(Instant::now());
-        // 1. Load config
+        
+        // 1. Load config (Sequential - foundational)
+        info!("Loading configuration...");
         let config = Arc::new(
             ConfigLoader::new()
                 .with_defaults()
@@ -33,35 +35,58 @@ impl BongasRuntime {
                 .context("Failed to load configuration")?
         );
 
-        // 2. Initialize telemetry
+        // 2. Initialize telemetry (Sequential - foundational for logs)
         initialize_telemetry(&TelemetryConfig::default())
             .context("Failed to initialize telemetry")?;
-
         info!("Telemetry initialized");
 
-        // 3. Setup Circuit Breaker Registry
-        let circuit_breaker_observer = Arc::new(CompositeObserver::new(vec![
-            Arc::new(TracingObserver),
-        ]));
-        let circuit_breaker_registry = Arc::new(
-            CircuitBreakerRegistry::with_observer(circuit_breaker_observer)
-        );
-
-        // 4. Database pool
-        let database_url = config.database.url.as_ref()
-            .context("DATABASE_URL not configured")?;
-
-        let db_pool = sqlx::postgres::PgPoolOptions::new()
-            .max_connections(config.database.max_connections)
-            .acquire_timeout(std::time::Duration::from_secs(config.database.connection_timeout))
-            .connect(database_url)
-            .await
-            .context("Failed to connect to database")?;
-
-        // 5. Shared metrics
+        // 3. Concurrently initialize independent resources
+        info!("Initializing core resources concurrently...");
+        
+        let cb_observer = Arc::new(CompositeObserver::new(vec![Arc::new(TracingObserver)]));
+        let circuit_breaker_registry = Arc::new(CircuitBreakerRegistry::with_observer(cb_observer));
         let metrics_collector = Arc::new(MetricsCollector::new());
 
-        // 6. Bootstrap engine
+        let db_config = config.database.clone();
+        let redis_url = config.redis.url.clone();
+
+        // Fire off connections in parallel
+        let db_pool_fut = tokio::spawn(async move {
+            info!("Establishing connection to PostgreSQL...");
+            sqlx::postgres::PgPoolOptions::new()
+                .max_connections(db_config.max_connections)
+                .acquire_timeout(std::time::Duration::from_secs(db_config.connection_timeout))
+                .connect(db_config.url.as_ref().unwrap())
+                .await
+                .map_err(|e| {
+                    error!(error = %e, "Failed to connect to PostgreSQL");
+                    e
+                })
+        });
+
+        let redis_client_fut = tokio::spawn(async move {
+            info!("Establishing connection to Redis...");
+            let client = redis::Client::open(redis_url.as_str())
+                .map_err(|e| {
+                    error!(error = %e, "Failed to connect to Redis");
+                    e
+                });
+            client
+        });
+
+        // Wait for foundational connections
+        let (db_pool_res, redis_client_res) = tokio::join!(db_pool_fut, redis_client_fut);
+        
+        let db_pool = db_pool_res.context("Postgres join error")?
+            .context("Failed to connect to database")?;
+        info!("Established PostgreSQL connection pool");
+
+        let _redis_client = Arc::new(redis_client_res.context("Redis join error")?
+            .context("Failed to create Redis client")?);
+        info!("Established Redis connection");
+
+        // 4. Bootstrap engine
+        info!("Bootstrapping BongasEngine...");
         let deps = EngineDependencies::new(
             config.clone(),
             db_pool,
@@ -86,6 +111,7 @@ impl BongasRuntime {
                 .context("Failed to create Redis client")?
         );
 
+        info!("Setting up API router...");
         let router = create_router(
             self.engine.clone(),
             self.config.clone(),
@@ -100,7 +126,7 @@ impl BongasRuntime {
             .await
             .context(format!("Failed to bind to {}", bind_addr))?;
 
-        info!(address = %bind_addr, "HTTP server starting");
+        info!(address = %bind_addr, "BongasRuntime ready! HTTP server starting");
 
         axum::serve(listener, router)
             .with_graceful_shutdown(Self::shutdown_signal())

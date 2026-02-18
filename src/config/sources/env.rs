@@ -65,4 +65,8 @@ impl ConfigSource for EnvSource {
     fn load(&self) -> ConfigResult<HashMap<String, String>> {
         Ok(Self::parse_env_to_flat_map(&self.prefix))
     }
+
+    fn name(&self) -> &'static str {
+        "Environment Variables"
+    }
 }

@@ -76,6 +76,7 @@ impl ConfigSource for SpringCloudSource {
     fn load(&self) -> ConfigResult<HashMap<String, String>> {
         let url = self.build_config_url();
 
+        tracing::info!("Establishing connection to Spring Cloud Config server at {}...", self.base_url);
         tracing::debug!(
             url = %url,
             app = %self.app_name,
@@ -87,9 +88,13 @@ impl ConfigSource for SpringCloudSource {
             .get(&url)
             .header("Accept", "application/json")
             .send()
-            .map_err(|e| ConfigError::Source(format!("Spring Cloud Config request failed: {}", e)))?;
+            .map_err(|e| {
+                tracing::error!(error = %e, "Failed to connect to Spring Cloud Config server");
+                ConfigError::Source(format!("Spring Cloud Config request failed: {}", e))
+            })?;
 
         if !response.status().is_success() {
+            tracing::error!(status = %response.status(), "Spring Cloud Config server returned error status");
             return Err(ConfigError::Source(format!(
                 "Spring Cloud Config returned status: {}",
                 response.status()
@@ -105,10 +110,14 @@ impl ConfigSource for SpringCloudSource {
             profiles = ?spring_response.profiles,
             version = ?spring_response.version,
             sources = spring_response.property_sources.len(),
-            "Loaded configuration from Spring Cloud Config"
+            "Successfully connected to Spring Cloud Config and loaded configuration"
         );
 
         Self::parse_spring_cloud_response(spring_response)
+    }
+
+    fn name(&self) -> &'static str {
+        "Spring Cloud Config"
     }
 }
 

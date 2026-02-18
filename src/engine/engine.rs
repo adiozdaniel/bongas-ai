@@ -148,7 +148,7 @@ impl BongasEngine {
         Ok(engine)
     }
 
-    /// Create new BongasEngine
+    /// Create new BongasEngine with highly concurrent initialization.
     async fn new(deps: EngineDependencies) -> Result<Arc<Self>> {
         let EngineDependencies {
             config,
@@ -157,9 +157,9 @@ impl BongasEngine {
             metrics_collector,
         } = deps;
 
-        info!("Initializing BongasEngine components...");
+        info!("Initializing BongasEngine components concurrently...");
 
-        // Create shared resilience infrastructure
+        // 1. Shared resilience infrastructure
         let resilience_metrics = Arc::new(ResilienceMetricsCollector::new(
             Arc::new(MetricsRegistry::new(ResilienceConfig::default())),
         ));
@@ -169,26 +169,78 @@ impl BongasEngine {
             circuit_breaker_registry.clone(),
         )?);
 
-        // Create SecurityManager with Netflix-grade resilience
-        let security_observer: Arc<dyn crate::circuit_breaker::observer::ResilienceObserver> =
-            resilience_metrics.clone();
-        let security_manager = Arc::new(
-            SecurityManager::new(
-                config.security.clone(),
-                circuit_breaker_registry.clone(),
-                security_observer,
-                None, // Analytics wired separately when PerformanceStats is available
-            )
-            .context("Failed to create SecurityManager")?,
+        // 2. Concurrently initialize independent subsystems
+        
+        // Task A: Security Manager
+        let sec_config = config.security.clone();
+        let sec_registry = circuit_breaker_registry.clone();
+        let sec_observer = resilience_metrics.clone();
+        let security_manager_fut: tokio::task::JoinHandle<Result<SecurityManager, anyhow::Error>> = tokio::spawn(async move {
+            info!("Initializing SecurityManager...");
+            SecurityManager::new(sec_config, sec_registry, sec_observer, None)
+                .context("Failed to create SecurityManager")
+        });
+
+        // Task B: Cache Manager (Redis)
+        let redis_url = config.redis.url.clone();
+        let cache_manager_fut: tokio::task::JoinHandle<Result<CacheManager, anyhow::Error>> = tokio::spawn(async move {
+            info!("Establishing connection to Redis cache...");
+            CacheManager::new(&redis_url, CacheConfig::default()).await
+                .context("Failed to create CacheManager")
+        });
+
+        // Task C: ClickHouse Client
+        let ch_config = config.clickhouse.clone();
+        let clickhouse_fut: tokio::task::JoinHandle<Result<Option<Arc<clickhouse::Client>>, anyhow::Error>> = tokio::spawn(async move {
+            if !ch_config.url.is_empty() {
+                info!("Establishing connection to ClickHouse at {}...", ch_config.url);
+                let client = clickhouse::Client::default()
+                    .with_url(&ch_config.url)
+                    .with_user(&ch_config.user)
+                    .with_password(&ch_config.password)
+                    .with_database(&ch_config.database);
+                info!("Established ClickHouse connection");
+                Ok(Some(Arc::new(client)))
+            } else {
+                warn!("ClickHouse not configured");
+                Ok(None)
+            }
+        });
+
+        // Task D: Governance Settings (DB query)
+        let db_pool_for_gov = db_pool.clone();
+        let gov_fut: tokio::task::JoinHandle<Result<i32, anyhow::Error>> = tokio::spawn(async move {
+            info!("Loading scenario governance settings from database...");
+            let val: i32 = sqlx::query_scalar("SELECT (value->>0)::int FROM system_settings WHERE key = 'max_active_scenarios'")
+                .fetch_one(&db_pool_for_gov)
+                .await
+                .unwrap_or(20);
+            Ok(val)
+        });
+
+        // Wait for foundational subsystems
+        let (sec_res, cache_res, ch_res, gov_res) = tokio::join!(
+            security_manager_fut, 
+            cache_manager_fut, 
+            clickhouse_fut, 
+            gov_fut
         );
 
-        // Create Netflix-grade cache manager
-        let cache_config = CacheConfig::default();
-        let cache_manager = Arc::new(CacheManager::new(&config.redis.url, cache_config.clone()).await?);
+        let security_manager = Arc::new(sec_res.context("Security join error")??);
+        let cache_manager = Arc::new(cache_res.context("Cache join error")??);
+        let clickhouse = ch_res.context("ClickHouse join error")??;
+        let max_scenarios_val = gov_res.context("Governance join error")??;
+
+        // 3. Post-foundation components
         let hot_registry = Arc::new(HotRegistry::new());
         let performance_stats = Arc::new(PerformanceStats::new());
+        let item_feature_service = Arc::new(ItemFeatureService::new(resilient_pool.clone(), resilience_metrics.clone()));
+        
+        let cache_config = CacheConfig::default();
+        let staging_manager = Arc::new(StagingManager::new(&config.redis.url, resilient_pool.clone(), cache_config.clone(), resilience_metrics.clone()).await?);
+        let staleness_engine = Arc::new(StalenessEngine::new(staging_manager.clone(), item_feature_service.clone()));
 
-        // Create model repository and loader
+        // 4. Concurrently load models (Heavy Task)
         let model_repo = Arc::new(ModelRepository::new(resilient_pool.clone(), resilience_metrics.clone()));
         let model_loader = Arc::new(ModelLoader::new(
             config.ml.model_path.to_str().unwrap_or("models"),
@@ -198,60 +250,22 @@ impl BongasEngine {
             None,
         ));
 
-        // Load all deployed ONNX models
-        let model_count = model_loader.load_all_models().await?;
-        info!(model_count = model_count, "ONNX models loaded");
+        let model_loader_clone = model_loader.clone();
+        let model_load_fut: tokio::task::JoinHandle<Result<usize, anyhow::Error>> = tokio::spawn(async move {
+            info!("Starting background model loading...");
+            model_loader_clone.load_all_models().await.map_err(|e| e.into())
+        });
 
-        let staging_manager = Arc::new(
-            StagingManager::new(
-                &config.redis.url,
-                resilient_pool.clone(),
-                cache_config,
-                resilience_metrics.clone(),
-            ).await?
-        );
-
-        // Create repositories & services
-        let item_feature_service = Arc::new(ItemFeatureService::new(resilient_pool.clone(), resilience_metrics.clone()));
-
-        // Create staleness engine
-        let staleness_engine = Arc::new(StalenessEngine::new(staging_manager.clone(), item_feature_service.clone()));
-
-        // Create scenario factory
+        // 5. Build remaining engine components
         let scenario_factory = Arc::new(ScenarioFactory::new(resilient_pool.clone(), resilience_metrics.clone()));
-
-        // Create pipeline executor with Netflix resilience
-        let pipeline_observer: Arc<dyn crate::circuit_breaker::observer::ResilienceObserver> =
-            resilience_metrics.clone();
         let pipeline_executor = Arc::new(PipelineExecutor::new(
             config.pipeline.clone(),
             circuit_breaker_registry.clone(),
-            pipeline_observer,
+            resilience_metrics.clone(),
             Some(performance_stats.clone()),
         ));
 
-        info!(
-            registered_stages = pipeline_executor.stage_count(),
-            "Pipeline executor ready"
-        );
-
-        // Create Ingestion metrics registry
         let ingestion_metrics = Arc::new(IngestionMetrics::new(Vec::new()));
-
-        // Create ClickHouse client if configured
-        let clickhouse = if !config.clickhouse.url.is_empty() {
-            Some(Arc::new(
-                clickhouse::Client::default()
-                    .with_url(&config.clickhouse.url)
-                    .with_user(&config.clickhouse.user)
-                    .with_password(&config.clickhouse.password)
-                    .with_database(&config.clickhouse.database)
-            ))
-        } else {
-            None
-        };
-
-        // Create Ingestion manager
         let ingestion_manager = IngestionManager::new(
             config.ingestion.clone(),
             resilient_pool.clone(),
@@ -262,38 +276,24 @@ impl BongasEngine {
             clickhouse.clone(),
         );
 
-        // Create repositories & services
         let feature_repo = Arc::new(FeatureRepository::new(resilient_pool.clone(), resilience_metrics.clone()));
         let cache_repo = Arc::new(CacheRepository::new(resilient_pool.clone(), resilience_metrics.clone()));
         let feature_store = Arc::new(crate::ml::feature_store::FeatureStore::new(
             resilient_pool.clone(),
             cache_manager.clone(),
             config.ml.clone(),
-            None, // Analytics wired separately when PerformanceStats is available
+            None,
         ));
 
-        // Create training orchestrator
         let training_orchestrator = Arc::new(crate::ml::TrainingOrchestrator::new(
             config.ml.clone(),
-            clickhouse.as_ref().map(|c| (**c).clone()).unwrap_or_else(|| {
-                // Fallback client if ClickHouse is not configured (will fail gracefully on harvest)
-                clickhouse::Client::default()
-            }),
+            clickhouse.as_ref().map(|c| (**c).clone()).unwrap_or_else(|| clickhouse::Client::default()),
             security_manager.clone(),
             model_loader.clone(),
         ));
 
-        // Create experiment coordinator
         let experiment_coordinator = Arc::new(ExperimentCoordinator::new(config.experiments.clone()));
-
-        // Create shutdown signal
         let (shutdown_tx, _) = tokio::sync::broadcast::channel(1);
-
-        // Governance: Load max active scenarios from settings
-        let max_scenarios_val: i32 = sqlx::query_scalar("SELECT (value->>0)::int FROM system_settings WHERE key = 'max_active_scenarios'")
-            .fetch_one(&db_pool)
-            .await
-            .unwrap_or(20);
         let max_active_scenarios = Arc::new(AtomicUsize::new(max_scenarios_val as usize));
 
         let engine = Arc::new(Self {
@@ -324,11 +324,14 @@ impl BongasEngine {
             shutdown_tx,
         });
 
-        info!("BongasEngine initialized successfully");
+        // Wait for models to finish loading
+        let _ = model_load_fut.await.context("Model load join error")??;
 
-        // Start hot registry pulse
+        info!("BongasEngine initialization complete (Concurrent startup successful)");
+
         let engine_clone = engine.clone();
         tokio::spawn(async move {
+            info!("Starting Hot Registry pulse worker...");
             engine_clone.start_hot_registry_pulse().await;
         });
 

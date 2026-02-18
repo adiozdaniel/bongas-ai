@@ -72,4 +72,8 @@ impl ConfigSource for TomlSource {
 
         Self::parse_toml_to_flat_map(&content)
     }
+
+    fn name(&self) -> &'static str {
+        "TOML"
+    }
 }

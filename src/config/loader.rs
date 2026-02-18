@@ -52,17 +52,25 @@ use std::time::Duration;
       pub fn load(self) -> ConfigResult<AppConfig> {
           let mut config_map = HashMap::new();
 
+          tracing::info!("Loading application configuration from {} sources...", self.layers.len());
+
           // Load from all sources in order (later sources override earlier ones)
           for source in &self.layers {
+              tracing::info!("Loading configuration source: {}", source.name());
               let source_config = source.load()?;
+              tracing::info!("Loaded {} parameters from source", source_config.len());
               config_map.extend(source_config);
           }
+
+          tracing::info!("Total configuration parameters loaded: {}", config_map.len());
 
           // Parse and validate configuration
           let app_config = Self::parse_config_map(config_map)?;
 
           // Validate cross-module configuration dependencies
           Self::validate_config(&app_config)?;
+
+          tracing::info!("Application configuration loaded and validated successfully");
 
           Ok(app_config)
       }

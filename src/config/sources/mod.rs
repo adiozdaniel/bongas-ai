@@ -28,6 +28,9 @@
       /// - `Ok(HashMap<String, String>)` on success
       /// - `Err(ConfigError)` on failure
       fn load(&self) -> Result<HashMap<String, String>, ConfigError>;
+
+      /// Get the name of the configuration source for logging.
+      fn name(&self) -> &'static str;
   }
 
   /// Error types for configuration loading.
