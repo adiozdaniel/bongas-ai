@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use anyhow::Result;
 use serde_json::{Value as JsonValue, json};
 use serde::Deserialize;
-use crate::pipeline::{PipelineStage, ScoredItem, StageDataKind};
+use crate::pipeline::{PipelineStage, ScoredItem, StageDataKind, CompactMetadata};
 use crate::pipeline::context::ExecutionContext;
 
 #[derive(Deserialize)]
@@ -80,7 +80,7 @@ impl PipelineStage for FetchByCategoryStage {
             .map(|row| {
                 let score = row.popularity_score.unwrap_or(0.5);
 
-                ScoredItem::new(
+                let mut item = ScoredItem::new(
                     row.item_id,
                     score,
                     json!({
@@ -93,7 +93,19 @@ impl PipelineStage for FetchByCategoryStage {
                         "genres": row.genres,
                         "release_date": row.release_date.map(|d: chrono::DateTime<chrono::Utc>| d.to_rfc3339()),
                     }),
-                )
+                );
+
+                // Phase 6: Populate Zero-Copy Fast Metadata
+                let compact = CompactMetadata {
+                    features: vec![score, row.user_rating.unwrap_or(0.0)],
+                    flags: 0,
+                    category_id: 0,
+                };
+                if let Ok(bytes) = rkyv::to_bytes::<_, 256>(&compact) {
+                    item.fast_metadata = Some(bytes.to_vec());
+                }
+
+                item
             })
             .collect();
 

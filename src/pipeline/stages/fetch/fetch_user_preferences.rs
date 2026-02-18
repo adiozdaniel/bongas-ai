@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use anyhow::Result;
 use serde_json::{Value as JsonValue, json};
 use serde::Deserialize;
-use crate::pipeline::{PipelineStage, ScoredItem, StageDataKind};
+use crate::pipeline::{PipelineStage, ScoredItem, StageDataKind, CompactMetadata};
 use crate::pipeline::context::ExecutionContext;
 
 #[derive(Deserialize)]
@@ -92,9 +92,10 @@ impl PipelineStage for FetchUserPreferencesStage {
 
             for item in genre_items {
                 let base_score = item.popularity_score.unwrap_or(0.5);
-                items.push(ScoredItem::new(
+                let score = base_score * affinity;
+                let mut scored_item = ScoredItem::new(
                     item.item_id,
-                    base_score * affinity,
+                    score,
                     json!({
                         "source": "user_preferences",
                         "matched_genre": genre,
@@ -104,7 +105,19 @@ impl PipelineStage for FetchUserPreferencesStage {
                         "published_at": item.published_at.or(item.release_date).map(|d| d.to_rfc3339()),
                         "genres": item.genres,
                     }),
-                ));
+                );
+
+                // Phase 6: Populate Zero-Copy Fast Metadata
+                let compact = CompactMetadata {
+                    features: vec![score, *affinity],
+                    flags: 0,
+                    category_id: 0,
+                };
+                if let Ok(bytes) = rkyv::to_bytes::<_, 256>(&compact) {
+                    scored_item.fast_metadata = Some(bytes.to_vec());
+                }
+
+                items.push(scored_item);
             }
         }
 
@@ -114,14 +127,26 @@ impl PipelineStage for FetchUserPreferencesStage {
                 .unwrap_or_default();
 
             for wl_item in watchlist {
-                items.push(ScoredItem::new(
+                let mut scored_item = ScoredItem::new(
                     wl_item.item_id,
                     1.0, // High score for watchlist items
                     json!({
                         "source": "watchlist",
                         "added_at": wl_item.added_at.to_rfc3339(),
                     }),
-                ));
+                );
+
+                // Phase 6: Populate Zero-Copy Fast Metadata
+                let compact = CompactMetadata {
+                    features: vec![1.0, 0.0],
+                    flags: 0,
+                    category_id: 0,
+                };
+                if let Ok(bytes) = rkyv::to_bytes::<_, 256>(&compact) {
+                    scored_item.fast_metadata = Some(bytes.to_vec());
+                }
+
+                items.push(scored_item);
             }
         }
 

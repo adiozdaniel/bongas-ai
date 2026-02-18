@@ -83,6 +83,9 @@ pub struct BongasEngine {
     pub(crate) cache_manager: Arc<CacheManager>,
     pub(crate) metrics_collector: Arc<MetricsCollector>,
     pub(crate) performance_stats: Arc<PerformanceStats>,
+
+    // Shutdown signal
+    pub(crate) shutdown_tx: tokio::sync::broadcast::Sender<()>,
 }
 
 #[derive(Debug, Clone)]
@@ -122,10 +125,12 @@ impl BongasEngine {
             );
 
             // Phase 6: Start Predictive Warmer
-            let predictive_warmer = Arc::new(PredictiveWarmer::new(
+            let shutdown_rx = engine.shutdown_tx.subscribe();
+            let predictive_warmer = PredictiveWarmer::new(
                 engine.clone(),
                 cache_config.warm_scenarios,
-            ));
+                shutdown_rx,
+            );
             tokio::spawn(async move {
                 predictive_warmer.start().await;
             });
@@ -281,6 +286,9 @@ impl BongasEngine {
         // Create experiment coordinator
         let experiment_coordinator = Arc::new(ExperimentCoordinator::new(config.experiments.clone()));
 
+        // Create shutdown signal
+        let (shutdown_tx, _) = tokio::sync::broadcast::channel(1);
+
         // Governance: Load max active scenarios from settings
         let max_scenarios_val: i32 = sqlx::query_scalar("SELECT (value->>0)::int FROM system_settings WHERE key = 'max_active_scenarios'")
             .fetch_one(&db_pool)
@@ -313,6 +321,7 @@ impl BongasEngine {
             cache_manager,
             metrics_collector,
             performance_stats,
+            shutdown_tx,
         });
 
         info!("BongasEngine initialized successfully");
@@ -328,26 +337,34 @@ impl BongasEngine {
 
     async fn start_hot_registry_pulse(&self) {
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(60));
+        let mut shutdown_rx = self.shutdown_tx.subscribe();
+
         loop {
-            interval.tick().await;
-            
-            match self.item_feature_service.get_popular_content(100, 10000).await {
-                Ok(items) => {
-                    let hot_items: Vec<HotItem> = items.into_iter().map(|item| HotItem {
-                        item_id: item.item_id,
-                        score: item.trending_score,
-                        metadata: serde_json::json!({
-                            "title": item.title,
-                            "view_count": item.view_count,
-                            "completion_rate": item.completion_rate,
-                            "is_explicit": item.is_explicit,
-                        }),
-                    }).collect();
-                    
-                    self.hot_registry.refresh(hot_items);
+            tokio::select! {
+                _ = interval.tick() => {
+                    match self.item_feature_service.get_popular_content(100, 10000).await {
+                        Ok(items) => {
+                            let hot_items: Vec<HotItem> = items.into_iter().map(|item| HotItem {
+                                item_id: item.item_id,
+                                score: item.trending_score,
+                                metadata: serde_json::json!({
+                                    "title": item.title,
+                                    "view_count": item.view_count,
+                                    "completion_rate": item.completion_rate,
+                                    "is_explicit": item.is_explicit,
+                                }),
+                            }).collect();
+                            
+                            self.hot_registry.refresh(hot_items);
+                        }
+                        Err(e) => {
+                            warn!(error = %e, "Failed to refresh Hot Registry");
+                        }
+                    }
                 }
-                Err(e) => {
-                    warn!(error = %e, "Failed to refresh Hot Registry");
+                _ = shutdown_rx.recv() => {
+                    info!("Hot Registry pulse worker shutting down...");
+                    break;
                 }
             }
         }

@@ -81,7 +81,7 @@ impl KafkaSource {
         let consumer: StreamConsumer = ClientConfig::new()
             .set("bootstrap.servers", &self.config.brokers)
             .set("group.id", &self.config.group_id)
-            .set("enable.auto.commit", "true")
+            .set("enable.auto.commit", "false") // Manual commit for reliability
             .set("auto.offset.reset", "earliest")
             .set("session.timeout.ms", "30000")
             .create()?;
@@ -150,6 +150,9 @@ impl KafkaSource {
                             }
                         }
 
+use rdkafka::consumer::CommitMode;
+
+// ... (in consume_topic loop)
                         if !success {
                             // POISON MESSAGE DETECTED after retries
                             self.errors.fetch_add(1, Ordering::Relaxed);
@@ -162,6 +165,9 @@ impl KafkaSource {
                             
                             let _ = self.dlq_producer.send(record, Duration::from_secs(0)).await;
                         }
+
+                        // Manual commit after processing (success or DLQ)
+                        let _ = consumer.commit_message(&message, CommitMode::Async);
                     }
                 }
                 Ok(Err(e)) => {

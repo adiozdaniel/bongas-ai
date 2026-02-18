@@ -102,7 +102,7 @@ impl PipelineValidator {
                     }
                     current_output = output_prod;
                 }
-                ExecutionNode::Parallel(stages) => {
+                ExecutionNode::Parallel { stages, .. } => {
                     let mut first_output = None;
                     for stage in stages {
                         let input_req = stage.implementation.input_type();
@@ -154,7 +154,7 @@ impl PipelineValidator {
                     // We assume branches eventually produce ScoredItems
                     current_output = StageDataKind::ScoredItems;
                 }
-                ExecutionNode::Ensemble { sources } => {
+                ExecutionNode::Ensemble { sources, .. } => {
                     for source in sources {
                         self.validate_nodes_internal(&source.nodes, current_output)?;
                     }
@@ -184,7 +184,7 @@ impl PipelineValidator {
                     }
                     current_output = output_prod;
                 }
-                ExecutionNode::Parallel(stages) => {
+                ExecutionNode::Parallel { stages, .. } => {
                     for stage in stages {
                         if !self.are_types_compatible(current_output, stage.implementation.input_type()) {
                             return Err(anyhow::anyhow!("Type mismatch in structural parallel node"));
@@ -205,7 +205,7 @@ impl PipelineValidator {
                     self.validate_nodes_internal(if_false, current_output)?;
                     current_output = StageDataKind::ScoredItems;
                 }
-                ExecutionNode::Ensemble { sources } => {
+                ExecutionNode::Ensemble { sources, .. } => {
                     for source in sources {
                         self.validate_nodes_internal(&source.nodes, current_output)?;
                     }

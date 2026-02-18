@@ -39,11 +39,11 @@ impl PipelineOptimizer {
                         optimized.push(ExecutionNode::Single(bound));
                     }
                 }
-                ExecutionNode::Parallel(stages) => {
+                ExecutionNode::Parallel { stages, merge_strategy } => {
                     if !current_fusion_batch.is_empty() {
                         optimized.push(Self::create_fused_node(std::mem::take(&mut current_fusion_batch)));
                     }
-                    optimized.push(ExecutionNode::Parallel(stages));
+                    optimized.push(ExecutionNode::Parallel { stages, merge_strategy });
                 }
                 ExecutionNode::Fused(stages) => {
                     if !current_fusion_batch.is_empty() {
@@ -61,14 +61,14 @@ impl PipelineOptimizer {
                         if_false: Self::optimize(if_false),
                     });
                 }
-                ExecutionNode::Ensemble { mut sources } => {
+                ExecutionNode::Ensemble { mut sources, merge_strategy } => {
                     if !current_fusion_batch.is_empty() {
                         optimized.push(Self::create_fused_node(std::mem::take(&mut current_fusion_batch)));
                     }
                     for source in &mut sources {
                         source.nodes = Self::optimize(std::mem::take(&mut source.nodes));
                     }
-                    optimized.push(ExecutionNode::Ensemble { sources });
+                    optimized.push(ExecutionNode::Ensemble { sources, merge_strategy });
                 }
                 ExecutionNode::Interleave { pattern, mut sources } => {
                     if !current_fusion_batch.is_empty() {

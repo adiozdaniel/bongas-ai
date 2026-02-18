@@ -9,7 +9,7 @@
 
 use anyhow::Result;
 use std::sync::Arc;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, Semaphore};
 use tracing::{info, warn, error, debug};
 
 use crate::db::ResilientPool;
@@ -41,6 +41,7 @@ pub struct ActivityProcessor {
     pool: Arc<ResilientPool>,
     staleness_engine: Arc<StalenessEngine>,
     clickhouse: Option<Arc<clickhouse::Client>>,
+    flush_semaphore: Arc<Semaphore>,
 }
 
 impl ActivityProcessor {
@@ -55,6 +56,7 @@ impl ActivityProcessor {
             pool: resilient_pool,
             staleness_engine,
             clickhouse,
+            flush_semaphore: Arc::new(Semaphore::new(5)), // Max 5 concurrent flushes
         }
     }
 
@@ -75,7 +77,9 @@ impl ActivityProcessor {
                             if buffer.len() >= 100 {
                                 let batch = std::mem::replace(&mut buffer, Vec::with_capacity(100));
                                 let processor = self.clone();
+                                let permit = self.flush_semaphore.clone().acquire_owned().await.unwrap();
                                 tokio::spawn(async move {
+                                    let _permit = permit;
                                     if let Err(e) = processor.flush_batch(batch).await {
                                         error!("Failed to flush batch: {}", e);
                                     }
@@ -87,7 +91,9 @@ impl ActivityProcessor {
                             if !buffer.is_empty() {
                                 let batch = std::mem::take(&mut buffer);
                                 let processor = self.clone();
+                                let permit = self.flush_semaphore.clone().acquire_owned().await.unwrap();
                                 tokio::spawn(async move {
+                                    let _permit = permit;
                                     if let Err(e) = processor.flush_batch(batch).await {
                                         error!("Failed to flush final batch: {}", e);
                                     }
@@ -101,7 +107,9 @@ impl ActivityProcessor {
                     if !buffer.is_empty() {
                         let batch = std::mem::replace(&mut buffer, Vec::with_capacity(100));
                         let processor = self.clone();
+                        let permit = self.flush_semaphore.clone().acquire_owned().await.unwrap();
                         tokio::spawn(async move {
+                            let _permit = permit;
                             if let Err(e) = processor.flush_batch(batch).await {
                                 error!("Failed to flush batch on interval: {}", e);
                             }

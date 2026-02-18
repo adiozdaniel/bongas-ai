@@ -15,36 +15,48 @@ pub struct PredictiveWarmer {
     engine: Arc<BongasEngine>,
     warm_scenarios: Vec<String>,
     concurrency_limit: Arc<Semaphore>,
+    shutdown_rx: tokio::sync::broadcast::Receiver<()>,
 }
 
 impl PredictiveWarmer {
-    pub fn new(engine: Arc<BongasEngine>, warm_scenarios: Vec<String>) -> Self {
+    pub fn new(
+        engine: Arc<BongasEngine>, 
+        warm_scenarios: Vec<String>,
+        shutdown_rx: tokio::sync::broadcast::Receiver<()>,
+    ) -> Self {
         Self {
             engine,
             warm_scenarios,
             concurrency_limit: Arc::new(Semaphore::new(10)), // Limit to 10 concurrent warmings
+            shutdown_rx,
         }
     }
 
     /// Start the predictive warming background task.
-    pub async fn start(self: Arc<Self>) {
+    pub async fn start(mut self) {
         // Run every 15 minutes to predict the next arrival window
         let mut ticker = interval(Duration::from_secs(900));
 
         loop {
-            ticker.tick().await;
-            
-            let now = chrono::Utc::now();
-            let next_window_start = (now + Duration::from_secs(900)).hour();
-            
-            info!(
-                hour = next_window_start,
-                minute = ((now.minute() / 15 + 1) * 15) % 60,
-                "Starting 15-minute predictive cache warming cycle"
-            );
+            tokio::select! {
+                _ = ticker.tick() => {
+                    let now = chrono::Utc::now();
+                    let next_window_start = (now + Duration::from_secs(900)).hour();
+                    
+                    info!(
+                        hour = next_window_start,
+                        minute = ((now.minute() / 15 + 1) * 15) % 60,
+                        "Starting 15-minute predictive cache warming cycle"
+                    );
 
-            if let Err(e) = self.warm_next_arrivals(next_window_start).await {
-                warn!(error = %e, "Predictive warming cycle failed");
+                    if let Err(e) = self.warm_next_arrivals(next_window_start).await {
+                        warn!(error = %e, "Predictive warming cycle failed");
+                    }
+                }
+                _ = self.shutdown_rx.recv() => {
+                    info!("Predictive warmer shutting down...");
+                    break;
+                }
             }
         }
     }

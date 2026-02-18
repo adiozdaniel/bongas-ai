@@ -105,11 +105,25 @@ impl std::fmt::Debug for BoundStage {
     }
 }
 
+/// Strategy for merging scores from multiple branches or parallel stages.
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum MergeStrategy {
+    Sum,
+    Max,
+    Min,
+    Average,
+    First,
+}
+
 /// A node in the execution graph.
 #[derive(Debug)]
 pub enum ExecutionNode {
     Single(BoundStage),
-    Parallel(Vec<BoundStage>),
+    Parallel {
+        stages: Vec<BoundStage>,
+        merge_strategy: MergeStrategy,
+    },
     /// A group of stages fused into a single pass (JIT-lite).
     Fused(Vec<BoundStage>),
     /// A conditional branch point.
@@ -121,6 +135,7 @@ pub enum ExecutionNode {
     /// A weighted ensemble of multiple source branches.
     Ensemble {
         sources: Vec<EnsembleSource>,
+        merge_strategy: MergeStrategy,
     },
     /// A slot-based interleaver for discovery and retention.
     Interleave {

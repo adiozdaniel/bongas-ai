@@ -4,8 +4,9 @@ use anyhow::{Result, Context};
 use std::sync::Arc;
 use std::collections::HashMap;
 use std::time::Duration;
-use tracing::warn;
+use tracing::{warn};
 use futures::future::join_all;
+use async_recursion::async_recursion;
 
 use crate::analytics::types::PerformanceStats;
 use crate::circuit_breaker::{
@@ -133,6 +134,9 @@ impl PipelineExecutor {
                     let source_configs: Vec<serde_json::Value> = serde_json::from_value(
                         stage_config.params.get("sources").cloned().unwrap_or_default()
                     )?;
+                    let merge_strategy: crate::pipeline::MergeStrategy = serde_json::from_value(
+                        stage_config.params.get("merge_strategy").cloned().unwrap_or(serde_json::json!("sum"))
+                    )?;
                     
                     let mut sources = Vec::new();
                     for sc in source_configs {
@@ -147,7 +151,7 @@ impl PipelineExecutor {
                             name,
                         });
                     }
-                    nodes.push(ExecutionNode::Ensemble { sources });
+                    nodes.push(ExecutionNode::Ensemble { sources, merge_strategy });
                     continue;
                 }
                 "interleave" => {
@@ -207,7 +211,10 @@ impl PipelineExecutor {
         if current_parallel.len() == 1 {
             ExecutionNode::Single(current_parallel.pop().unwrap())
         } else {
-            ExecutionNode::Parallel(std::mem::take(current_parallel))
+            ExecutionNode::Parallel { 
+                stages: std::mem::take(current_parallel),
+                merge_strategy: crate::pipeline::MergeStrategy::Sum,
+            }
         }
     }
 
@@ -240,6 +247,7 @@ impl PipelineExecutor {
         }
     }
 
+    #[async_recursion]
     async fn execute_nodes(&self, nodes: &[ExecutionNode], context: &ExecutionContext) -> Result<Vec<ScoredItem>> {
         let mut items = Vec::new();
         for node in nodes {
@@ -255,24 +263,39 @@ impl PipelineExecutor {
                         }
                     }
                 }
-                ExecutionNode::Parallel(stages) => {
+                ExecutionNode::Parallel { stages, merge_strategy } => {
                     let futures = stages.iter().map(|s| self.execute_single_stage(s, context, items.clone()));
                     let results = join_all(futures).await;
                     let mut merged_map: HashMap<i32, ScoredItem> = HashMap::new();
+                    let mut counts: HashMap<i32, usize> = HashMap::new();
+
                     for res in results {
                         if let Ok(stage_items) = res {
                             for mut item in stage_items {
-                                merged_map.entry(item.item_id)
-                                    .and_modify(|existing: &mut ScoredItem| {
-                                        // Merge scores (Sum strategy for parallel)
-                                        existing.score += item.score;
-                                        // Merge reasoning trails
-                                        existing.reasoning.append(&mut item.reasoning);
-                                        // Merge metadata
-                                        if let (Some(dest), Some(src)) = (existing.metadata.as_object_mut(), item.metadata.as_object()) {
-                                            for (k, v) in src { dest.insert(k.clone(), v.clone()); }
-                                        }
-                                    }).or_insert(item);
+                                let id = item.item_id;
+                                if let Some(existing) = merged_map.get_mut(&id) {
+                                    match merge_strategy {
+                                        crate::pipeline::MergeStrategy::Sum => existing.score += item.score,
+                                        crate::pipeline::MergeStrategy::Max => existing.score = existing.score.max(item.score),
+                                        crate::pipeline::MergeStrategy::Min => existing.score = existing.score.min(item.score),
+                                        crate::pipeline::MergeStrategy::Average => existing.score += item.score,
+                                        crate::pipeline::MergeStrategy::First => {} // Keep first score
+                                    }
+                                    existing.reasoning.append(&mut item.reasoning);
+                                    *counts.get_mut(&id).unwrap() += 1;
+                                } else {
+                                    merged_map.insert(id, item);
+                                    counts.insert(id, 1);
+                                }
+                            }
+                        }
+                    }
+
+                    if *merge_strategy == crate::pipeline::MergeStrategy::Average {
+                        for (id, item) in merged_map.iter_mut() {
+                            let count = *counts.get(id).unwrap_or(&1);
+                            if count > 1 {
+                                item.score /= count as f32;
                             }
                         }
                     }
@@ -284,30 +307,49 @@ impl PipelineExecutor {
                     } else {
                         if_false
                     };
-                    // Use Box::pin to handle recursion in async function
-                    let fut = self.execute_nodes(branch, context);
-                    items = Box::pin(fut).await?;
+                    items = self.execute_nodes(branch, context).await?;
                 }
-                ExecutionNode::Ensemble { sources } => {
+                ExecutionNode::Ensemble { sources, merge_strategy } => {
                     let futures = sources.iter().map(|source| {
                         async move {
-                            let result = Box::pin(self.execute_nodes(&source.nodes, context)).await;
+                            let result = self.execute_nodes(&source.nodes, context).await;
                             (source.weight, result)
                         }
                     });
                     let results = join_all(futures).await;
                     
                     let mut ensemble_map: HashMap<i32, ScoredItem> = HashMap::new();
+                    let mut counts: HashMap<i32, usize> = HashMap::new();
+
                     for (weight, res) in results {
                         if let Ok(source_items) = res {
                             for mut item in source_items {
+                                let id = item.item_id;
                                 item.score *= weight;
-                                ensemble_map.entry(item.item_id)
-                                    .and_modify(|e| {
-                                        e.score += item.score;
-                                        e.reasoning.append(&mut item.reasoning);
-                                    })
-                                    .or_insert(item);
+
+                                if let Some(existing) = ensemble_map.get_mut(&id) {
+                                    match merge_strategy {
+                                        crate::pipeline::MergeStrategy::Sum => existing.score += item.score,
+                                        crate::pipeline::MergeStrategy::Max => existing.score = existing.score.max(item.score),
+                                        crate::pipeline::MergeStrategy::Min => existing.score = existing.score.min(item.score),
+                                        crate::pipeline::MergeStrategy::Average => existing.score += item.score,
+                                        crate::pipeline::MergeStrategy::First => {}
+                                    }
+                                    existing.reasoning.append(&mut item.reasoning);
+                                    *counts.get_mut(&id).unwrap() += 1;
+                                } else {
+                                    ensemble_map.insert(id, item);
+                                    counts.insert(id, 1);
+                                }
+                            }
+                        }
+                    }
+
+                    if *merge_strategy == crate::pipeline::MergeStrategy::Average {
+                        for (id, item) in ensemble_map.iter_mut() {
+                            let count = *counts.get(id).unwrap_or(&1);
+                            if count > 1 {
+                                item.score /= count as f32;
                             }
                         }
                     }
@@ -316,7 +358,7 @@ impl PipelineExecutor {
                 ExecutionNode::Interleave { pattern, sources } => {
                     let futures = sources.iter().map(|(name, nodes)| {
                         async move {
-                            let result = Box::pin(self.execute_nodes(nodes, context)).await;
+                            let result = self.execute_nodes(nodes, context).await;
                             (name.clone(), result)
                         }
                     });

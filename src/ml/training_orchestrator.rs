@@ -4,16 +4,18 @@
 //!
 //! 1. Detects first launch (no model present).
 //! 2. Extracts historical sequences from ClickHouse with persona/device context.
-//! 3. Uploads the "Master Snapshot" to the central training server.
+//! 3. Streams the "Master Snapshot" to the central training server with Zstd compression.
 //! 4. Polls for the resulting ONNX model.
 
 use std::sync::Arc;
 use std::time::Duration;
 use anyhow::{Result, Context};
 use serde::{Serialize, Deserialize};
-use tracing::{info, warn, error, debug};
+use tracing::{info, error, debug};
 use clickhouse::Client as ClickHouseClient;
 use reqwest::Client as HttpClient;
+use async_compression::tokio::write::ZstdEncoder;
+use tokio::io::AsyncWriteExt;
 
 use crate::config::MlConfig;
 use crate::security::SecurityManager;
@@ -53,7 +55,7 @@ impl TrainingOrchestrator {
             config,
             clickhouse,
             http_client: HttpClient::builder()
-                .timeout(Duration::from_secs(300)) // Long timeout for harvest upload
+                .timeout(Duration::from_secs(600)) // 10 min timeout for streaming
                 .build()
                 .unwrap_or_default(),
             security_manager,
@@ -69,80 +71,74 @@ impl TrainingOrchestrator {
             return Ok(());
         }
 
-        info!("Starting One-Shot Harvest for first-launch training...");
+        info!("Starting Streaming One-Shot Harvest for first-launch training...");
 
-        // 2. Harvest data from ClickHouse
-        let data = self.harvest_historical_data().await?;
-        if data.is_empty() {
-            warn!("ClickHouse harvest returned no data. Is the database empty?");
-            return Ok(());
-        }
+        // 2. Perform streaming upload
+        self.stream_harvest_to_server().await?;
 
-        info!(count = data.len(), "Harvested historical sequences from ClickHouse");
-
-        // 3. Upload to central server
-        self.upload_harvest(data).await?;
-
-        info!("One-Shot Harvest uploaded successfully. Waiting for model training...");
+        info!("One-Shot Harvest stream completed successfully. Waiting for model training...");
         
         Ok(())
     }
 
-    /// Extract historical data with persona and device context.
-    async fn harvest_historical_data(&self) -> Result<Vec<HarvestedInteraction>> {
-        // Query historical interactions joined with session context if available.
-        // Table synchronized with ingestion processor: user_interactions
+    /// Stream data from ClickHouse to central server with Zstd compression.
+    async fn stream_harvest_to_server(&self) -> Result<()> {
+        let url = format!("{}/api/v1/training/harvest", self.config.central_server_url);
+        
+        // hardware validation
+        let hardware_id = self.security_manager.get_hardware_id().await.unwrap_or_default();
+        if !self.security_manager.is_validated().await {
+            return Err(anyhow::anyhow!("Cannot upload harvest: License not validated"));
+        }
+
+        // Create a pipe for streaming (Writer -> Encoder -> Reader)
+        let (writer, reader) = tokio::io::duplex(64 * 1024); // 64KB buffer
+        
+        // Wrap writer in a Zstd encoder for streaming compression
+        let mut encoder = ZstdEncoder::new(writer);
+
+        // ClickHouse Query
         let query = r#"
             SELECT 
-                user_id, 
-                item_id, 
-                interaction_type, 
-                'unknown' as device_type,
-                'default' as profile_id,
-                'GE' as maturity_rating,
-                'unknown' as genre,
-                watch_duration_seconds,
-                created_at
+                user_id, item_id, interaction_type, 
+                'unknown' as device_type, 'default' as profile_id, 'GE' as maturity_rating, 'unknown' as genre,
+                watch_duration_seconds, created_at
             FROM user_interactions
             WHERE created_at > (toUnixTimestamp(now()) - 7776000)
             ORDER BY user_id, created_at ASC
-            LIMIT 1000000
         "#;
 
-        let rows: Vec<HarvestedInteraction> = self.clickhouse
-            .query(query)
-            .fetch_all()
-            .await
-            .context("Failed to harvest data from ClickHouse")?;
+        let mut cursor = self.clickhouse.query(query).fetch::<HarvestedInteraction>()?;
 
-        Ok(rows)
-    }
+        // Background task to pump data into the encoder
+        tokio::spawn(async move {
+            while let Ok(Some(row)) = cursor.next().await {
+                if let Ok(json_row) = serde_json::to_vec(&row) {
+                    let _ = encoder.write_all(&json_row).await;
+                    let _ = encoder.write_all(b"\n").await; // NDJSON format
+                }
+            }
+            let _ = encoder.shutdown().await;
+        });
 
-    /// Upload harvest to central server with security signing.
-    async fn upload_harvest(&self, data: Vec<HarvestedInteraction>) -> Result<()> {
-        let url = format!("{}/api/v1/training/harvest", self.config.central_server_url);
-        
-        // Sign the request with hardware fingerprint and license
-        let hardware_id = self.security_manager.get_hardware_id().await.unwrap_or_default();
-        let is_validated = self.security_manager.is_validated().await;
-
-        if !is_validated {
-            return Err(anyhow::anyhow!("Cannot upload harvest: License not validated"));
-        }
+        // Use the reader as the request body
+        let stream = tokio_util::io::ReaderStream::new(reader);
+        let body = reqwest::Body::wrap_stream(stream);
 
         let response = self.http_client
             .post(&url)
             .header("X-Hardware-ID", hardware_id)
-            .json(&data)
+            .header("Content-Encoding", "zstd")
+            .header("Content-Type", "application/x-ndjson")
+            .body(body)
             .send()
             .await
-            .context("Failed to connect to central training server")?;
+            .context("Failed to stream harvest to training server")?;
 
         if !response.status().is_success() {
             let status = response.status();
-            let body = response.text().await.unwrap_or_default();
-            error!(status = %status, body = %body, "Harvest upload failed");
-            return Err(anyhow::anyhow!("Training server rejected harvest: {}", status));
+            error!(status = %status, "Harvest stream upload failed");
+            return Err(anyhow::anyhow!("Training server rejected stream: {}", status));
         }
 
         Ok(())
