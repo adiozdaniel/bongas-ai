@@ -197,7 +197,6 @@ impl BongasEngine {
         let model_count = model_loader.load_all_models().await?;
         info!(model_count = model_count, "ONNX models loaded");
 
-        // Create staging manager with CacheManager
         let staging_manager = Arc::new(
             StagingManager::new(
                 &config.redis.url,
@@ -207,8 +206,11 @@ impl BongasEngine {
             ).await?
         );
 
+        // Create repositories & services
+        let item_feature_service = Arc::new(ItemFeatureService::new(resilient_pool.clone(), resilience_metrics.clone()));
+
         // Create staleness engine
-        let staleness_engine = Arc::new(StalenessEngine::new(staging_manager.clone()));
+        let staleness_engine = Arc::new(StalenessEngine::new(staging_manager.clone(), item_feature_service.clone()));
 
         // Create scenario factory
         let scenario_factory = Arc::new(ScenarioFactory::new(resilient_pool.clone(), resilience_metrics.clone()));
@@ -256,7 +258,6 @@ impl BongasEngine {
         );
 
         // Create repositories & services
-        let item_feature_service = Arc::new(ItemFeatureService::new(resilient_pool.clone(), resilience_metrics.clone()));
         let feature_repo = Arc::new(FeatureRepository::new(resilient_pool.clone(), resilience_metrics.clone()));
         let cache_repo = Arc::new(CacheRepository::new(resilient_pool.clone(), resilience_metrics.clone()));
         let feature_store = Arc::new(crate::ml::feature_store::FeatureStore::new(

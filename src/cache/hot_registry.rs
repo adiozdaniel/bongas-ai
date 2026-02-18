@@ -13,7 +13,7 @@
 //! the majority of platform traffic, effectively skipping Redis and PostgreSQL
 //! for the hottest data.
 
-use dashmap::DashMap;
+use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use std::sync::Arc;
@@ -28,72 +28,80 @@ pub struct HotItem {
     pub metadata: JsonValue, // Hydrated metadata (title, url, etc.) to skip DB lookups
 }
 
+/// Internal data for the hot registry.
+struct RegistryData {
+    /// Full item data indexed by item_id.
+    items: HashMap<i32, HotItem>,
+    /// Ordered list of item IDs for quick "top k" retrieval without sorting.
+    top_ids: Vec<i32>,
+}
+
 /// Thread-safe in-memory registry for global hot content.
 ///
-/// Uses a sharded DashMap for O(1) metadata lookups and an ArcSwap-protected
-/// vector for atomic top-K list updates.
+/// Uses an ArcSwap-protected structure for atomic updates, ensuring 
+/// zero availability gaps for readers during refresh.
 pub struct HotRegistry {
-    /// Full item data indexed by item_id.
-    items: DashMap<i32, HotItem>,
-    /// Ordered list of item IDs for quick "top k" retrieval without sorting.
-    top_ids: ArcSwap<Vec<i32>>,
+    data: ArcSwap<RegistryData>,
 }
 
 impl HotRegistry {
     /// Create a new empty hot registry.
     pub fn new() -> Self {
         Self {
-            items: DashMap::new(),
-            top_ids: ArcSwap::from_pointee(Vec::new()),
+            data: ArcSwap::from_pointee(RegistryData {
+                items: HashMap::new(),
+                top_ids: Vec::new(),
+            }),
         }
     }
 
     /// Get an item if it exists in the hot registry.
     pub fn get(&self, item_id: i32) -> Option<HotItem> {
-        self.items.get(&item_id).map(|r| r.value().clone())
+        self.data.load().items.get(&item_id).cloned()
     }
 
     /// Get the top K items directly from memory (zero-latency fetch).
     pub fn get_top_k(&self, limit: usize) -> Vec<HotItem> {
-        let ids = self.top_ids.load();
-        ids.iter()
+        let data = self.data.load();
+        data.top_ids.iter()
             .take(limit)
-            .filter_map(|id| self.get(*id))
+            .filter_map(|id| data.items.get(id).cloned())
             .collect()
     }
 
     /// Atomic refresh of the registry.
     ///
-    /// Clears existing items and populates with new viral content.
-    /// Swaps the top_ids pointer atomically to ensure zero downtime for readers.
+    /// Populates with new viral content and performs a single atomic swap.
     pub fn refresh(&self, new_items: Vec<HotItem>) {
         let count = new_items.len();
-        let mut ids = Vec::with_capacity(count);
+        let mut items = HashMap::with_capacity(count);
+        let mut top_ids = Vec::with_capacity(count);
         
-        // Clear and refill map
-        self.items.clear();
         for item in new_items {
-            ids.push(item.item_id);
-            self.items.insert(item.item_id, item);
+            top_ids.push(item.item_id);
+            items.insert(item.item_id, item);
         }
 
-        // Atomic swap of the top-k list
-        self.top_ids.store(Arc::new(ids));
+        // Atomic swap of the entire data structure
+        self.data.store(Arc::new(RegistryData {
+            items,
+            top_ids,
+        }));
         
         info!(
             count = count,
-            "Thunder-Lite Hot Registry refreshed successfully"
+            "Thunder-Lite Hot Registry refreshed successfully (Atomic Swap)"
         );
     }
     
     /// Returns the current number of hot items.
     pub fn len(&self) -> usize {
-        self.items.len()
+        self.data.load().items.len()
     }
 
     /// Returns true if the registry is empty.
     pub fn is_empty(&self) -> bool {
-        self.items.is_empty()
+        self.data.load().items.is_empty()
     }
 }
 

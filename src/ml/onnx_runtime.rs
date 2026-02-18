@@ -8,7 +8,7 @@
 //! 5. Classified via `ModelError` → `ErrorClassifier` for resilience routing
 
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use anyhow::Result;
@@ -31,7 +31,7 @@ use crate::error::ModelError;
 /// - **Bulkhead semaphore**: Limits concurrent inference calls
 /// - **Analytics**: Records latency, throughput, and errors
 pub struct OnnxInferenceEngine {
-    session: Session,
+    session: Mutex<Session>,
     model_name: String,
     input_names: Vec<String>,
     output_names: Vec<String>,
@@ -45,8 +45,9 @@ pub struct OnnxInferenceEngine {
     analytics: Option<Arc<crate::analytics::types::PerformanceStats>>,
 }
 
-// Session is Send but not Sync by default in ort v2;
-// we only call run(&mut self) from one thread at a time via Arc<RwLock>
+// Session is thread-safe in ONNX Runtime (wraps a thread-safe C++ session).
+// By using a Mutex wrapper and &self for inference methods, we satisfy the 
+// compiler while allowing safe multi-threaded access.
 unsafe impl Sync for OnnxInferenceEngine {}
 
 impl OnnxInferenceEngine {
@@ -111,10 +112,7 @@ impl OnnxInferenceEngine {
                 model_name, e
             )))?;
 
-        // Leak the breaker ID string — model names are long-lived singletons
-        let breaker_id: &'static str = Box::leak(
-            format!("ml.inference.{}", model_name).into_boxed_str()
-        );
+        let breaker_id = format!("ml.inference.{}", model_name);
         let breaker = Arc::new(CircuitBreaker::new(
             CircuitBreakerId::new(breaker_id),
             breaker_config,
@@ -124,7 +122,7 @@ impl OnnxInferenceEngine {
         let bulkhead = Arc::new(Semaphore::new(config.inference_max_concurrent));
 
         Ok(Self {
-            session,
+            session: Mutex::new(session),
             model_name,
             input_names,
             output_names,
@@ -156,8 +154,8 @@ impl OnnxInferenceEngine {
     }
 
     /// Run two-tower inference with circuit breaker + bulkhead + analytics.
-    pub fn predict_two_tower(
-        &mut self,
+    pub async fn predict_two_tower(
+        &self,
         user_features: Array2<f32>,
         item_features: Array2<f32>,
     ) -> Result<Vec<f32>, ModelError> {
@@ -183,8 +181,15 @@ impl OnnxInferenceEngine {
                 }
             })?;
 
-        // Execute inference
-        let result = self.execute_two_tower(user_features, item_features);
+        // Execute via circuit breaker
+        let result = self.breaker.call(|| async {
+            self.execute_two_tower(user_features, item_features)
+        }).await.map_err(|e| match e {
+            crate::circuit_breaker::CircuitBreakerError::ExecutionFailed { source, .. } => source,
+            crate::circuit_breaker::CircuitBreakerError::Rejected { .. } => ModelError::CircuitOpen(self.model_name.clone()),
+            crate::circuit_breaker::CircuitBreakerError::TimedOut { .. } => ModelError::InferenceFailed("timeout".to_string()),
+        });
+
         let latency = start.elapsed();
 
         // Analytics
@@ -219,8 +224,8 @@ impl OnnxInferenceEngine {
     }
 
     /// Batch inference with resilience: circuit breaker + bulkhead + analytics.
-    pub fn predict_batch(
-        &mut self,
+    pub async fn predict_batch(
+        &self,
         user_features: Vec<Vec<f32>>,
         item_features: Vec<Vec<f32>>,
     ) -> Result<Vec<f32>, ModelError> {
@@ -253,12 +258,12 @@ impl OnnxInferenceEngine {
             }
         }
 
-        self.predict_two_tower(user_array, item_array)
+        self.predict_two_tower(user_array, item_array).await
     }
 
     /// Raw two-tower execution (no resilience wrappers — called inside breaker).
     fn execute_two_tower(
-        &mut self,
+        &self,
         user_features: Array2<f32>,
         item_features: Array2<f32>,
     ) -> Result<Vec<f32>, ModelError> {
@@ -267,15 +272,22 @@ impl OnnxInferenceEngine {
         let item_input = TensorRef::from_array_view(item_features.view())
             .map_err(|e| ModelError::InferenceFailed(format!("item tensor: {e}")))?;
 
-        let outputs = self.session.run(ort::inputs![
+        let mut session = self.session.lock().map_err(|_| ModelError::InferenceFailed("session mutex poisoned".to_string()))?;
+        
+        let outputs = session.run(ort::inputs![
             self.input_names[0].clone() => user_input,
             self.input_names[1].clone() => item_input,
         ])
         .map_err(|e| ModelError::InferenceFailed(format!("session run: {e}")))?;
 
-        let (_shape, scores_slice) = outputs[0]
+        // Extract tensor
+        let (shape, scores_slice) = outputs[0]
             .try_extract_tensor::<f32>()
             .map_err(|e| ModelError::InferenceFailed(format!("extract tensor: {e}")))?;
+
+        if shape.is_empty() {
+            return Err(ModelError::InferenceFailed("Model returned empty shape".to_string()));
+        }
 
         Ok(scores_slice.to_vec())
     }
@@ -283,8 +295,8 @@ impl OnnxInferenceEngine {
     /// Batch inference with resilience: circuit breaker + bulkhead + analytics.
     /// Run multi-action inference (multi-head output).
     /// Returns a Vec of Vecs, where each inner vec contains all predicted action probabilities for an item.
-    pub fn predict_multi_action(
-        &mut self,
+    pub async fn predict_multi_action(
+        &self,
         user_features: Array2<f32>,
         item_features: Array2<f32>,
     ) -> Result<Vec<Vec<f32>>, ModelError> {
@@ -298,38 +310,54 @@ impl OnnxInferenceEngine {
                 queue_depth: self.bulkhead.available_permits(),
             })?;
 
-        // Run raw inference
-        let user_input = TensorRef::from_array_view(user_features.view())
-            .map_err(|e| ModelError::InferenceFailed(format!("user tensor: {e}")))?;
-        let item_input = TensorRef::from_array_view(item_features.view())
-            .map_err(|e| ModelError::InferenceFailed(format!("item tensor: {e}")))?;
+        // Execute via circuit breaker
+        let result = self.breaker.call(|| async {
+            let mut session = self.session.lock().map_err(|_| ModelError::InferenceFailed("session mutex poisoned".to_string()))?;
 
-        let outputs = self.session.run(ort::inputs![
-            self.input_names[0].clone() => user_input,
-            self.input_names[1].clone() => item_input,
-        ])
-        .map_err(|e| ModelError::InferenceFailed(format!("session run: {e}")))?;
+            let user_input = TensorRef::from_array_view(user_features.view())
+                .map_err(|e| ModelError::InferenceFailed(format!("user tensor: {e}")))?;
+            let item_input = TensorRef::from_array_view(item_features.view())
+                .map_err(|e| ModelError::InferenceFailed(format!("item tensor: {e}")))?;
 
-        // Extract multi-dimensional output (Batch x Actions)
-        let (shape, flat_scores) = outputs[0]
-            .try_extract_tensor::<f32>()
-            .map_err(|e| ModelError::InferenceFailed(format!("extract tensor: {e}")))?;
+            let outputs = session.run(ort::inputs![
+                self.input_names[0].clone() => user_input,
+                self.input_names[1].clone() => item_input,
+            ])
+            .map_err(|e| ModelError::InferenceFailed(format!("session run: {e}")))?;
 
-        let actions_dim = shape[1] as usize;
-        let mut results = Vec::with_capacity(batch_size);
-        
-        for i in 0..batch_size {
-            let start = i * actions_dim;
-            let end = start + actions_dim;
-            results.push(flat_scores[start..end].to_vec());
-        }
+            // Extract multi-dimensional output (Batch x Actions)
+            let (shape, flat_scores) = outputs[0]
+                .try_extract_tensor::<f32>()
+                .map_err(|e| ModelError::InferenceFailed(format!("extract tensor: {e}")))?;
+
+            if shape.len() < 2 {
+                return Err(ModelError::InferenceFailed(format!("Unexpected output shape: {:?}", shape)));
+            }
+
+            let actions_dim = shape[1] as usize;
+            let mut results = Vec::with_capacity(batch_size);
+            
+            for i in 0..batch_size {
+                let start = i * actions_dim;
+                let end = start + actions_dim;
+                results.push(flat_scores[start..end].to_vec());
+            }
+            Ok(results)
+        }).await.map_err(|e| match e {
+            crate::circuit_breaker::CircuitBreakerError::ExecutionFailed { source, .. } => source,
+            crate::circuit_breaker::CircuitBreakerError::Rejected { .. } => ModelError::CircuitOpen(self.model_name.clone()),
+            crate::circuit_breaker::CircuitBreakerError::TimedOut { .. } => ModelError::InferenceFailed("timeout".to_string()),
+        });
 
         let latency = start.elapsed();
         if let Some(ref analytics) = self.analytics {
             analytics.record_response_time(&metric_key, latency.as_millis() as u64);
             analytics.increment_throughput(&metric_key);
+            if result.is_err() {
+                analytics.increment_error(&metric_key);
+            }
         }
 
-        Ok(results)
+        result
     }
 }

@@ -143,7 +143,7 @@ impl PipelineStage for ONNXInferenceStage {
         let mut scores: Vec<f32> = Vec::with_capacity(batch_item_ids.len());
         
         if !user_batch.is_empty() {
-            let mut engine = model.write().await;
+            let engine = model.read().await;
             
             // Chunk the batch according to params.batch_size
             for chunk_idx in (0..user_batch.len()).step_by(params.batch_size) {
@@ -151,7 +151,7 @@ impl PipelineStage for ONNXInferenceStage {
                 let user_chunk = user_batch[chunk_idx..end].to_vec();
                 let item_chunk = item_batch[chunk_idx..end].to_vec();
                 
-                let chunk_scores = engine.predict_batch(user_chunk, item_chunk)
+                let chunk_scores = engine.predict_batch(user_chunk, item_chunk).await
                     .with_context(|| format!(
                         "ONNX batch inference failed for chunk {}-{}",
                         chunk_idx, end

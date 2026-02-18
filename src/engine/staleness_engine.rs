@@ -4,10 +4,12 @@ use std::sync::Arc;
 use tracing::{info, warn, debug};
 
 use crate::engine::staging_manager::StagingManager;
+use crate::db::repositories::item_feature_service::ItemFeatureService;
 
 pub struct StalenessEngine {
     rules: Vec<StalenessRule>,
     staging_manager: Arc<StagingManager>,
+    item_feature_service: Arc<ItemFeatureService>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -72,7 +74,10 @@ pub enum StalenessRule {
 }
 
 impl StalenessEngine {
-    pub fn new(staging_manager: Arc<StagingManager>) -> Self {
+    pub fn new(
+        staging_manager: Arc<StagingManager>,
+        item_feature_service: Arc<ItemFeatureService>,
+    ) -> Self {
         let rules = vec![
             // Continue watching invalidates on new watch
             StalenessRule::OnNewWatchEvent {
@@ -112,6 +117,7 @@ impl StalenessEngine {
         Self {
             rules,
             staging_manager,
+            item_feature_service,
         }
     }
 
@@ -247,10 +253,21 @@ impl StalenessEngine {
         self.staging_manager.invalidate("supreme_ranker", user_id).await?;
         self.staging_manager.invalidate("for_you_personalized", user_id).await?;
 
-        // 2. Record penalty (Genre Burn)
-        // Note: In a production environment, we'd fetch the genre from the item repository.
-        // For this phase, we'll implement a placeholder genre extraction.
-        let genres = vec!["unknown".to_string()]; // Placeholder: Logic to fetch genres from DB goes here
+        // 2. Fetch actual genres for the skipped item
+        let genres = match self.item_feature_service.get_item_features_batch(&[item_id]).await {
+            Ok(features) => {
+                features.get(&item_id)
+                    .and_then(|f| f.genres.as_ref())
+                    .and_then(|v| serde_json::from_value::<Vec<String>>(v.clone()).ok())
+                    .unwrap_or_else(|| vec!["unknown".to_string()])
+            }
+            Err(e) => {
+                warn!(error = %e, item_id, "Failed to fetch item genres for skip burner, falling back to unknown");
+                vec!["unknown".to_string()]
+            }
+        };
+
+        // 3. Record penalty (Genre Burn)
         self.staging_manager.record_negative_signal(user_id, genres).await?;
 
         Ok(())

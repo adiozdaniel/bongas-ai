@@ -66,7 +66,7 @@ impl PipelineExecutor {
                     .build();
 
                 if let Ok(bc) = breaker_config {
-                    let breaker_id: &'static str = Box::leak(format!("pipeline.stage.{}", stage_name).into_boxed_str());
+                    let breaker_id = format!("pipeline.stage.{}", stage_name);
                     let breaker = Arc::new(CircuitBreaker::new(CircuitBreakerId::new(breaker_id), bc, observer.clone()));
                     breaker_registry.register(breaker.clone());
                     stage_breakers.insert(stage_name.clone(), breaker);
@@ -258,15 +258,21 @@ impl PipelineExecutor {
                 ExecutionNode::Parallel(stages) => {
                     let futures = stages.iter().map(|s| self.execute_single_stage(s, context, items.clone()));
                     let results = join_all(futures).await;
-                    let mut merged_map = HashMap::new();
+                    let mut merged_map: HashMap<i32, ScoredItem> = HashMap::new();
                     for res in results {
                         if let Ok(stage_items) = res {
-                            for item in stage_items {
-                                merged_map.entry(item.item_id).and_modify(|existing: &mut ScoredItem| {
-                                    if let (Some(dest), Some(src)) = (existing.metadata.as_object_mut(), item.metadata.as_object()) {
-                                        for (k, v) in src { dest.insert(k.clone(), v.clone()); }
-                                    }
-                                }).or_insert(item);
+                            for mut item in stage_items {
+                                merged_map.entry(item.item_id)
+                                    .and_modify(|existing: &mut ScoredItem| {
+                                        // Merge scores (Sum strategy for parallel)
+                                        existing.score += item.score;
+                                        // Merge reasoning trails
+                                        existing.reasoning.append(&mut item.reasoning);
+                                        // Merge metadata
+                                        if let (Some(dest), Some(src)) = (existing.metadata.as_object_mut(), item.metadata.as_object()) {
+                                            for (k, v) in src { dest.insert(k.clone(), v.clone()); }
+                                        }
+                                    }).or_insert(item);
                             }
                         }
                     }
@@ -297,7 +303,10 @@ impl PipelineExecutor {
                             for mut item in source_items {
                                 item.score *= weight;
                                 ensemble_map.entry(item.item_id)
-                                    .and_modify(|e| e.score += item.score)
+                                    .and_modify(|e| {
+                                        e.score += item.score;
+                                        e.reasoning.append(&mut item.reasoning);
+                                    })
                                     .or_insert(item);
                             }
                         }

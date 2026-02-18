@@ -80,7 +80,7 @@ impl PipelineStage for MultiActionRankerStage {
 
         // 4. Run Multi-Action Inference in Batches
         let mut all_action_probs = Vec::with_capacity(input.len());
-        let mut engine = model.write().await;
+        let engine = model.read().await;
 
         for chunk in input.chunks(params.batch_size) {
             let mut user_batch = Array2::<f32>::zeros((chunk.len(), params.user_feature_dim));
@@ -100,7 +100,7 @@ impl PipelineStage for MultiActionRankerStage {
                 }
             }
 
-            let chunk_probs = engine.predict_multi_action(user_batch, item_batch)
+            let chunk_probs = engine.predict_multi_action(user_batch, item_batch).await
                 .context("Multi-action batch inference failed")?;
             
             all_action_probs.extend(chunk_probs);

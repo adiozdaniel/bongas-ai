@@ -63,7 +63,6 @@ pub struct ScoredItem {
     pub metadata: JsonValue,
     #[serde(default)]
     pub reasoning: Vec<String>,
-    #[serde(skip)]
     pub fast_metadata: Option<Vec<u8>>,
 }
 

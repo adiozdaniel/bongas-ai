@@ -42,12 +42,12 @@ pub async fn platform_security_middleware(
         .and_then(|h| h.to_str().ok());
 
     match (platform.as_deref(), platform_key) {
-        (Some("mobile"), Some(key)) if key == config.security.mobile_api_key => Ok(next.run(req).await),
-        (Some("web"), Some(key)) if key == config.security.web_api_key => Ok(next.run(req).await),
-        (Some("tv"), Some(key)) if key == config.security.tv_api_key => Ok(next.run(req).await),
-        (Some("system"), Some(key)) if key == config.security.system_api_key => Ok(next.run(req).await),
-        (Some(p), _) => {
-            warn!(platform = %p, path = %path, "Invalid platform key or unauthorized platform");
+        (Some("mobile"), Some(key)) if constant_time_eq(key, &config.security.mobile_api_key) => Ok(next.run(req).await),
+        (Some("web"), Some(key)) if constant_time_eq(key, &config.security.web_api_key) => Ok(next.run(req).await),
+        (Some("tv"), Some(key)) if constant_time_eq(key, &config.security.tv_api_key) => Ok(next.run(req).await),
+        (Some("system"), Some(key)) if constant_time_eq(key, &config.security.system_api_key) => Ok(next.run(req).await),
+        (Some(_p), _) => {
+            warn!(path = %path, "Invalid platform key or unauthorized platform");
             Err(StatusCode::FORBIDDEN)
         }
         _ => {
@@ -55,4 +55,20 @@ pub async fn platform_security_middleware(
             Err(StatusCode::UNAUTHORIZED)
         }
     }
+}
+
+/// Constant-time string comparison to prevent timing attacks.
+fn constant_time_eq(a: &str, b: &str) -> bool {
+    let a_bytes = a.as_bytes();
+    let b_bytes = b.as_bytes();
+    
+    if a_bytes.len() != b_bytes.len() {
+        return false;
+    }
+    
+    let mut result = 0;
+    for (x, y) in a_bytes.iter().zip(b_bytes.iter()) {
+        result |= x ^ y;
+    }
+    result == 0
 }

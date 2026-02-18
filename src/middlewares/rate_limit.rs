@@ -55,18 +55,51 @@ impl RateLimiter {
         registry: Arc<CircuitBreakerRegistry>,
         max_requests: u64,
         window_seconds: u64,
-    ) -> Self {
+    ) -> Arc<Self> {
         let breaker = registry.get_or_create(
             CircuitBreakerId::new("redis_rate_limit"),
             CircuitBreakerConfig::default(),
         );
 
-        Self {
+        let limiter = Arc::new(Self {
             l1: DashMap::new(),
             redis_breaker: breaker,
             redis_client: redis,
             max_requests,
             window_seconds,
+        });
+
+        // Start janitor task
+        let limiter_clone = limiter.clone();
+        tokio::spawn(async move {
+            limiter_clone.run_janitor().await;
+        });
+
+        limiter
+    }
+
+    /// Run background cleanup of L1 state.
+    async fn run_janitor(&self) {
+        let mut interval = tokio::time::interval(Duration::from_secs(600)); // Every 10 minutes
+        loop {
+            interval.tick().await;
+            self.evict_expired();
+        }
+    }
+
+    /// Evict entries that haven't been active for over an hour.
+    fn evict_expired(&self) {
+        let now = Instant::now();
+        let expiry = Duration::from_secs(3600);
+        
+        let before_count = self.l1.len();
+        self.l1.retain(|_, state| {
+            now.duration_since(state.window_start) < expiry
+        });
+        
+        let evicted = before_count - self.l1.len();
+        if evicted > 0 {
+            tracing::debug!(evicted, remaining = self.l1.len(), "Rate limiter L1 janitor completed");
         }
     }
 

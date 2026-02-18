@@ -3,34 +3,35 @@
   //! Event types emitted by resilience infrastructure.
 
   use std::time::Duration;
+  use std::borrow::Cow;
   use crate::error::ErrorClassification;
 
   /// Identifies which circuit breaker emitted the event.
   #[derive(Debug, Clone, PartialEq, Eq, Hash)]
   pub struct CircuitBreakerId {
-      component: &'static str,
-      instance: Option<&'static str>,
+      component: Cow<'static, str>,
+      instance: Option<Cow<'static, str>>,
   }
 
   impl CircuitBreakerId {
-      pub const fn new(component: &'static str) -> Self {
-          Self { component, instance: None }
+      pub fn new(component: impl Into<Cow<'static, str>>) -> Self {
+          Self { component: component.into(), instance: None }
       }
 
-      pub const fn with_instance(component: &'static str, instance: &'static str) -> Self {
-          Self { component, instance: Some(instance) }
+      pub fn with_instance(component: impl Into<Cow<'static, str>>, instance: impl Into<Cow<'static, str>>) -> Self {
+          Self { component: component.into(), instance: Some(instance.into()) }
       }
 
-      pub fn component(&self) -> &'static str {
-          self.component
+      pub fn component(&self) -> &str {
+          &self.component
       }
 
-      pub fn instance(&self) -> Option<&'static str> {
-          self.instance
+      pub fn instance(&self) -> Option<&str> {
+          self.instance.as_deref()
       }
 
       pub fn label(&self) -> String {
-          match self.instance {
+          match &self.instance {
               Some(inst) => format!("{}_{}", self.component, inst),
               None => self.component.to_string(),
           }
@@ -39,7 +40,7 @@
 
   impl std::fmt::Display for CircuitBreakerId {
       fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-          match self.instance {
+          match &self.instance {
               Some(inst) => write!(f, "{}:{}", self.component, inst),
               None => write!(f, "{}", self.component),
           }

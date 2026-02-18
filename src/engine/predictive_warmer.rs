@@ -1,6 +1,7 @@
 use anyhow::Result;
 use std::sync::Arc;
 use tokio::time::{interval, Duration};
+use tokio::sync::Semaphore;
 use tracing::{info, warn, debug};
 use chrono::Timelike;
 
@@ -13,6 +14,7 @@ use crate::engine::engine::BongasEngine;
 pub struct PredictiveWarmer {
     engine: Arc<BongasEngine>,
     warm_scenarios: Vec<String>,
+    concurrency_limit: Arc<Semaphore>,
 }
 
 impl PredictiveWarmer {
@@ -20,6 +22,7 @@ impl PredictiveWarmer {
         Self {
             engine,
             warm_scenarios,
+            concurrency_limit: Arc::new(Semaphore::new(10)), // Limit to 10 concurrent warmings
         }
     }
 
@@ -83,9 +86,11 @@ impl PredictiveWarmer {
             for scenario in &self.warm_scenarios {
                 let engine = self.engine.clone();
                 let scenario_slug = scenario.clone();
+                let permit = self.concurrency_limit.clone().acquire_owned().await;
                 
                 // Use tokio::spawn to parallelize individual user warming
                 tokio::spawn(async move {
+                    let _permit = permit; // Hold permit until task finishes
                     debug!(user_id, scenario = %scenario_slug, "Predictively warming user cache");
                     
                     // Execute scenario with dummy context params
