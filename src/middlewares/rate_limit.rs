@@ -25,6 +25,7 @@ pub struct RateLimiter {
     redis_client: Arc<redis::Client>,
     max_requests: u64,
     window_seconds: u64,
+    shutdown_rx: Option<tokio::sync::broadcast::Receiver<()>>,
 }
 
 struct L1State {
@@ -55,6 +56,7 @@ impl RateLimiter {
         registry: Arc<CircuitBreakerRegistry>,
         max_requests: u64,
         window_seconds: u64,
+        shutdown_rx: Option<tokio::sync::broadcast::Receiver<()>>,
     ) -> Arc<Self> {
         let breaker = registry.get_or_create(
             CircuitBreakerId::new("redis_rate_limit"),
@@ -67,6 +69,7 @@ impl RateLimiter {
             redis_client: redis,
             max_requests,
             window_seconds,
+            shutdown_rx,
         });
 
         // Start janitor task
@@ -81,9 +84,21 @@ impl RateLimiter {
     /// Run background cleanup of L1 state.
     async fn run_janitor(&self) {
         let mut interval = tokio::time::interval(Duration::from_secs(600)); // Every 10 minutes
+        let mut shutdown = self.shutdown_rx.as_ref().map(|rx| rx.resubscribe());
+
         loop {
-            interval.tick().await;
-            self.evict_expired();
+            if let Some(ref mut rx) = shutdown {
+                tokio::select! {
+                    _ = interval.tick() => self.evict_expired(),
+                    _ = rx.recv() => {
+                        warn!("Rate limiter janitor shutting down...");
+                        break;
+                    }
+                }
+            } else {
+                interval.tick().await;
+                self.evict_expired();
+            }
         }
     }
 

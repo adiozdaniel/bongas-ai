@@ -77,14 +77,12 @@ impl PipelineStage for MetaScorerStage {
         // 3. Run Inference
         let mut final_scores: Vec<f32> = Vec::with_capacity(input.len());
         {
-            let engine = model.read().await;
-            
             for chunk_idx in (0..feature_batch.len()).step_by(params.batch_size) {
                 let end = std::cmp::min(chunk_idx + params.batch_size, feature_batch.len());
                 let chunk = feature_batch[chunk_idx..end].to_vec();
                 
                 // Meta-scorer uses a simplified model
-                let chunk_scores = engine.predict_batch(chunk.clone(), chunk).await
+                let chunk_scores = model.clone().predict_batch(chunk.clone(), chunk).await
                     .context("Meta-scorer ONNX inference failed")?;
                 
                 final_scores.extend(chunk_scores);

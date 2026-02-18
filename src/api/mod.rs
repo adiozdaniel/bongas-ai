@@ -23,12 +23,13 @@ pub fn create_router(
     circuit_breaker_registry: Arc<CircuitBreakerRegistry>,
     start_time: Arc<Instant>,
 ) -> Router {
-    let rate_limiter = Arc::new(RateLimiter::new(
+    let rate_limiter = RateLimiter::new(
         redis.clone(),
         circuit_breaker_registry.clone(),
         100, // max requests per minute (L2 threshold)
         60,  // window seconds
-    ));
+        Some(engine.shutdown_tx.subscribe()),
+    );
 
     let routes = Router::new()
         .nest("/api/v1", v1::routes(config.clone()))

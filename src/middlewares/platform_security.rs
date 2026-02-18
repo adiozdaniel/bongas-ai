@@ -57,17 +57,22 @@ pub async fn platform_security_middleware(
     }
 }
 
+use sha2::{Sha256, Digest};
+
+// ... (in constant_time_eq)
 /// Constant-time string comparison to prevent timing attacks.
+/// Hashes both inputs first to prevent leaking the key length.
 fn constant_time_eq(a: &str, b: &str) -> bool {
-    let a_bytes = a.as_bytes();
-    let b_bytes = b.as_bytes();
-    
-    if a_bytes.len() != b_bytes.len() {
-        return false;
-    }
-    
+    let mut hasher_a = Sha256::new();
+    hasher_a.update(a.as_bytes());
+    let hash_a = hasher_a.finalize();
+
+    let mut hasher_b = Sha256::new();
+    hasher_b.update(b.as_bytes());
+    let hash_b = hasher_b.finalize();
+
     let mut result = 0;
-    for (x, y) in a_bytes.iter().zip(b_bytes.iter()) {
+    for (x, y) in hash_a.iter().zip(hash_b.iter()) {
         result |= x ^ y;
     }
     result == 0

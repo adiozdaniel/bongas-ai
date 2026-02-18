@@ -45,10 +45,9 @@ pub struct OnnxInferenceEngine {
     analytics: Option<Arc<crate::analytics::types::PerformanceStats>>,
 }
 
-// Session is thread-safe in ONNX Runtime (wraps a thread-safe C++ session).
+// OnnxInferenceEngine is Sync because all its fields are Sync (Mutex<Session> is Sync).
 // By using a Mutex wrapper and &self for inference methods, we satisfy the 
 // compiler while allowing safe multi-threaded access.
-unsafe impl Sync for OnnxInferenceEngine {}
 
 impl OnnxInferenceEngine {
     /// Create new ONNX inference engine with full resilience wiring.
@@ -155,13 +154,14 @@ impl OnnxInferenceEngine {
 
     /// Run two-tower inference with circuit breaker + bulkhead + analytics.
     pub async fn predict_two_tower(
-        &self,
+        self: Arc<Self>,
         user_features: Array2<f32>,
         item_features: Array2<f32>,
     ) -> Result<Vec<f32>, ModelError> {
         let start = Instant::now();
         let batch_size = user_features.nrows();
         let metric_key = format!("ml.inference.{}", self.model_name);
+        let engine = self.clone();
 
         debug!(
             model = %self.model_name,
@@ -181,9 +181,11 @@ impl OnnxInferenceEngine {
                 }
             })?;
 
-        // Execute via circuit breaker
-        let result = self.breaker.call(|| async {
-            self.execute_two_tower(user_features, item_features)
+        // Execute via circuit breaker + spawn_blocking
+        let result = self.breaker.call(|| async move {
+            tokio::task::spawn_blocking(move || {
+                engine.execute_two_tower(user_features, item_features)
+            }).await.map_err(|e| ModelError::InferenceFailed(format!("spawn_blocking failed: {e}")))?
         }).await.map_err(|e| match e {
             crate::circuit_breaker::CircuitBreakerError::ExecutionFailed { source, .. } => source,
             crate::circuit_breaker::CircuitBreakerError::Rejected { .. } => ModelError::CircuitOpen(self.model_name.clone()),
@@ -225,7 +227,7 @@ impl OnnxInferenceEngine {
 
     /// Batch inference with resilience: circuit breaker + bulkhead + analytics.
     pub async fn predict_batch(
-        &self,
+        self: Arc<Self>,
         user_features: Vec<Vec<f32>>,
         item_features: Vec<Vec<f32>>,
     ) -> Result<Vec<f32>, ModelError> {

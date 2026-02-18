@@ -25,7 +25,7 @@ use crate::ml::onnx_runtime::OnnxInferenceEngine;
 
 /// Metadata about a cached model for staleness tracking.
 struct CachedModel {
-    engine: Arc<RwLock<OnnxInferenceEngine>>,
+    engine: Arc<OnnxInferenceEngine>,
     loaded_at: Instant,
 }
 
@@ -99,7 +99,7 @@ impl ModelLoader {
     async fn load_model_with_retry(
         &self,
         model_entry: &ModelRegistry,
-    ) -> Result<Arc<RwLock<OnnxInferenceEngine>>, ModelError> {
+    ) -> Result<Arc<OnnxInferenceEngine>, ModelError> {
         let max_retries = self.config.model_load_max_retries;
         let base_backoff = self.config.model_load_base_backoff;
         let max_backoff = self.config.model_load_max_backoff;
@@ -154,7 +154,7 @@ impl ModelLoader {
     async fn load_model(
         &self,
         model_entry: &ModelRegistry,
-    ) -> Result<Arc<RwLock<OnnxInferenceEngine>>, ModelError> {
+    ) -> Result<Arc<OnnxInferenceEngine>, ModelError> {
         let start = Instant::now();
         let metric_key = format!("ml.model_loader.load.{}", model_entry.model_name);
 
@@ -183,7 +183,7 @@ impl ModelLoader {
             self.analytics.clone(),
         )?;
 
-        let engine = Arc::new(RwLock::new(engine));
+        let engine = Arc::new(engine);
         let latency = start.elapsed();
 
         // Analytics
@@ -202,7 +202,7 @@ impl ModelLoader {
     }
 
     /// Get a stale model from cache if within max stale age.
-    async fn get_stale_model(&self, model_key: &str) -> Option<Arc<RwLock<OnnxInferenceEngine>>> {
+    async fn get_stale_model(&self, model_key: &str) -> Option<Arc<OnnxInferenceEngine>> {
         let models = self.models.read().await;
         if let Some(cached) = models.get(model_key) {
             if cached.loaded_at.elapsed() <= self.config.fallback_max_stale_age {
@@ -217,7 +217,7 @@ impl ModelLoader {
     pub async fn get_model(
         &self,
         model_name: &str,
-    ) -> Result<Arc<RwLock<OnnxInferenceEngine>>> {
+    ) -> Result<Arc<OnnxInferenceEngine>> {
         self.get_latest_model(model_name).await
     }
 
@@ -226,7 +226,7 @@ impl ModelLoader {
         &self,
         model_name: &str,
         version: &str,
-    ) -> Result<Arc<RwLock<OnnxInferenceEngine>>> {
+    ) -> Result<Arc<OnnxInferenceEngine>> {
         let model_key = format!("{}:{}", model_name, version);
 
         // Analytics: track cache hit/miss
@@ -262,7 +262,7 @@ impl ModelLoader {
     pub async fn get_latest_model(
         &self,
         model_name: &str,
-    ) -> Result<Arc<RwLock<OnnxInferenceEngine>>> {
+    ) -> Result<Arc<OnnxInferenceEngine>> {
         let model_entry = self.model_repo
             .get_latest_deployed(model_name)
             .await?
