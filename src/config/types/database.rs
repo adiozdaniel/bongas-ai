@@ -24,7 +24,7 @@ pub struct DatabaseConfig {
 impl Default for DatabaseConfig {
     fn default() -> Self {
         Self {
-            url: Some("postgresql://postgres:password@localhost:5432/baze_catalog".to_string()),
+            url: None,
             read_replicas: vec![],
             max_connections: 20,
             min_connections: 5,
@@ -41,7 +41,7 @@ impl DatabaseConfig {
     /// Get production-grade defaults (10x dev capacity)
     pub fn production() -> Self {
         Self {
-            url: Some("postgresql://postgres:password@localhost:5432/baze_catalog".to_string()),
+            url: None,
             read_replicas: vec![],
             max_connections: 100, // 5x increase for production
             min_connections: 20,

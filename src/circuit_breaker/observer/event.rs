@@ -3,22 +3,22 @@
   //! Event types emitted by resilience infrastructure.
 
   use std::time::Duration;
-  use std::borrow::Cow;
+  use std::sync::Arc;
   use crate::error::ErrorClassification;
 
   /// Identifies which circuit breaker emitted the event.
   #[derive(Debug, Clone, PartialEq, Eq, Hash)]
   pub struct CircuitBreakerId {
-      component: Cow<'static, str>,
-      instance: Option<Cow<'static, str>>,
+      component: Arc<str>,
+      instance: Option<Arc<str>>,
   }
 
   impl CircuitBreakerId {
-      pub fn new(component: impl Into<Cow<'static, str>>) -> Self {
+      pub fn new(component: impl Into<Arc<str>>) -> Self {
           Self { component: component.into(), instance: None }
       }
 
-      pub fn with_instance(component: impl Into<Cow<'static, str>>, instance: impl Into<Cow<'static, str>>) -> Self {
+      pub fn with_instance(component: impl Into<Arc<str>>, instance: impl Into<Arc<str>>) -> Self {
           Self { component: component.into(), instance: Some(instance.into()) }
       }
 

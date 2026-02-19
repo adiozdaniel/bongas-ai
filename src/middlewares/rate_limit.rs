@@ -122,47 +122,52 @@ impl RateLimiter {
     pub async fn check(&self, ip: &str) -> RateLimitResult {
         let now = Instant::now();
 
-        // 1. L1 Local Check (Sub-100ns path)
-        if let Some(mut entry) = self.l1.get_mut(ip) {
-            let state = entry.value_mut();
+        // 1. L1 Local Check (Sub-100ns path) - Using entry API to fix TOCTOU race
+        let mut local_block_active = false;
+        let mut local_blocks = 0;
 
-            // Check if currently blocked locally
-            if let Some(until) = state.blocked_until {
-                if now < until {
-                    return RateLimitResult::ShadowBan;
+        self.l1.entry(ip.to_string())
+            .and_modify(|state| {
+                // Check if currently blocked locally
+                if let Some(until) = state.blocked_until {
+                    if now < until {
+                        local_block_active = true;
+                        return;
+                    } else {
+                        state.blocked_until = None;
+                    }
+                }
+
+                // Simple 1s window for L1
+                if now.duration_since(state.window_start) >= Duration::from_secs(1) {
+                    state.count = 1;
+                    state.window_start = now;
                 } else {
-                    state.blocked_until = None;
-                }
-            }
-
-            // Simple 1s window for L1
-            if now.duration_since(state.window_start) >= Duration::from_secs(1) {
-                state.count = 1;
-                state.window_start = now;
-            } else {
-                state.count += 1;
-            }
-
-            if state.count > L1_THRESHOLD {
-                state.blocked_until = Some(now + L1_PENALTY_DURATION);
-                state.local_block_count += 1;
-                let local_blocks = state.local_block_count;
-
-                warn!(ip = %ip, local_blocks, "L1 Rate Limit Tripped: Local block active");
-
-                if local_blocks >= L2_PROMOTION_THRESHOLD {
-                    self.promote_to_l2(ip, local_blocks).await;
+                    state.count += 1;
                 }
 
-                return RateLimitResult::ShadowBan;
-            }
-        } else {
-            self.l1.insert(ip.to_string(), L1State {
+                if state.count > L1_THRESHOLD {
+                    state.blocked_until = Some(now + L1_PENALTY_DURATION);
+                    state.local_block_count += 1;
+                    local_blocks = state.local_block_count;
+                    local_block_active = true;
+                }
+            })
+            .or_insert(L1State {
                 count: 1,
                 window_start: now,
                 blocked_until: None,
                 local_block_count: 0,
             });
+
+        if local_block_active {
+            if local_blocks >= L2_PROMOTION_THRESHOLD {
+                warn!(ip = %ip, local_blocks, "L1 Rate Limit Tripped: Promoting to L2 ban");
+                self.promote_to_l2(ip, local_blocks).await;
+            } else {
+                warn!(ip = %ip, "L1 Rate Limit Tripped: Local penalty active");
+            }
+            return RateLimitResult::ShadowBan;
         }
 
         // 2. L2 Global Check (Redis)

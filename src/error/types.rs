@@ -828,6 +828,8 @@
       Internal(String),
       #[error("not found: {0}")]
       NotFound(String),
+      #[error("unauthorized: {0}")]
+      Unauthorized(String),
   }
 
   impl ErrorClassifier for AppError {
@@ -847,6 +849,7 @@
               AppError::Anyhow(_) => ErrorClassification::Transient,
               AppError::Internal(_) => ErrorClassification::Transient,
               AppError::NotFound(_) => ErrorClassification::Permanent,
+              AppError::Unauthorized(_) => ErrorClassification::Permanent,
           }
       }
   }
@@ -872,6 +875,9 @@
                   match &self {
                       AppError::Scenario(ScenarioError::NotFound(slug)) => {
                           (StatusCode::NOT_FOUND, "SCENARIO_NOT_FOUND", format!("Scenario '{}' not found", slug))
+                      }
+                      AppError::Unauthorized(msg) => {
+                          (StatusCode::UNAUTHORIZED, "UNAUTHORIZED", msg.clone())
                       }
                       _ => (StatusCode::BAD_REQUEST, "PERMANENT_ERROR", "Request cannot be processed due to client error".to_string())
                   }

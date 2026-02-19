@@ -45,21 +45,17 @@ impl PipelineStage for BoostTrendingStage {
         let item_ids: Vec<i32> = input.iter().map(|item| item.item_id).collect();
 
         // Query ClickHouse for trending scores
-        let query = format!(
-            r#"
+        let query = r#"
             SELECT
                 video_id,
                 count() as view_count,
                 uniqExact(user_id) as unique_viewers,
                 avg(watch_percentage) as avg_completion
             FROM playback_sessions
-            WHERE event_time >= now() - INTERVAL {} HOUR
-                AND video_id IN ({})
+            WHERE event_time >= now() - INTERVAL ? HOUR
+                AND video_id IN (?)
             GROUP BY video_id
-            "#,
-            params.time_window_hours,
-            item_ids.iter().map(|id| id.to_string()).collect::<Vec<_>>().join(",")
-        );
+        "#;
 
         #[derive(clickhouse::Row, Deserialize)]
         struct TrendingRow {
@@ -73,7 +69,9 @@ impl PipelineStage for BoostTrendingStage {
             .ok_or_else(|| anyhow::anyhow!("ClickHouse client not configured"))?;
 
         let rows: Vec<TrendingRow> = client
-            .query(&query)
+            .query(query)
+            .bind(params.time_window_hours)
+            .bind(item_ids)
             .fetch_all()
             .await?;
 

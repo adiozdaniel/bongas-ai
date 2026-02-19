@@ -2,6 +2,7 @@ use axum::{
     extract::{Extension, Path},
     routing::{get, post},
     Json, Router,
+    http::HeaderMap,
 };
 use std::sync::Arc;
 
@@ -28,6 +29,22 @@ pub fn routes() -> Router {
         .route("/chatbot/ask", post(chatbot_ask))
 }
 
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+fn authorize_admin(headers: &HeaderMap, engine: &BongasEngine) -> Result<(), AppError> {
+    let system_key = &engine.config.security.system_api_key;
+    
+    let provided_key = headers.get("X-Platform-Key")
+        .and_then(|h| h.to_str().ok())
+        .ok_or_else(|| AppError::Unauthorized("Missing X-Platform-Key for admin access".to_string()))?;
+
+    if provided_key != system_key {
+        return Err(AppError::Unauthorized("Invalid administrative key".to_string()));
+    }
+
+    Ok(())
+}
+
 // ─── Handlers ───────────────────────────────────────────────────────────────
 
 #[derive(serde::Deserialize)]
@@ -36,9 +53,11 @@ pub struct ChatbotQuery {
 }
 
 async fn chatbot_ask(
+    headers: HeaderMap,
     Extension(engine): Extension<Arc<BongasEngine>>,
     Json(payload): Json<ChatbotQuery>,
 ) -> Result<Json<StandardResponse<serde_json::Value>>, AppError> {
+    authorize_admin(&headers, &engine)?;
     let suggestion_id = engine.chatbot_process_query(&payload.message).await?;
     Ok(Json(StandardResponse::success(serde_json::json!({ 
         "suggestion_id": suggestion_id,
@@ -47,39 +66,49 @@ async fn chatbot_ask(
 }
 
 async fn simulate_suggestion(
+    headers: HeaderMap,
     Path(id): Path<i32>,
     Extension(engine): Extension<Arc<BongasEngine>>,
 ) -> Result<Json<StandardResponse<serde_json::Value>>, AppError> {
+    authorize_admin(&headers, &engine)?;
     let impact = engine.simulate_suggestion(id).await?;
     Ok(Json(StandardResponse::success(impact)))
 }
 
 async fn list_suggestions(
+    headers: HeaderMap,
     Extension(engine): Extension<Arc<BongasEngine>>,
 ) -> Result<Json<StandardResponse<Vec<serde_json::Value>>>, AppError> {
+    authorize_admin(&headers, &engine)?;
     let suggestions = engine.list_suggestions().await?;
     Ok(Json(StandardResponse::success(suggestions)))
 }
 
 async fn approve_suggestion(
+    headers: HeaderMap,
     Path(id): Path<i32>,
     Extension(engine): Extension<Arc<BongasEngine>>,
 ) -> Result<Json<StandardResponse<serde_json::Value>>, AppError> {
+    authorize_admin(&headers, &engine)?;
     engine.approve_suggestion(id).await?;
     Ok(Json(StandardResponse::success(serde_json::json!({ "message": "Suggestion approved and rule activated" }))))
 }
 
 async fn reject_suggestion(
+    headers: HeaderMap,
     Path(id): Path<i32>,
     Extension(engine): Extension<Arc<BongasEngine>>,
 ) -> Result<Json<StandardResponse<serde_json::Value>>, AppError> {
+    authorize_admin(&headers, &engine)?;
     engine.reject_suggestion(id).await?;
     Ok(Json(StandardResponse::success(serde_json::json!({ "message": "Suggestion rejected" }))))
 }
 
 async fn get_cache_stats(
+    headers: HeaderMap,
     Extension(engine): Extension<Arc<BongasEngine>>,
 ) -> Result<Json<StandardResponse<CacheStatsResponse>>, AppError> {
+    authorize_admin(&headers, &engine)?;
     let stats = engine.get_cache_stats();
     Ok(Json(StandardResponse::success(CacheStatsResponse {
         l1_hits: stats.l1_hits,
@@ -91,8 +120,10 @@ async fn get_cache_stats(
 }
 
 async fn get_ingestion_metrics(
+    headers: HeaderMap,
     Extension(engine): Extension<Arc<BongasEngine>>,
 ) -> Result<Json<StandardResponse<KafkaMetricsResponse>>, AppError> {
+    authorize_admin(&headers, &engine)?;
     let health = engine.ingestion_health().await;
     // Simplification for the response model
     Ok(Json(StandardResponse::success(KafkaMetricsResponse {
@@ -101,8 +132,10 @@ async fn get_ingestion_metrics(
 }
 
 async fn get_ingestion_health(
+    headers: HeaderMap,
     Extension(engine): Extension<Arc<BongasEngine>>,
 ) -> Result<Json<StandardResponse<KafkaHealthResponse>>, AppError> {
+    authorize_admin(&headers, &engine)?;
     let health = engine.ingestion_health().await;
     Ok(Json(StandardResponse::success(KafkaHealthResponse {
         healthy: health.healthy,
@@ -118,8 +151,10 @@ async fn get_ingestion_health(
 }
 
 async fn reload_models(
+    headers: HeaderMap,
     Extension(engine): Extension<Arc<BongasEngine>>,
 ) -> Result<Json<StandardResponse<ModelReloadResponse>>, AppError> {
+    authorize_admin(&headers, &engine)?;
     let count = engine.reload_models().await?;
     Ok(Json(StandardResponse::success(ModelReloadResponse {
         model_count: count,
@@ -128,8 +163,10 @@ async fn reload_models(
 }
 
 async fn get_model_stats(
+    headers: HeaderMap,
     Extension(engine): Extension<Arc<BongasEngine>>,
 ) -> Result<Json<StandardResponse<ModelStatsResponse>>, AppError> {
+    authorize_admin(&headers, &engine)?;
     let count = engine.model_count().await;
     Ok(Json(StandardResponse::success(ModelStatsResponse {
         loaded_models: count,
@@ -137,8 +174,10 @@ async fn get_model_stats(
 }
 
 async fn get_security_status(
+    headers: HeaderMap,
     Extension(engine): Extension<Arc<BongasEngine>>,
 ) -> Result<Json<StandardResponse<SecurityStatusResponse>>, AppError> {
+    authorize_admin(&headers, &engine)?;
     let status = engine.get_security_status().await;
     Ok(Json(StandardResponse::success(SecurityStatusResponse {
         validated: status.validated,

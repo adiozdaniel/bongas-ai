@@ -44,26 +44,20 @@ impl PipelineStage for FetchClickHouseTrendingStage {
         //     None
         // };
 
-        let query = format!(
-            r#"
+        let query = r#"
             SELECT
                 video_id,
                 count() as view_count,
                 uniqExact(user_id) as unique_viewers,
                 avg(watch_percentage) as avg_completion,
-                count() / {} as views_per_hour
+                count() / ? as views_per_hour
             FROM playback_sessions
-            WHERE event_time >= now() - INTERVAL {} HOUR
+            WHERE event_time >= now() - INTERVAL ? HOUR
             GROUP BY video_id
-            HAVING view_count >= {}
+            HAVING view_count >= ?
             ORDER BY views_per_hour DESC, avg_completion DESC
-            LIMIT {}
-            "#,
-            params.time_window_hours,
-            params.time_window_hours,
-            params.min_views,
-            params.limit
-        );
+            LIMIT ?
+        "#;
 
         #[derive(clickhouse::Row, Deserialize)]
         struct TrendingItem {
@@ -78,7 +72,11 @@ impl PipelineStage for FetchClickHouseTrendingStage {
             .ok_or_else(|| anyhow::anyhow!("ClickHouse client not configured"))?;
 
         let rows: Vec<TrendingItem> = client
-            .query(&query)
+            .query(query)
+            .bind(params.time_window_hours)
+            .bind(params.time_window_hours)
+            .bind(params.min_views)
+            .bind(params.limit)
             .fetch_all()
             .await?;
 

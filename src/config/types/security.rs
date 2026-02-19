@@ -10,7 +10,7 @@ use std::time::Duration;
 /// Configuration for license validation, hardware binding, and
 /// security settings including license key, server URL, and
 /// per-layer circuit breaker, timeout, bulkhead, and fallback settings.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct SecurityConfig {
     // Basic security settings
     pub license_key: String,
@@ -55,6 +55,27 @@ pub struct SecurityConfig {
     // Analytics configuration
     pub analytics_enabled: bool,
     pub analytics_per_layer: bool,
+}
+
+impl std::fmt::Debug for SecurityConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SecurityConfig")
+            .field("license_key", &"***REDACTED***")
+            .field("license_server_url", &self.license_server_url)
+            .field("hardware_id_salt", &"***REDACTED***")
+            .field("anti_debug_enabled", &self.anti_debug_enabled)
+            .field("binary_protection_enabled", &self.binary_protection_enabled)
+            .field("license_validation_interval", &self.license_validation_interval)
+            .field("mobile_api_key", &"***REDACTED***")
+            .field("web_api_key", &"***REDACTED***")
+            .field("tv_api_key", &"***REDACTED***")
+            .field("system_api_key", &"***REDACTED***")
+            .field("jwt_secret_key", &"***REDACTED***")
+            .field("circuit_breaker_enabled", &self.circuit_breaker_enabled)
+            .field("max_concurrent_validations", &self.max_concurrent_validations)
+            .field("allow_degraded_mode", &self.allow_degraded_mode)
+            .finish()
+    }
 }
 
 impl Default for SecurityConfig {

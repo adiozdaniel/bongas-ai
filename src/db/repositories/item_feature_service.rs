@@ -996,7 +996,7 @@ impl ItemFeatureService {
             _ => "popularity_score DESC NULLS LAST",
         };
 
-        let mut query = format!(
+        let mut query = String::from(
             r#"
             SELECT i.item_id, i.title, i.description, i.genres, i.tags, i.creators,
                    i.directors, i.studios, i.actors,
@@ -1020,11 +1020,8 @@ impl ItemFeatureService {
             "#
         );
 
-        if let Some(rating) = min_rating {
-            query.push_str(&format!(
-                " AND COALESCE(i.user_rating, i.critic_rating, 0) >= {}",
-                rating
-            ));
+        if min_rating.is_some() {
+            query.push_str(" AND COALESCE(i.user_rating, i.critic_rating, 0) >= $3");
         }
 
         query.push_str(&format!(" ORDER BY {} LIMIT $2", order_clause));
@@ -1033,11 +1030,15 @@ impl ItemFeatureService {
         let rows: Vec<ItemFeatureRow> = self
             .pool
             .execute(|pool| async move {
-                sqlx::query_as::<_, ItemFeatureRow>(&query)
+                let mut q = sqlx::query_as::<_, ItemFeatureRow>(&query)
                     .bind(&cats)
-                    .bind(limit)
-                    .fetch_all(&pool)
-                    .await
+                    .bind(limit);
+                
+                if let Some(rating) = min_rating {
+                    q = q.bind(rating);
+                }
+                
+                q.fetch_all(&pool).await
             })
             .await?;
 
@@ -1066,7 +1067,7 @@ impl ItemFeatureService {
             _ => "release_date DESC NULLS LAST",
         };
 
-        let mut query = format!(
+        let mut query = String::from(
             r#"
             SELECT item_id, title, description, genres, tags, creators,
                    directors, studios, actors,
@@ -1089,24 +1090,37 @@ impl ItemFeatureService {
             "#
         );
 
+        let mut next_bind = 3;
         if content_type != "all" {
-            query.push_str(&format!(" AND content_type = '{}'", content_type));
+            query.push_str(&format!(" AND content_type = ${}", next_bind));
+            next_bind += 1;
         }
 
-        if let Some(ref g) = genre {
-            query.push_str(&format!(" AND genres @> '[\"{}\"]'::jsonb", g));
+        if genre.is_some() {
+            query.push_str(&format!(" AND genres @> ${}", next_bind));
         }
 
         query.push_str(&format!(" ORDER BY {} LIMIT $2", order_clause));
 
+        let ct = content_type.to_string();
+        let g_val = genre.map(|g| serde_json::json!([g]));
+
         let rows: Vec<ItemFeatureRow> = self
             .pool
             .execute(|pool| async move {
-                sqlx::query_as::<_, ItemFeatureRow>(&query)
+                let mut q = sqlx::query_as::<_, ItemFeatureRow>(&query)
                     .bind(cutoff_date)
-                    .bind(limit)
-                    .fetch_all(&pool)
-                    .await
+                    .bind(limit);
+                
+                if ct != "all" {
+                    q = q.bind(ct);
+                }
+                
+                if let Some(g) = g_val {
+                    q = q.bind(g);
+                }
+                
+                q.fetch_all(&pool).await
             })
             .await?;
 

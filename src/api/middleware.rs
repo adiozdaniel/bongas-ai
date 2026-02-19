@@ -102,19 +102,27 @@ pub fn apply_middleware(
 async fn rate_limit_layer(req: Request<Body>, next: Next) -> Response {
     let rate_limiter = req.extensions().get::<Arc<RateLimiter>>().expect("RateLimiter extension missing").clone();
 
-    let ip = req.headers()
-        .get("X-Forwarded-For")
-        .and_then(|h| h.to_str().ok())
-        .unwrap_or("127.0.0.1");
+    // Use peer addr as primary IP source to prevent spoofing via X-Forwarded-For
+    // In production, this should only trust X-Forwarded-For if it comes from a known proxy CIDR.
+    let ip = req.extensions()
+        .get::<axum::extract::ConnectInfo<std::net::SocketAddr>>()
+        .map(|axum::extract::ConnectInfo(addr)| addr.ip().to_string())
+        .or_else(|| {
+            req.headers()
+                .get("X-Forwarded-For")
+                .and_then(|h| h.to_str().ok())
+                .map(|s| s.to_string())
+        })
+        .unwrap_or_else(|| "127.0.0.1".to_string());
 
-    match rate_limiter.check(ip).await {
+    match rate_limiter.check(&ip).await {
         RateLimitResult::Allowed => next.run(req).await,
         RateLimitResult::ShadowBan => {
             // Shadow Ban: Return 200 OK with a generic/empty feed to mislead bots
+            // Removed X-Bongas-Status header as it defeats the purpose of shadow banning
             Response::builder()
                 .status(StatusCode::OK)
                 .header("Content-Type", "application/json")
-                .header("X-Bongas-Status", "ShadowBanned")
                 .body(Body::from(json!({
                     "success": true,
                     "data": [],

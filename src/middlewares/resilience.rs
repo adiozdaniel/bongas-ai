@@ -88,9 +88,7 @@
           }
 
           let endpoint = extract_endpoint(&req);
-          // Leak string to get 'static lifetime for CircuitBreakerId
-          let endpoint_static: &'static str = Box::leak(endpoint.into_boxed_str());
-          let breaker_id = CircuitBreakerId::new(endpoint_static);
+          let breaker_id = CircuitBreakerId::new(Arc::from(endpoint));
 
           // Get or create circuit breaker for this endpoint
           let breaker = middleware.registry.get_or_create(

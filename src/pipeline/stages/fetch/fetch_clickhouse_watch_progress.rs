@@ -33,23 +33,20 @@ impl PipelineStage for FetchClickHouseWatchProgressStage {
         let params: Params = serde_json::from_value(params.clone())?;
         let user_id = context.user_id.ok_or_else(|| anyhow::anyhow!("user_id required"))?;
 
-        let query = format!(
-            r#"
+        let query = r#"
             SELECT
                 video_id,
                 max(watch_percentage) as completion,
                 toUnixTimestamp(max(event_time)) as last_watched_at,
                 sum(watch_duration_seconds) as total_watch_time
             FROM playback_sessions
-            WHERE user_id = {}
-                AND watch_percentage >= {}
-                AND watch_percentage <= {}
+            WHERE user_id = ?
+                AND watch_percentage >= ?
+                AND watch_percentage <= ?
             GROUP BY video_id
             ORDER BY last_watched_at DESC
-            LIMIT {}
-            "#,
-            user_id, params.min_completion, params.max_completion, params.limit
-        );
+            LIMIT ?
+        "#;
 
         #[derive(clickhouse::Row, Deserialize)]
         struct WatchProgress {
@@ -63,7 +60,11 @@ impl PipelineStage for FetchClickHouseWatchProgressStage {
             .ok_or_else(|| anyhow::anyhow!("ClickHouse client not configured"))?;
 
         let rows: Vec<WatchProgress> = client
-            .query(&query)
+            .query(query)
+            .bind(user_id)
+            .bind(params.min_completion)
+            .bind(params.max_completion)
+            .bind(params.limit)
             .fetch_all()
             .await?;
 

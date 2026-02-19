@@ -30,5 +30,22 @@
           return Err(anyhow!("Error handling requires max_retries > 0"));
       }
 
+      // Security validation (Phase 16 Remediation)
+      if config.security.mobile_api_key.is_empty() {
+          return Err(anyhow!("Security configuration error: mobile_api_key is empty"));
+      }
+      if config.security.web_api_key.is_empty() {
+          return Err(anyhow!("Security configuration error: web_api_key is empty"));
+      }
+      if config.security.tv_api_key.is_empty() {
+          return Err(anyhow!("Security configuration error: tv_api_key is empty"));
+      }
+      if config.security.system_api_key.is_empty() {
+          return Err(anyhow!("Security configuration error: system_api_key is empty"));
+      }
+      if config.security.jwt_secret_key.is_empty() {
+          return Err(anyhow!("Security configuration error: jwt_secret_key is empty"));
+      }
+
       Ok(())
   }
