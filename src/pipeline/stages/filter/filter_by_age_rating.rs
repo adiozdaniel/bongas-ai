@@ -2,10 +2,9 @@ use async_trait::async_trait;
 use anyhow::Result;
 use serde_json::Value as JsonValue;
 use serde::Deserialize;
-use crate::pipeline::{PipelineStage, ScoredItem};
+use crate::pipeline::{PipelineStage, ScoredItem, MaturityRating};
 use crate::pipeline::context::ExecutionContext;
 use std::collections::HashMap;
-
 
 #[derive(Deserialize)]
 struct Params {
@@ -22,19 +21,6 @@ fn default_include_unknown() -> bool {
 
 pub struct FilterByAgeRatingStage;
 
-impl FilterByAgeRatingStage {
-    fn rating_to_level(rating: &str) -> i32 {
-        match rating.to_uppercase().as_str() {
-            "G" => 0,
-            "PG" => 1,
-            "PG-13" | "PG13" => 2,
-            "R" => 3,
-            "NC-17" | "NC17" => 4,
-            _ => 5,
-        }
-    }
-}
-
 #[async_trait]
 impl PipelineStage for FilterByAgeRatingStage {
     fn name(&self) -> &str {
@@ -48,7 +34,7 @@ impl PipelineStage for FilterByAgeRatingStage {
         input: Vec<ScoredItem>,
     ) -> Result<Vec<ScoredItem>> {
         let params: Params = serde_json::from_value(params.clone())?;
-        let max_level = Self::rating_to_level(&params.max_rating);
+        let max_rating = MaturityRating::from_str(&params.max_rating);
         let item_ids: Vec<i32> = input.iter().map(|item| item.item_id).collect();
 
         let item_features_map = context.item_feature_service
@@ -64,7 +50,7 @@ impl PipelineStage for FilterByAgeRatingStage {
             .into_iter()
             .filter(|item| {
                 match rating_map.get(&item.item_id) {
-                    Some(Some(rating)) => Self::rating_to_level(rating) <= max_level,
+                    Some(Some(rating)) => MaturityRating::from_str(rating) <= max_rating,
                     Some(None) | None => params.include_unknown,
                 }
             })

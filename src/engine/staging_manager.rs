@@ -12,7 +12,7 @@ use std::sync::Arc;
 use std::time::Instant;
 use tracing::{info, debug};
 
-use crate::cache::{CacheManager, CacheConfig};
+use crate::cache::CacheManager;
 use crate::db::repositories::cache_repository::CacheRepository;
 use crate::db::ResilientPool;
 use crate::resilience::ResilienceMetricsCollector;
@@ -35,19 +35,16 @@ pub struct StagingManager {
 }
 
 impl StagingManager {
-    pub async fn new(
-        redis_url: &str,
+    pub fn new(
+        cache_manager: Arc<CacheManager>,
         pool: Arc<ResilientPool>,
-        config: CacheConfig,
         metrics: Arc<ResilienceMetricsCollector>,
-    ) -> Result<Self> {
-        let cache_manager = Arc::new(CacheManager::new(redis_url, config).await?);
-
-        Ok(Self {
+    ) -> Self {
+        Self {
             cache_manager,
             cache_repo: CacheRepository::new(pool, metrics),
             penalty_locks: dashmap::DashMap::new(),
-        })
+        }
     }
 
     /// Get recommendations from cache tiers (L1 -> L2 -> L3)

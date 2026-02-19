@@ -61,6 +61,22 @@
           T: for<'de> Deserialize<'de> + Send,
       {
           let shard_idx = self.get_shard_index(key);
+          
+          // Fix #30: Optimized lock pattern - try read lock first
+          {
+              let cache = self.shards[shard_idx].read().await;
+              if let Some(entry) = cache.peek(key) {
+                  if entry.is_expired() {
+                      // Need write lock to remove
+                  } else {
+                      // Valid hit - but we still need write lock to update LRU order via cache.get()
+                  }
+              } else {
+                  self.metrics.record_l1_miss();
+                  return Ok(None);
+              }
+          }
+
           // LRU get requires mutable access to update access order
           let mut cache = self.shards[shard_idx].write().await;
 

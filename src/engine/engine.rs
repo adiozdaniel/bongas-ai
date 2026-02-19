@@ -257,8 +257,7 @@ impl BongasEngine {
         let performance_stats = Arc::new(PerformanceStats::new());
         let item_feature_service = Arc::new(ItemFeatureService::new(resilient_pool.clone(), resilience_metrics.clone()));
         
-        let cache_config = CacheConfig::default();
-        let staging_manager = Arc::new(StagingManager::new(&config.redis.url, resilient_pool.clone(), cache_config.clone(), resilience_metrics.clone()).await?);
+        let staging_manager = Arc::new(StagingManager::new(cache_manager.clone(), resilient_pool.clone(), resilience_metrics.clone()));
         let staleness_engine = Arc::new(StalenessEngine::new(staging_manager.clone(), item_feature_service.clone()));
 
         // 4. Concurrently load models (Heavy Task)
@@ -701,7 +700,7 @@ impl BongasEngine {
         let consolidation_key = format!("{}:{}:{}", scenario_slug, user_id.unwrap_or(0), context_hash);
         
         let waiter = {
-            let mut entry = self.request_consolidation.entry(consolidation_key.clone());
+            let entry = self.request_consolidation.entry(consolidation_key.clone());
             match entry {
                 dashmap::mapref::entry::Entry::Occupied(ref e) => {
                     // Another request is in-flight, subscribe to results
@@ -744,7 +743,7 @@ impl BongasEngine {
                     scenario_slug,
                     stats.execution_time_ms,
                     true
-                );
+                ).await;
 
                 return Ok((Self::convert_to_recommendation_items(cached_items), stats));
             }
@@ -771,7 +770,7 @@ impl BongasEngine {
             scenario_slug,
             stats.execution_time_ms,
             false
-        );
+        ).await;
 
         // Save to cache
         if scenario.use_l2_cache {

@@ -9,7 +9,7 @@ use axum::http::StatusCode;
 use std::sync::Arc;
 use std::time::{Instant, Duration};
 use dashmap::DashMap;
-use tracing::{warn, error};
+use tracing::{warn, error, info};
 use serde::{Serialize, Deserialize};
 
 use crate::circuit_breaker::{CircuitBreaker, CircuitBreakerConfig, CircuitBreakerId, CircuitBreakerRegistry};
@@ -19,10 +19,13 @@ const L1_THRESHOLD: u64 = 10; // 10 req/s
 const L1_PENALTY_DURATION: Duration = Duration::from_secs(120); // 2 minutes
 const L2_PROMOTION_THRESHOLD: u32 = 3; // 3 local blocks = L2 promotion
 
+use redis::aio::ConnectionManager;
+
 pub struct RateLimiter {
     l1: DashMap<String, L1State>,
     redis_breaker: Arc<CircuitBreaker>,
     redis_client: Arc<redis::Client>,
+    redis_manager: Arc<tokio::sync::RwLock<Option<ConnectionManager>>>,
     max_requests: u64,
     window_seconds: u64,
     shutdown_rx: Option<tokio::sync::broadcast::Receiver<()>>,
@@ -66,10 +69,26 @@ impl RateLimiter {
         let limiter = Arc::new(Self {
             l1: DashMap::new(),
             redis_breaker: breaker,
-            redis_client: redis,
+            redis_client: redis.clone(),
+            redis_manager: Arc::new(tokio::sync::RwLock::new(None)),
             max_requests,
             window_seconds,
             shutdown_rx,
+        });
+
+        // Initialize ConnectionManager in background
+        let manager_arc = limiter.redis_manager.clone();
+        let redis_inner = redis.clone();
+        tokio::spawn(async move {
+            match ConnectionManager::new((*redis_inner).clone()).await {
+                Ok(cm) => {
+                    *manager_arc.write().await = Some(cm);
+                    info!("Rate limiter Redis ConnectionManager initialized");
+                }
+                Err(e) => {
+                    error!("Failed to initialize rate limiter Redis manager: {}", e);
+                }
+            }
         });
 
         // Start janitor task
@@ -79,6 +98,25 @@ impl RateLimiter {
         });
 
         limiter
+    }
+
+    async fn get_redis_conn(&self) -> Result<ConnectionManager, RateLimitError> {
+        let manager = self.redis_manager.read().await;
+        if let Some(ref cm) = *manager {
+            Ok(cm.clone())
+        } else {
+            // Lazy initialization if background task didn't finish yet or failed
+            drop(manager);
+            let mut manager = self.redis_manager.write().await;
+            if let Some(ref cm) = *manager {
+                Ok(cm.clone())
+            } else {
+                let cm = ConnectionManager::new((*self.redis_client).clone()).await
+                    .map_err(RateLimitError::Connection)?;
+                *manager = Some(cm.clone());
+                Ok(cm)
+            }
+        }
     }
 
     /// Run background cleanup of L1 state.
@@ -186,23 +224,20 @@ impl RateLimiter {
 
     async fn check_l2(&self, ip: &str) -> Result<RateLimitStatus, StatusCode> {
         let key = format!("global_ban:{}", ip);
-        let redis_client = self.redis_client.clone();
         let key_clone = key.clone();
+        let this = self;
 
         let result = self.redis_breaker.call(|| async move {
-            let mut conn = redis_client
-                .get_multiplexed_async_connection()
-                .await
-                .map_err(RateLimitError::Connection)?;
+            let mut conn = this.get_redis_conn().await?;
 
             let is_banned: bool = redis::AsyncCommands::exists(&mut conn, &key_clone)
                 .await
-                .unwrap_or(false);
+                .map_err(RateLimitError::Connection)?;
 
             if is_banned {
                 let ttl: i64 = redis::AsyncCommands::ttl(&mut conn, &key_clone)
                     .await
-                    .unwrap_or(0);
+                    .map_err(RateLimitError::Connection)?;
                 
                 Ok::<RateLimitStatus, RateLimitError>(RateLimitStatus {
                     limit: 0,
@@ -212,8 +247,8 @@ impl RateLimiter {
                 })
             } else {
                 Ok::<RateLimitStatus, RateLimitError>(RateLimitStatus {
-                    limit: self.max_requests,
-                    window_seconds: self.window_seconds,
+                    limit: this.max_requests,
+                    window_seconds: this.window_seconds,
                     reset_in_seconds: 0,
                     is_limited: false,
                 })
@@ -232,17 +267,14 @@ impl RateLimiter {
     async fn promote_to_l2(&self, ip: &str, local_blocks: u32) {
         let key = format!("global_ban:{}", ip);
         let strike_key = format!("strikes:{}", ip);
-        let redis_client = self.redis_client.clone();
+        let this = self;
         
         let result = self.redis_breaker.call(|| async move {
-            let mut conn = redis_client
-                .get_multiplexed_async_connection()
-                .await
-                .map_err(RateLimitError::Connection)?;
+            let mut conn = this.get_redis_conn().await?;
 
             let strikes: u32 = redis::AsyncCommands::incr(&mut conn, &strike_key, 1)
                 .await
-                .unwrap_or(1);
+                .map_err(RateLimitError::Connection)?;
 
             let ban_duration = match strikes {
                 1 => Duration::from_secs(24 * 3600), // 24 Hours
@@ -251,7 +283,7 @@ impl RateLimiter {
 
             let _: () = redis::AsyncCommands::set_ex(&mut conn, &key, "1", ban_duration.as_secs())
                 .await
-                .unwrap_or(());
+                .map_err(RateLimitError::Connection)?;
 
             Ok::<(), RateLimitError>(())
         }).await;

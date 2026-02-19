@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use anyhow::Result;
 use serde_json::Value as JsonValue;
-use crate::pipeline::{PipelineStage, ScoredItem};
+use crate::pipeline::{PipelineStage, ScoredItem, MaturityRating};
 use crate::pipeline::context::ExecutionContext;
 use tracing::debug;
 
@@ -10,18 +10,6 @@ use tracing::debug;
 /// Filters content based on the user's maturity rating (X-MATURITY-RATING header).
 /// Standard Ratings: GE (0+), PG (13+), 16 (16+), 18 (18+)
 pub struct MaturityFilterStage;
-
-impl MaturityFilterStage {
-    fn rating_to_age(rating: &str) -> i32 {
-        match rating.to_uppercase().as_str() {
-            "GE" => 0,
-            "PG" => 13,
-            "16" => 16,
-            "18" => 18,
-            _ => 18, // Default to strictest for unknown
-        }
-    }
-}
 
 #[async_trait]
 impl PipelineStage for MaturityFilterStage {
@@ -36,12 +24,11 @@ impl PipelineStage for MaturityFilterStage {
         input: Vec<ScoredItem>,
     ) -> Result<Vec<ScoredItem>> {
         // Extract user maturity from context
-        // Priority: 1. Explicit context.maturity_rating, 2. Experiment override (legacy), 3. Default "GE"
         let user_rating_str = context.maturity_rating.as_deref()
             .or_else(|| context.experiment_overrides.get("user_maturity_rating").and_then(|v| v.as_str()))
             .unwrap_or("GE");
         
-        let user_age_limit = Self::rating_to_age(user_rating_str);
+        let user_rating = MaturityRating::from_str(user_rating_str);
 
         if input.is_empty() {
             return Ok(Vec::new());
@@ -53,12 +40,12 @@ impl PipelineStage for MaturityFilterStage {
             .filter_map(|mut item| {
                 let item_rating_str = item.metadata.get("age_rating")
                     .and_then(|v| v.as_str())
-                    .unwrap_or("18"); // If item has no rating, assume it's for adults
+                    .unwrap_or("18"); 
                 
-                let item_age_req = Self::rating_to_age(item_rating_str);
+                let item_rating = MaturityRating::from_str(item_rating_str);
                 
-                if item_age_req <= user_age_limit {
-                    item.reasoning.push(format!("MaturityFilter: OK ({} <= {})", item_rating_str, user_rating_str));
+                if item_rating <= user_rating {
+                    item.reasoning.push(format!("MaturityFilter: OK ({:?} <= {:?})", item_rating, user_rating));
                     Some(item)
                 } else {
                     None

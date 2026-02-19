@@ -952,14 +952,20 @@ impl ItemFeatureService {
             .execute(|pool| async move {
                 sqlx::query_as::<_, CoWatchedRow>(
                     r#"
-                    SELECT ui2.item_id, COUNT(DISTINCT ui2.user_id) as co_watch_count
-                    FROM user_interactions ui1
-                    JOIN user_interactions ui2 ON ui1.user_id = ui2.user_id
-                    WHERE ui1.item_id = $1
-                        AND ui2.item_id != $1
-                        AND ui1.interaction_type = 'view'
-                        AND ui2.interaction_type = 'view'
-                    GROUP BY ui2.item_id
+                    WITH target_users AS (
+                        SELECT DISTINCT user_id 
+                        FROM user_interactions 
+                        WHERE item_id = $1 
+                          AND interaction_type = 'view'
+                          AND created_at > (now() - INTERVAL '30 days')
+                    )
+                    SELECT ui.item_id, COUNT(*) as co_watch_count
+                    FROM user_interactions ui
+                    JOIN target_users tu ON ui.user_id = tu.user_id
+                    WHERE ui.item_id != $1
+                      AND ui.interaction_type = 'view'
+                      AND ui.created_at > (now() - INTERVAL '30 days')
+                    GROUP BY ui.item_id
                     ORDER BY co_watch_count DESC
                     LIMIT $2
                     "#,

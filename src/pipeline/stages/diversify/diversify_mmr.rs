@@ -79,12 +79,19 @@ impl PipelineStage for DiversifyMMRStage {
         &self,
         context: &ExecutionContext,
         params: &JsonValue,
-        input: Vec<ScoredItem>,
+        mut input: Vec<ScoredItem>,
     ) -> Result<Vec<ScoredItem>> {
         let params: Params = serde_json::from_value(params.clone())?;
 
         if input.is_empty() || params.limit == 0 {
             return Ok(input);
+        }
+
+        // Fix #53: Cap input size to prevent O(N^2) explosion
+        // 500 is a safe threshold for real-time latency
+        if input.len() > 500 {
+            tracing::debug!(input_size = input.len(), "Truncating MMR input to 500 candidates for performance");
+            input.truncate(500);
         }
 
         let item_ids: Vec<i32> = input.iter().map(|item| item.item_id).collect();

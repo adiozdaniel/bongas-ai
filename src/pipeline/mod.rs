@@ -197,3 +197,33 @@ pub enum PipelineError {
         input: StageDataKind,
     },
 }
+
+/// Unified maturity rating levels for the platform.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+pub enum MaturityRating {
+    GE, // General Audience (0+)
+    PG, // Parental Guidance (13+)
+    M16, // Mature 16+
+    M18, // Adults only 18+
+}
+
+impl MaturityRating {
+    pub fn from_str(s: &str) -> Self {
+        match s.to_uppercase().as_str() {
+            "GE" | "G" => Self::GE,
+            "PG" | "PG-13" | "PG13" => Self::PG,
+            "16" | "M16" => Self::M16,
+            "18" | "M18" | "R" | "NC-17" | "NC17" => Self::M18,
+            _ => Self::M18, // Strictest by default
+        }
+    }
+
+    pub fn as_age(&self) -> i32 {
+        match self {
+            Self::GE => 0,
+            Self::PG => 13,
+            Self::M16 => 16,
+            Self::M18 => 18,
+        }
+    }
+}
