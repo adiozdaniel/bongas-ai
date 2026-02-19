@@ -232,13 +232,26 @@ impl StalenessEngine {
     }
 
     async fn handle_new_content(&self, genre: &str) -> Result<()> {
-        warn!(
-            genre = genre,
-            "New content added - consider invalidating genre-based scenarios"
-        );
+        info!(genre = genre, "Processing new content event, triggering genre-based invalidation");
 
-        // Genre-based invalidation is handled by background workers
-        // or by marking trending scenarios as stale globally
+        for rule in &self.rules {
+            if let StalenessRule::OnNewContentInGenre { scenarios } = rule {
+                for scenario_slug in scenarios {
+                    // Global invalidation for this scenario across all users
+                    // In a production system, we'd use a pattern-based L2 invalidation
+                    // and let L1 expire or use a global broadcast.
+                    let pattern = format!("rec:{}:*", scenario_slug);
+                    let _ = self.staging_manager.cache_manager().delete_pattern(&pattern).await;
+                    
+                    info!(
+                        scenario_slug = %scenario_slug,
+                        genre = genre,
+                        "Invalidated global cache for scenario due to new content"
+                    );
+                }
+            }
+        }
+
         Ok(())
     }
 

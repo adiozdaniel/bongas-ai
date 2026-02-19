@@ -30,6 +30,8 @@ pub struct PenaltyState {
 pub struct StagingManager {
     cache_manager: Arc<CacheManager>,
     cache_repo: CacheRepository,
+    // Fix #17: Per-user locks for atomic penalty updates
+    penalty_locks: dashmap::DashMap<i32, Arc<tokio::sync::Mutex<()>>>,
 }
 
 impl StagingManager {
@@ -44,6 +46,7 @@ impl StagingManager {
         Ok(Self {
             cache_manager,
             cache_repo: CacheRepository::new(pool, metrics),
+            penalty_locks: dashmap::DashMap::new(),
         })
     }
 
@@ -243,6 +246,14 @@ impl StagingManager {
 
     /// Record a negative signal (Skip) and update genre penalty state.
     pub async fn record_negative_signal(&self, user_id: i32, genres: Vec<String>) -> Result<()> {
+        // Fix #17: Acquire per-user lock for atomic update
+        let lock = self.penalty_locks.entry(user_id)
+            .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(())))
+            .value()
+            .clone();
+        
+        let _guard = lock.lock().await;
+
         for genre in genres {
             let key = format!("penalty:{}:{}", user_id, genre);
             let mut state: PenaltyState = self.cache_manager.get(&key).await?.unwrap_or(PenaltyState {

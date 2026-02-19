@@ -89,6 +89,9 @@ pub struct BongasEngine {
     pub(crate) metrics_collector: Arc<MetricsCollector>,
     pub(crate) performance_stats: Arc<PerformanceStats>,
 
+    // Fix #72: Thundering Herd protection
+    pub(crate) request_consolidation: Arc<dashmap::DashMap<String, Arc<tokio::sync::broadcast::Sender<Vec<RecommendationItem>>>>>,
+
     // Shutdown signal
     pub(crate) shutdown_tx: tokio::sync::broadcast::Sender<()>,
 }
@@ -356,6 +359,7 @@ impl BongasEngine {
             cache_manager,
             metrics_collector,
             performance_stats,
+            request_consolidation: Arc::new(dashmap::DashMap::new()),
             shutdown_tx,
         });
 
@@ -433,7 +437,11 @@ impl BongasEngine {
 
     /// Shutdown ingestion gracefully
     pub async fn shutdown_ingestion(&self) {
-        info!("Shutting down activity ingestion...");
+        info!("Shutting down engine components...");
+        
+        // Fix #15: Send global shutdown signal
+        let _ = self.shutdown_tx.send(());
+
         let mut manager = self.ingestion_manager.write().await;
         manager.shutdown().await;
         info!("Activity ingestion shut down");
@@ -522,12 +530,15 @@ impl BongasEngine {
         info!(slug = %slug, "Reloading scenario from database...");
 
         if let Some(mut new_scenario) = self.scenario_factory.load_one_from_db(slug).await? {
+            // Fix #16: Lock scenarios FIRST to prevent TOCTOU race with linked_scenarios update
+            let mut scenarios = self.scenarios.write().await;
+
             match self.pipeline_executor.link(&new_scenario.pipeline) {
                 Ok(executable) => {
                     let arc_executable = Arc::new(executable);
                     new_scenario.linked_pipeline = Some(arc_executable.clone());
                     
-                    // Update linked scenarios map
+                    // Update linked scenarios map atomically with scenarios map
                     let mut linked_map = (**self.linked_scenarios.load()).clone();
                     linked_map.insert(slug.to_string(), arc_executable);
                     self.linked_scenarios.store(Arc::new(linked_map));
@@ -537,7 +548,6 @@ impl BongasEngine {
                 }
             }
 
-            let mut scenarios = self.scenarios.write().await;
             scenarios.insert(slug.to_string(), new_scenario);
             info!(slug = %slug, "Scenario reloaded and re-linked");
             Ok(true)
@@ -553,7 +563,7 @@ impl BongasEngine {
         if scenarios.remove(slug).is_some() {
             info!(slug = %slug, "Scenario removed from active engine");
             
-            // Update linked scenarios map
+            // Fix #16: Update linked scenarios map while holding scenarios lock
             let mut linked_map = (**self.linked_scenarios.load()).clone();
             linked_map.remove(slug);
             self.linked_scenarios.store(Arc::new(linked_map));
@@ -685,6 +695,42 @@ impl BongasEngine {
         }
 
         let context_hash = StagingManager::hash_context(&cache_params);
+
+        // Fix #72: Thundering Herd Protection
+        // Check if another request is already executing this exact context
+        let consolidation_key = format!("{}:{}:{}", scenario_slug, user_id.unwrap_or(0), context_hash);
+        
+        let waiter = {
+            let mut entry = self.request_consolidation.entry(consolidation_key.clone());
+            match entry {
+                dashmap::mapref::entry::Entry::Occupied(ref e) => {
+                    // Another request is in-flight, subscribe to results
+                    debug!(scenario = %scenario_slug, "Consolidating concurrent request (Thundering Herd protection)");
+                    Some(e.get().subscribe())
+                }
+                dashmap::mapref::entry::Entry::Vacant(e) => {
+                    // First request, create broadcast channel
+                    let (tx, _) = tokio::sync::broadcast::channel(1);
+                    e.insert(Arc::new(tx));
+                    None
+                }
+            }
+        };
+
+        if let Some(mut rx) = waiter {
+            match rx.recv().await {
+                Ok(items) => {
+                    stats.execution_time_ms = start_time.elapsed().as_millis() as u64;
+                    stats.cached_result = true; // Effectively cached for this caller
+                    return Ok((items, stats));
+                }
+                Err(_) => {
+                    // Fall through to normal execution if broadcast failed
+                    warn!(scenario = %scenario_slug, "Consolidation waiter failed, falling back to direct execution");
+                }
+            }
+        }
+
         if scenario.use_l2_cache {
             if let Some(cached_items) = self.staging_manager
                 .get_cached(scenario_slug, user_id, &context_hash)
@@ -713,6 +759,12 @@ impl BongasEngine {
         };
 
         stats.execution_time_ms = start_time.elapsed().as_millis() as u64;
+
+        // Fix #72: Broadcast results to consolidated waiters
+        let final_recommendations = Self::convert_to_recommendation_items(scored_items.clone());
+        if let Some((_, tx)) = self.request_consolidation.remove(&consolidation_key) {
+            let _ = tx.send(final_recommendations.clone());
+        }
 
         // Record metrics for cache miss execution
         self.metrics_collector.record_scenario_execution(

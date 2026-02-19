@@ -78,10 +78,11 @@ impl PipelineStage for MultiActionRankerStage {
             .get_item_features(&item_ids, params.item_feature_dim)
             .await?;
 
-        // 4. Run Multi-Action Inference in Batches
+        // 4. Run Multi-Action Inference in Batches (Fix #22: Validate batch_size > 0)
+        let batch_size = if params.batch_size == 0 { 64 } else { params.batch_size };
         let mut all_action_probs = Vec::with_capacity(input.len());
 
-        for chunk in input.chunks(params.batch_size) {
+        for chunk in input.chunks(batch_size) {
             let mut user_batch = Array2::<f32>::zeros((chunk.len(), params.user_feature_dim));
             let mut item_batch = Array2::<f32>::zeros((chunk.len(), params.item_feature_dim));
 
@@ -91,11 +92,20 @@ impl PipelineStage for MultiActionRankerStage {
                     .cloned()
                     .unwrap_or_else(|| vec![0.0; params.item_feature_dim]);
 
+                // Fix #52: Bounds check for user_features indexing
                 for j in 0..params.user_feature_dim {
-                    user_batch[[i, j]] = user_features[j];
+                    if j < user_features.len() {
+                        user_batch[[i, j]] = user_features[j];
+                    } else {
+                        user_batch[[i, j]] = 0.0; // Pad with zeros if dim mismatch
+                    }
                 }
                 for j in 0..params.item_feature_dim {
-                    item_batch[[i, j]] = item_feats[j];
+                    if j < item_feats.len() {
+                        item_batch[[i, j]] = item_feats[j];
+                    } else {
+                        item_batch[[i, j]] = 0.0;
+                    }
                 }
             }
 

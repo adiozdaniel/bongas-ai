@@ -212,6 +212,8 @@ impl PipelineExecutor {
         if current_parallel.len() == 1 {
             ExecutionNode::Single(current_parallel.pop().unwrap())
         } else {
+            // Fix #21: Allow configurable merge strategy for parallel nodes
+            // Default to Sum but in a real system we might pull this from config
             ExecutionNode::Parallel { 
                 stages: std::mem::take(current_parallel),
                 merge_strategy: crate::pipeline::MergeStrategy::Sum,
@@ -268,40 +270,56 @@ impl PipelineExecutor {
                 ExecutionNode::Parallel { stages, merge_strategy } => {
                     let futures = stages.iter().map(|s| self.execute_single_stage(s, context, items.clone()));
                     let results = join_all(futures).await;
+                    
                     let mut merged_map: HashMap<i32, ScoredItem> = HashMap::new();
                     let mut counts: HashMap<i32, usize> = HashMap::new();
+                    
+                    // Fix #19: Propagate errors instead of swallowing
+                    let mut errors = Vec::new();
 
                     for res in results {
-                        if let Ok(stage_items) = res {
-                            for mut item in stage_items {
-                                let id = item.item_id;
-                                if let Some(existing) = merged_map.get_mut(&id) {
-                                    match merge_strategy {
-                                        crate::pipeline::MergeStrategy::Sum => existing.score += item.score,
-                                        crate::pipeline::MergeStrategy::Max => existing.score = existing.score.max(item.score),
-                                        crate::pipeline::MergeStrategy::Min => existing.score = existing.score.min(item.score),
-                                        crate::pipeline::MergeStrategy::Average => existing.score += item.score,
-                                        crate::pipeline::MergeStrategy::First => {} // Keep first score
+                        match res {
+                            Ok(stage_items) => {
+                                for mut item in stage_items {
+                                    let id = item.item_id;
+                                    if let Some(existing) = merged_map.get_mut(&id) {
+                                        match merge_strategy {
+                                            crate::pipeline::MergeStrategy::Sum => existing.score += item.score,
+                                            crate::pipeline::MergeStrategy::Max => existing.score = existing.score.max(item.score),
+                                            crate::pipeline::MergeStrategy::Min => existing.score = existing.score.min(item.score),
+                                            crate::pipeline::MergeStrategy::Average => existing.score += item.score,
+                                            crate::pipeline::MergeStrategy::First => {} // Keep first score
+                                        }
+                                        existing.reasoning.append(&mut item.reasoning);
+                                        *counts.get_mut(&id).unwrap() += 1;
+                                    } else {
+                                        merged_map.insert(id, item);
+                                        counts.insert(id, 1);
                                     }
-                                    existing.reasoning.append(&mut item.reasoning);
-                                    *counts.get_mut(&id).unwrap() += 1;
-                                } else {
-                                    merged_map.insert(id, item);
-                                    counts.insert(id, 1);
                                 }
                             }
+                            Err(e) => {
+                                errors.push(e);
+                            }
                         }
+                    }
+
+                    // If all branches failed, propagate first error (or a consolidated one)
+                    if !errors.is_empty() && merged_map.is_empty() {
+                        return Err(errors.remove(0).into());
                     }
 
                     if *merge_strategy == crate::pipeline::MergeStrategy::Average {
-                        for (id, item) in merged_map.iter_mut() {
-                            let count = *counts.get(id).unwrap_or(&1);
-                            if count > 1 {
-                                item.score /= count as f32;
-                            }
+                        // Fix #20: Math correction - divide by total branches in the node, not just active ones
+                        let total_branches = stages.len() as f32;
+                        for item in merged_map.values_mut() {
+                            item.score /= total_branches;
                         }
                     }
+                    
                     items = merged_map.into_values().collect();
+                    // Fix #50: Ensure deterministic ordering after HashMap merge
+                    items.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
                 }
                 ExecutionNode::Branch { condition, if_true, if_false } => {
                     let branch = if self.evaluate_condition(condition, context) {
@@ -322,40 +340,54 @@ impl PipelineExecutor {
                     
                     let mut ensemble_map: HashMap<i32, ScoredItem> = HashMap::new();
                     let mut counts: HashMap<i32, usize> = HashMap::new();
+                    
+                    // Fix #19: Propagate errors
+                    let mut errors = Vec::new();
 
                     for (weight, res) in results {
-                        if let Ok(source_items) = res {
-                            for mut item in source_items {
-                                let id = item.item_id;
-                                item.score *= weight;
+                        match res {
+                            Ok(source_items) => {
+                                for mut item in source_items {
+                                    let id = item.item_id;
+                                    item.score *= weight;
 
-                                if let Some(existing) = ensemble_map.get_mut(&id) {
-                                    match merge_strategy {
-                                        crate::pipeline::MergeStrategy::Sum => existing.score += item.score,
-                                        crate::pipeline::MergeStrategy::Max => existing.score = existing.score.max(item.score),
-                                        crate::pipeline::MergeStrategy::Min => existing.score = existing.score.min(item.score),
-                                        crate::pipeline::MergeStrategy::Average => existing.score += item.score,
-                                        crate::pipeline::MergeStrategy::First => {}
+                                    if let Some(existing) = ensemble_map.get_mut(&id) {
+                                        match merge_strategy {
+                                            crate::pipeline::MergeStrategy::Sum => existing.score += item.score,
+                                            crate::pipeline::MergeStrategy::Max => existing.score = existing.score.max(item.score),
+                                            crate::pipeline::MergeStrategy::Min => existing.score = existing.score.min(item.score),
+                                            crate::pipeline::MergeStrategy::Average => existing.score += item.score,
+                                            crate::pipeline::MergeStrategy::First => {}
+                                        }
+                                        existing.reasoning.append(&mut item.reasoning);
+                                        *counts.get_mut(&id).unwrap() += 1;
+                                    } else {
+                                        ensemble_map.insert(id, item);
+                                        counts.insert(id, 1);
                                     }
-                                    existing.reasoning.append(&mut item.reasoning);
-                                    *counts.get_mut(&id).unwrap() += 1;
-                                } else {
-                                    ensemble_map.insert(id, item);
-                                    counts.insert(id, 1);
                                 }
                             }
+                            Err(e) => {
+                                errors.push(e);
+                            }
                         }
+                    }
+
+                    // If all failed, propagate
+                    if !errors.is_empty() && ensemble_map.is_empty() {
+                        return Err(errors.remove(0).into());
                     }
 
                     if *merge_strategy == crate::pipeline::MergeStrategy::Average {
-                        for (id, item) in ensemble_map.iter_mut() {
-                            let count = *counts.get(id).unwrap_or(&1);
-                            if count > 1 {
-                                item.score /= count as f32;
-                            }
+                        // Fix #20: Correct math - divide by total ensemble sources
+                        let total_sources = sources.len() as f32;
+                        for item in ensemble_map.values_mut() {
+                            item.score /= total_sources;
                         }
                     }
                     items = ensemble_map.into_values().collect();
+                    // Fix #50: Deterministic sort
+                    items.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
                 }
                 ExecutionNode::Interleave { pattern, sources } => {
                     let futures = sources.iter().map(|(name, nodes)| {

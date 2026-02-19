@@ -84,11 +84,18 @@ impl PipelineStage for MetaScorerStage {
             return Ok(input);
         }
 
-        // 3. Run Inference
+        // 3. Run Inference (Fix #22: Validate batch_size > 0)
+        let batch_size = if params.batch_size == 0 {
+            warn!("batch_size is 0, defaulting to 64 to prevent panic");
+            64
+        } else {
+            params.batch_size
+        };
+
         let mut final_scores: Vec<f32> = Vec::with_capacity(input.len());
         {
-            for chunk_idx in (0..feature_batch.len()).step_by(params.batch_size) {
-                let end = std::cmp::min(chunk_idx + params.batch_size, feature_batch.len());
+            for chunk_idx in (0..feature_batch.len()).step_by(batch_size) {
+                let end = std::cmp::min(chunk_idx + batch_size, feature_batch.len());
                 let chunk = feature_batch[chunk_idx..end].to_vec();
                 
                 // Meta-scorer uses a simplified model
