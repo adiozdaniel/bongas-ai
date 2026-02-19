@@ -128,7 +128,7 @@
           let mut conn = self.client.clone();
           let full_pattern = self.prefixed_key(pattern);
 
-          // Fix #10, C1, M2: Use an iterative SCAN approach instead of KEYS
+          // Fix #10, C1, M2, N1: Use an iterative SCAN approach instead of KEYS
           // This avoids blocking Redis for O(N) operations and prevents Lua stack limits.
           let result = self.circuit_breaker.call(|| async {
               let script = redis::Script::new(r#"
@@ -138,9 +138,9 @@
                       local res = redis.call("SCAN", cursor, "MATCH", ARGV[1], "COUNT", 100)
                       cursor = res[1]
                       local keys = res[2]
-                      if #keys > 0 then
-                          redis.call("DEL", unpack(keys))
-                          count = count + #keys
+                      for i, k in ipairs(keys) do
+                          redis.call("DEL", k)
+                          count = count + 1
                       end
                   until cursor == "0"
                   return count

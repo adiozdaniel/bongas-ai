@@ -57,7 +57,7 @@ enum KafkaSourceError {
     #[error("Kafka receive error: {0}")]
     Receive(#[from] rdkafka::error::KafkaError),
     #[error("Poison message: parsing failed")]
-    Poison,
+    Poison(Vec<u8>),
     #[error("Channel full: failed to send activity")]
     ChannelFull,
 }
@@ -66,7 +66,7 @@ impl ErrorClassifier for KafkaSourceError {
     fn classify(&self) -> ErrorClassification {
         match self {
             Self::Receive(_) => ErrorClassification::Transient,
-            Self::Poison => ErrorClassification::Permanent,
+            Self::Poison(_) => ErrorClassification::Permanent,
             Self::ChannelFull => ErrorClassification::Overload,
         }
     }
@@ -154,9 +154,9 @@ impl KafkaSource {
                     .await
                     .map_err(|_| rdkafka::error::KafkaError::NoMessageReceived)??;
 
-                let payload = message.payload().ok_or(KafkaSourceError::Poison)?;
+                let payload = message.payload().ok_or_else(|| KafkaSourceError::Poison(Vec::new()))?;
                 
-                let activity = parse_inner(payload).ok_or(KafkaSourceError::Poison)?;
+                let activity = parse_inner(payload).ok_or_else(|| KafkaSourceError::Poison(payload.to_vec()))?;
                 
                 sender_inner.send(activity).await.map_err(|_| KafkaSourceError::ChannelFull)?;
                 
@@ -171,16 +171,22 @@ impl KafkaSource {
                 Err(crate::circuit_breaker::CircuitBreakerError::ExecutionFailed { source, classification, .. }) => {
                     this.errors.fetch_add(1, Ordering::Relaxed);
                     if classification == ErrorClassification::Permanent {
-                        // Fix #25, M3: Use DLQ producer if available and log warning
+                        // Fix #25, M3, N3: Forward original payload to DLQ
                         warn!(topic = %topic_name, "Poison message detected, moving to DLQ");
                         
                         if let Some(ref producer) = this.dlq_producer {
+                            let payload = if let KafkaSourceError::Poison(ref p) = source {
+                                p.as_slice()
+                            } else {
+                                b"unparseable"
+                            };
+
                             let dlq_topic = format!("{}.dlq", topic_name);
                             let record = FutureRecord::to(&dlq_topic)
-                                .payload("poison_payload_placeholder")
+                                .payload(payload)
                                 .key("poison_key");
                             
-                            let _ = producer.send::<str, str, _>(record, Duration::from_secs(0));
+                            let _ = producer.send::<str, [u8], _>(record, Duration::from_secs(0));
                         }
                     } else {
                         error!(topic = %topic_name, error = %source, "Kafka processing error");

@@ -286,11 +286,12 @@ impl StagingManager {
         Ok(self.cache_manager.get(&map_key).await?.unwrap_or_default())
     }
 
-    /// Fix #M5: Periodically clear penalty locks to prevent memory leak
+    /// Fix #M5, N2: Periodically clear unused penalty locks to prevent memory leak
     pub fn cleanup_locks(&self) {
         if self.penalty_locks.len() > 10000 {
-            info!(count = self.penalty_locks.len(), "Cleaning up penalty locks map to prevent memory leak");
-            self.penalty_locks.clear();
+            debug!(count = self.penalty_locks.len(), "Surgically cleaning up penalty locks map");
+            // Only keep locks that are currently being referenced by other tasks
+            self.penalty_locks.retain(|_, lock| Arc::strong_count(lock) > 1);
         }
     }
 }
