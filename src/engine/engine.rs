@@ -981,7 +981,7 @@ impl BongasEngine {
         info!(id = suggestion_id, "Simulating rule suggestion impact...");
 
         // 1. Fetch suggestion and sample users
-        let (scenario_slug, suggested_p_id, _condition): (String, i32, serde_json::Value) = self.item_feature_service.pool().execute(move |pool| async move {
+        let (scenario_slug, suggested_p_id, condition): (String, i32, serde_json::Value) = self.item_feature_service.pool().execute(move |pool| async move {
             sqlx::query_as(
                 r#"
                 SELECT s.slug, rs.suggested_pipeline_id, rs.suggested_condition 
@@ -1032,6 +1032,19 @@ impl BongasEngine {
                 context = context.with_clickhouse_client(ch.clone());
             }
 
+            // APPLY CONTEXT FROM SUGGESTED RULE CONDITION
+            if let Some(obj) = condition.as_object() {
+                if let Some(pid) = obj.get("context.profile_id").and_then(|v| v.as_str()) {
+                    context = context.with_profile_id(pid.to_string());
+                }
+                if let Some(mat) = obj.get("context.maturity_rating").and_then(|v| v.as_str()) {
+                    context = context.with_maturity_rating(mat.to_string());
+                }
+                if let Some(dev) = obj.get("context.device_type").and_then(|v| v.as_str()) {
+                    context = context.with_device_type(dev.to_string());
+                }
+            }
+
             // Execute Control
             let control_items = if let Some(ref cp) = control_pipeline {
                 self.pipeline_executor.execute_linked(cp, &context).await?
@@ -1058,12 +1071,10 @@ impl BongasEngine {
     }
 
     /// Process a natural language query and convert it to a rule suggestion.
-    /// In a production environment, this would call an LLM (e.g., GPT-4 or Gemini).
     pub async fn chatbot_process_query(&self, query: &str) -> Result<i32> {
         info!(query = %query, "AI Assistant processing natural language query...");
 
         // PROTOTYPE: Rule-based NLP Translation
-        // Real implementation would use an LLM API to output JSON.
         let mut condition = serde_json::json!({});
         let mut pipeline_slug = "discovery_v1".to_string();
         let mut reasoning = format!("AI Assistant translated: '{}'", query);
@@ -1077,11 +1088,24 @@ impl BongasEngine {
             reasoning += " (Optimized for Catalog Coverage)";
         }
 
+        // Dynamically resolve target scenario (fallback from home_feed)
+        let target_scenario = {
+            let slugs = self.list_scenarios().await;
+            if slugs.contains(&"home_feed".to_string()) {
+                "home_feed".to_string()
+            } else if !slugs.is_empty() {
+                slugs[0].clone()
+            } else {
+                return Err(anyhow::anyhow!("No active scenarios found for chatbot processing"));
+            }
+        };
+
         // Insert as a suggestion
         let suggestion_id: i32 = self.item_feature_service.pool().execute(move |pool| {
             let p_slug = pipeline_slug.clone();
             let cond = condition.clone();
             let reason = reasoning.clone();
+            let s_slug = target_scenario.clone();
             async move {
                 sqlx::query_scalar(
                     r#"
@@ -1090,16 +1114,17 @@ impl BongasEngine {
                         reasoning, confidence_score, status
                     )
                     VALUES (
-                        (SELECT id FROM scenarios WHERE slug = 'home_feed' LIMIT 1),
-                        (SELECT id FROM pipelines WHERE slug = $1 LIMIT 1),
-                        $2,
+                        (SELECT id FROM scenarios WHERE slug = $1 LIMIT 1),
+                        (SELECT id FROM pipelines WHERE slug = $2 LIMIT 1),
                         $3,
+                        $4,
                         0.85,
                         'pending'
                     )
                     RETURNING id
                     "#
                 )
+                .bind(s_slug)
                 .bind(p_slug)
                 .bind(cond)
                 .bind(reason)

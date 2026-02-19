@@ -159,10 +159,13 @@ impl AnalyticsSidecar {
         });
 
         let s_slug = scenario_slug.to_string();
-        self.pool.execute(move |pool| {
+        let pipeline_slug = "retention_v1";
+
+        let rows_affected = self.pool.execute(move |pool| {
             let reason = reasoning.clone();
             let cond = condition.clone();
             let s = s_slug.clone();
+            let p = pipeline_slug;
             async move {
                 sqlx::query(
                     r#"
@@ -170,26 +173,26 @@ impl AnalyticsSidecar {
                         scenario_id, suggested_pipeline_id, suggested_condition, 
                         reasoning, confidence_score, status
                     )
-                    VALUES (
-                        (SELECT id FROM scenarios WHERE slug = $1 LIMIT 1),
-                        (SELECT id FROM pipelines WHERE slug = 'retention_v1' LIMIT 1),
-                        $2,
-                        $3,
-                        0.85,
-                        'pending'
-                    )
-                    ON CONFLICT DO NOTHING
+                    SELECT s.id, p.id, $2, $3, 0.85, 'pending'
+                    FROM scenarios s, pipelines p
+                    WHERE s.slug = $1 AND p.slug = $4
+                    ON CONFLICT ON CONSTRAINT rule_suggestions_scenario_id_suggested_pipeline_id_md5_idx DO NOTHING
                     "#
                 )
                 .bind(s)
                 .bind(cond)
                 .bind(reason)
+                .bind(p)
                 .execute(&pool)
                 .await
             }
-        }).await?;
+        }).await?.rows_affected();
 
-        warn!(profile = %profile_id, scenario = %scenario_slug, "Retention gap detected: Strategy suggestion pushed");
+        if rows_affected == 0 {
+            warn!(profile = %profile_id, scenario = %scenario_slug, "Retention strategy suggestion SKIPPED (Pipeline 'retention_v1' or Scenario missing, or duplicate exists)");
+        } else {
+            info!(profile = %profile_id, scenario = %scenario_slug, "Retention gap detected: Strategy suggestion pushed");
+        }
         Ok(())
     }
 
@@ -201,9 +204,12 @@ impl AnalyticsSidecar {
         );
 
         let s_slug = scenario_slug.to_string();
-        self.pool.execute(move |pool| {
+        let pipeline_slug = "discovery_v1";
+
+        let rows_affected = self.pool.execute(move |pool| {
             let reason = reasoning.clone();
             let s = s_slug.clone();
+            let p = pipeline_slug;
             async move {
                 sqlx::query(
                     r#"
@@ -211,25 +217,25 @@ impl AnalyticsSidecar {
                         scenario_id, suggested_pipeline_id, suggested_condition, 
                         reasoning, confidence_score, status
                     )
-                    VALUES (
-                        (SELECT id FROM scenarios WHERE slug = $1 LIMIT 1),
-                        (SELECT id FROM pipelines WHERE slug = 'discovery_v1' LIMIT 1),
-                        '{}'::jsonb,
-                        $2,
-                        0.9,
-                        'pending'
-                    )
-                    ON CONFLICT DO NOTHING
+                    SELECT s.id, p.id, '{}'::jsonb, $2, 0.9, 'pending'
+                    FROM scenarios s, pipelines p
+                    WHERE s.slug = $1 AND p.slug = $3
+                    ON CONFLICT ON CONSTRAINT rule_suggestions_scenario_id_suggested_pipeline_id_md5_idx DO NOTHING
                     "#
                 )
                 .bind(s)
                 .bind(reason)
+                .bind(p)
                 .execute(&pool)
                 .await
             }
-        }).await?;
+        }).await?.rows_affected();
 
-        warn!(scenario = %scenario_slug, "Performance Gap Detected: Discovery suggestion pushed to admin queue");
+        if rows_affected == 0 {
+            warn!(scenario = %scenario_slug, "Discovery strategy suggestion SKIPPED (Pipeline 'discovery_v1' or Scenario missing, or duplicate exists)");
+        } else {
+            info!(scenario = %scenario_slug, "Performance Gap Detected: Discovery suggestion pushed to admin queue");
+        }
         Ok(())
     }
 }

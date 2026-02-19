@@ -232,7 +232,20 @@ impl ScenarioRepository {
         self.pool
             .execute(|pool| async move {
                 sqlx::query_as::<_, ScenarioConfig>(
-                    "SELECT * FROM scenario_configs WHERE category = $1 AND enabled = true ORDER BY priority DESC",
+                    r#"
+                    SELECT 
+                        s.id, s.slug, s.name, s.description, s.category,
+                        p.definition as pipeline,
+                        s.initial_display_limit, s.scope, 
+                        s.cache_ttl_seconds, s.use_l2_cache,
+                        NULL as staleness_rules, true as enabled, 100 as priority,
+                        s.created_at, s.created_at as updated_at, NULL as created_by, 1 as version
+                    FROM scenarios s
+                    LEFT JOIN scenario_rules r ON s.id = r.scenario_id AND r.condition = '{}'::jsonb
+                    LEFT JOIN pipelines p ON r.pipeline_id = p.id
+                    WHERE s.category = $1
+                    ORDER BY s.slug
+                    "#,
                 )
                 .bind(&category)
                 .fetch_all(&pool)

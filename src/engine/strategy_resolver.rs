@@ -120,7 +120,7 @@ impl StrategyResolver {
                         }
                     },
                     _ => {
-                        // Unknown keys cause the rule to NOT match for safety
+                        debug!(key = %key, "Unknown condition key encountered in strategic rule; skipping rule match.");
                         return false;
                     }
                 }

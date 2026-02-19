@@ -77,6 +77,7 @@ CREATE TABLE rule_suggestions (
 );
 
 CREATE INDEX idx_rule_suggestions_status ON rule_suggestions(status, confidence_score DESC);
+CREATE UNIQUE INDEX idx_rule_suggestions_dedup ON rule_suggestions(scenario_id, suggested_pipeline_id, md5(suggested_condition::text)) WHERE status = 'pending';
 
 -- ============================================================================
 -- 5. user_features (Feature Store)
