@@ -949,6 +949,127 @@ impl BongasEngine {
         Ok(())
     }
 
+    /// Simulate a rule suggestion before approval to see its impact.
+    pub async fn simulate_suggestion(&self, suggestion_id: i32) -> Result<serde_json::Value> {
+        info!(id = suggestion_id, "Simulating rule suggestion impact...");
+
+        // 1. Fetch suggestion and sample users
+        let (scenario_slug, suggested_p_id, condition): (String, i32, serde_json::Value) = self.item_feature_service.pool().execute(move |pool| async move {
+            sqlx::query_as(
+                r#"
+                SELECT s.slug, rs.suggested_pipeline_id, rs.suggested_condition 
+                FROM rule_suggestions rs 
+                JOIN scenarios s ON rs.scenario_id = s.id 
+                WHERE rs.id = $1
+                "#
+            )
+            .bind(suggestion_id)
+            .fetch_one(&pool)
+            .await
+        }).await?;
+
+        // 2. Fetch the suggested pipeline definition
+        let p_def_json: serde_json::Value = self.item_feature_service.pool().execute(move |pool| async move {
+            sqlx::query_scalar("SELECT definition FROM pipelines WHERE id = $1")
+                .bind(suggested_p_id)
+                .fetch_one(&pool)
+                .await
+        }).await?;
+        let suggested_pipeline = self.pipeline_executor.link(&serde_json::from_value(p_def_json)?)?;
+
+        // 3. Pick 5 sample users from recent interactions
+        let sample_users: Vec<i32> = self.item_feature_service.pool().execute(|pool| async move {
+            sqlx::query_scalar("SELECT DISTINCT user_id FROM user_interactions LIMIT 5")
+                .fetch_all(&pool)
+                .await
+        }).await.unwrap_or_else(|_| vec![1, 2, 3]);
+
+        let mut results = Vec::new();
+
+        for uid in sample_users {
+            let context = ExecutionContext::new(
+                Some(uid),
+                self.cache_manager.clone(),
+                self.model_loader.clone(),
+                self.item_feature_service.clone(),
+                self.feature_store.clone(),
+                uuid::Uuid::new_v4().to_string(),
+            );
+
+            // Execute Current (Control)
+            let control_items = self.execute_scenario(&scenario_slug, Some(uid), serde_json::json!({})).await?;
+            
+            // Execute Suggested (Variant)
+            let suggested_items = self.pipeline_executor.execute_linked(&suggested_pipeline, &context).await?;
+
+            results.push(serde_json::json!({
+                "user_id": uid,
+                "control_ids": control_items.iter().take(5).map(|i| i.item_id).collect::<Vec<_>>(),
+                "suggested_ids": suggested_items.iter().take(5).map(|i| i.item_id).collect::<Vec<_>>(),
+            }));
+        }
+
+        Ok(serde_json::json!({
+            "suggestion_id": suggestion_id,
+            "sample_size": results.len(),
+            "impact_comparison": results
+        }))
+    }
+
+    /// Process a natural language query and convert it to a rule suggestion.
+    /// In a production environment, this would call an LLM (e.g., GPT-4 or Gemini).
+    pub async fn chatbot_process_query(&self, query: &str) -> Result<i32> {
+        info!(query = %query, "AI Assistant processing natural language query...");
+
+        // PROTOTYPE: Rule-based NLP Translation
+        // Real implementation would use an LLM API to output JSON.
+        let mut condition = serde_json::json!({});
+        let mut pipeline_slug = "discovery_v1".to_string();
+        let mut reasoning = format!("AI Assistant translated: '{}'", query);
+
+        if query.to_lowercase().contains("smart tv") || query.to_lowercase().contains("tv") {
+            condition["context.device_type"] = serde_json::json!("tv");
+        }
+        
+        if query.to_lowercase().contains("diverse") || query.to_lowercase().contains("variety") {
+            pipeline_slug = "discovery_v1".to_string();
+            reasoning += " (Optimized for Catalog Coverage)";
+        }
+
+        // Insert as a suggestion
+        let suggestion_id: i32 = self.item_feature_service.pool().execute(move |pool| {
+            let p_slug = pipeline_slug.clone();
+            let cond = condition.clone();
+            let reason = reasoning.clone();
+            async move {
+                sqlx::query_scalar(
+                    r#"
+                    INSERT INTO rule_suggestions (
+                        scenario_id, suggested_pipeline_id, suggested_condition, 
+                        reasoning, confidence_score, status
+                    )
+                    VALUES (
+                        (SELECT id FROM scenarios WHERE slug = 'home_feed' LIMIT 1),
+                        (SELECT id FROM pipelines WHERE slug = $1 LIMIT 1),
+                        $2,
+                        $3,
+                        0.85,
+                        'pending'
+                    )
+                    RETURNING id
+                    "#
+                )
+                .bind(p_slug)
+                .bind(cond)
+                .bind(reason)
+                .fetch_one(&pool)
+                .await
+            }
+        }).await?;
+
+        Ok(suggestion_id)
+    }
+
     /// Reject a rule suggestion.
     pub async fn reject_suggestion(&self, suggestion_id: i32) -> Result<()> {
         self.item_feature_service.pool().execute(move |pool| async move {

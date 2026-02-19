@@ -24,9 +24,35 @@ pub fn routes() -> Router {
         .route("/suggestions", get(list_suggestions))
         .route("/suggestions/:id/approve", post(approve_suggestion))
         .route("/suggestions/:id/reject", post(reject_suggestion))
+        .route("/suggestions/:id/simulate", get(simulate_suggestion))
+        .route("/chatbot/ask", post(chatbot_ask))
 }
 
 // ─── Handlers ───────────────────────────────────────────────────────────────
+
+#[derive(serde::Deserialize)]
+pub struct ChatbotQuery {
+    pub message: String,
+}
+
+async fn chatbot_ask(
+    Extension(engine): Extension<Arc<BongasEngine>>,
+    Json(payload): Json<ChatbotQuery>,
+) -> Result<Json<StandardResponse<serde_json::Value>>, AppError> {
+    let suggestion_id = engine.chatbot_process_query(&payload.message).await?;
+    Ok(Json(StandardResponse::success(serde_json::json!({ 
+        "suggestion_id": suggestion_id,
+        "message": "I've analyzed your request and created a rule suggestion. You can now simulate it or approve it." 
+    }))))
+}
+
+async fn simulate_suggestion(
+    Path(id): Path<i32>,
+    Extension(engine): Extension<Arc<BongasEngine>>,
+) -> Result<Json<StandardResponse<serde_json::Value>>, AppError> {
+    let impact = engine.simulate_suggestion(id).await?;
+    Ok(Json(StandardResponse::success(impact)))
+}
 
 async fn list_suggestions(
     Extension(engine): Extension<Arc<BongasEngine>>,
