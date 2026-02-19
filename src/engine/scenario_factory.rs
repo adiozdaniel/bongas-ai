@@ -1,4 +1,4 @@
-use anyhow::{Result, Context};
+use anyhow::Result;
 use std::sync::Arc;
 use std::collections::HashMap;
 use tracing::{info, warn};

@@ -56,6 +56,11 @@ SELECT
     'Legacy Migration Rule' as description,
     NOW(),
     NOW()
+FROM scenario_configs sc
+JOIN scenarios s ON sc.slug = s.slug
+JOIN pipelines p ON p.slug = sc.slug || '_strategy_v1'
+ON CONFLICT DO NOTHING;
+
 -- 5. Seed Golden Strategies
 INSERT INTO pipelines (slug, name, definition, diversity_score, coverage_impact)
 VALUES (

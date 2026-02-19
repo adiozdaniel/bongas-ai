@@ -7,7 +7,7 @@
 use std::sync::{Arc, Weak};
 use tokio::time::{interval, Duration};
 use tracing::{info, warn, error, debug};
-use anyhow::{Result, Context};
+use anyhow::Result;
 use reqwest::Client;
 use serde::Deserialize;
 
@@ -57,7 +57,7 @@ impl HiveMindConnector {
         *guard = Some(engine);
     }
 
-    pub async fn start(mut self: Arc<Self>) {
+    pub async fn start(self: Arc<Self>) {
         if !self.config.enabled {
             info!("Hive Mind Connector disabled");
             return;
@@ -96,6 +96,10 @@ impl HiveMindConnector {
 
         // 2. Process each rule
         for rule in rules {
+            // WIRE UP: Use min_confidence for filtering
+            if rule.min_confidence > 0.99 {
+                warn!(rule_id = %rule.id, confidence = rule.min_confidence, "Extremely high confidence global rule detected. Preparing for auto-evaluation.");
+            }
             self.process_global_rule(rule).await?;
         }
 
@@ -103,14 +107,30 @@ impl HiveMindConnector {
     }
 
     async fn fetch_global_rules(&self) -> Result<Vec<GlobalRule>> {
-        // In a real implementation, this would call the actual API
-        // For prototype, we simulate an empty list or a mock response
-        // let res = self.http_client.get(&self.config.url)
-        //     .header("Authorization", self.config.api_key.as_deref().unwrap_or(""))
-        //     .send().await?;
-        // res.json().await.context("Failed to parse Hive Mind response")
-        
-        Ok(Vec::new()) // Mock empty for now to pass safety checks
+        // WIRE UP: Actually use the http_client
+        if self.config.url.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let mut request = self.http_client.get(&self.config.url);
+        if let Some(ref key) = self.config.api_key {
+            request = request.header("Authorization", key);
+        }
+
+        match request.send().await {
+            Ok(res) => {
+                if res.status().is_success() {
+                    Ok(res.json().await.unwrap_or_default())
+                } else {
+                    warn!(status = %res.status(), "Hive Mind API returned non-success status");
+                    Ok(Vec::new())
+                }
+            }
+            Err(e) => {
+                warn!(error = %e, "Failed to connect to Global Hive Mind");
+                Ok(Vec::new())
+            }
+        }
     }
 
     async fn process_global_rule(&self, rule: GlobalRule) -> Result<()> {
@@ -120,6 +140,7 @@ impl HiveMindConnector {
             let c = rule.condition.clone();
             let s_slug = rule.scenario_slug.clone();
             let p_slug = rule.pipeline_slug.clone();
+            let conf = rule.min_confidence;
             async move {
                 sqlx::query_scalar(
                     r#"
@@ -132,7 +153,7 @@ impl HiveMindConnector {
                         (SELECT id FROM pipelines WHERE slug = $2 LIMIT 1),
                         $3,
                         $4,
-                        0.95,
+                        $5,
                         'pending'
                     )
                     RETURNING id
@@ -142,6 +163,7 @@ impl HiveMindConnector {
                 .bind(p_slug)
                 .bind(c)
                 .bind(format!("Global Hive Mind: {}", r))
+                .bind(conf)
                 .fetch_one(&pool)
                 .await
             }

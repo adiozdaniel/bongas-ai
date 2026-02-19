@@ -30,6 +30,7 @@ pub struct ExecutionContext {
     pub device_type: Option<String>,
     pub location: Option<String>,
     pub request_id: String,
+    pub request_time: chrono::DateTime<chrono::Utc>,
 
     // ── Core dependencies ───────────────────────────────────────────────
     pub cache_manager: Arc<CacheManager>,
@@ -86,6 +87,7 @@ impl ExecutionContext {
             device_type: None,
             location: None,
             request_id,
+            request_time: chrono::Utc::now(),
             cache_manager,
             model_loader,
             hot_registry: None,
@@ -154,11 +156,17 @@ impl ExecutionContext {
             feature_store,
             "bench-request".to_string(),
         )
+        .with_request_time(chrono::Utc::now())
         .with_hot_registry(Arc::new(HotRegistry::new()))
         .with_analytics(Arc::new(PerformanceStats::new()))
     }
 
     // ── Builder methods ─────────────────────────────────────────────────
+
+    pub fn with_request_time(mut self, request_time: chrono::DateTime<chrono::Utc>) -> Self {
+        self.request_time = request_time;
+        self
+    }
 
     pub fn with_hot_registry(mut self, hot_registry: Arc<HotRegistry>) -> Self {
         self.hot_registry = Some(hot_registry);

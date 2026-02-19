@@ -70,16 +70,40 @@ impl AnalyticsSidecar {
     async fn run_analysis_cycle(&self) -> Result<()> {
         debug!("Running hourly self-performance analysis...");
 
-        // 1. Analyze Catalog Coverage (Blindness)
-        let blindness = self.get_catalog_blindness().await?;
-        if blindness > 0.6 { 
-            self.suggest_discovery_boost(blindness).await?;
-        }
+        // Use the engine reference to list scenarios (Phase 16: Use Weak Engine)
+        let engine_arc = {
+            let guard = self.engine.lock().unwrap();
+            guard.as_ref().and_then(|w| w.upgrade())
+        };
 
-        // 2. Analyze Persona Churn (Drop in engagement)
-        let churned_profiles = self.get_persona_churn().await?;
-        for profile in churned_profiles {
-            self.suggest_retention_strategy(&profile).await?;
+        if let Some(engine) = engine_arc {
+            let scenario_slugs = engine.list_scenarios().await;
+            if scenario_slugs.is_empty() {
+                warn!("No scenarios found in engine for analysis.");
+                return Ok(());
+            }
+
+            // Target scenarios based on popularity or just take the first few
+            // For now, we prioritize 'home_feed' but fall back to others
+            let target_slug = if scenario_slugs.contains(&"home_feed".to_string()) {
+                "home_feed".to_string()
+            } else {
+                scenario_slugs[0].clone()
+            };
+
+            // 1. Analyze Catalog Coverage (Blindness)
+            let blindness = self.get_catalog_blindness().await?;
+            if blindness > 0.6 { 
+                self.suggest_discovery_boost(&target_slug, blindness).await?;
+            }
+
+            // 2. Analyze Persona Churn (Drop in engagement)
+            let churned_profiles = self.get_persona_churn().await?;
+            for profile in churned_profiles {
+                self.suggest_retention_strategy(&target_slug, &profile).await?;
+            }
+        } else {
+            warn!("Analytics sidecar lost engine reference");
         }
 
         Ok(())
@@ -124,19 +148,21 @@ impl AnalyticsSidecar {
     }
 
     /// Insert a suggestion to switch to a retention-heavy pipeline for a specific profile.
-    async fn suggest_retention_strategy(&self, profile_id: &str) -> Result<()> {
+    async fn suggest_retention_strategy(&self, scenario_slug: &str, profile_id: &str) -> Result<()> {
         let reasoning = format!(
-            "Persona Churn Detected for profile '{}'. Engagement dropped by >20%. Suggesting Personalized Retention strategy.",
-            profile_id
+            "Persona Churn Detected for profile '{}' in scenario '{}'. Engagement dropped by >20%. Suggesting Personalized Retention strategy.",
+            profile_id, scenario_slug
         );
 
         let condition = serde_json::json!({
             "context.profile_id": profile_id
         });
 
+        let s_slug = scenario_slug.to_string();
         self.pool.execute(move |pool| {
             let reason = reasoning.clone();
             let cond = condition.clone();
+            let s = s_slug.clone();
             async move {
                 sqlx::query(
                     r#"
@@ -145,16 +171,17 @@ impl AnalyticsSidecar {
                         reasoning, confidence_score, status
                     )
                     VALUES (
-                        (SELECT id FROM scenarios WHERE slug = 'home_feed' LIMIT 1),
+                        (SELECT id FROM scenarios WHERE slug = $1 LIMIT 1),
                         (SELECT id FROM pipelines WHERE slug = 'retention_v1' LIMIT 1),
-                        $1,
                         $2,
+                        $3,
                         0.85,
                         'pending'
                     )
                     ON CONFLICT DO NOTHING
                     "#
                 )
+                .bind(s)
                 .bind(cond)
                 .bind(reason)
                 .execute(&pool)
@@ -162,19 +189,21 @@ impl AnalyticsSidecar {
             }
         }).await?;
 
-        warn!(profile = %profile_id, "Retention gap detected: Strategy suggestion pushed");
+        warn!(profile = %profile_id, scenario = %scenario_slug, "Retention gap detected: Strategy suggestion pushed");
         Ok(())
     }
 
     /// Insert a suggestion to switch to a discovery-heavy pipeline.
-    async fn suggest_discovery_boost(&self, blindness: f64) -> Result<()> {
+    async fn suggest_discovery_boost(&self, scenario_slug: &str, blindness: f64) -> Result<()> {
         let reasoning = format!(
-            "Catalog Blindness is at {:.2}%. Discovery is currently suboptimal. Suggesting switch to Discovery-Heavy strategy.",
-            blindness * 100.0
+            "Catalog Blindness is at {:.2}% in scenario '{}'. Discovery is currently suboptimal. Suggesting switch to Discovery-Heavy strategy.",
+            blindness * 100.0, scenario_slug
         );
 
-        self.pool.execute(|pool| {
+        let s_slug = scenario_slug.to_string();
+        self.pool.execute(move |pool| {
             let reason = reasoning.clone();
+            let s = s_slug.clone();
             async move {
                 sqlx::query(
                     r#"
@@ -183,23 +212,24 @@ impl AnalyticsSidecar {
                         reasoning, confidence_score, status
                     )
                     VALUES (
-                        (SELECT id FROM scenarios WHERE slug = 'home_feed' LIMIT 1),
+                        (SELECT id FROM scenarios WHERE slug = $1 LIMIT 1),
                         (SELECT id FROM pipelines WHERE slug = 'discovery_v1' LIMIT 1),
                         '{}'::jsonb,
-                        $1,
+                        $2,
                         0.9,
                         'pending'
                     )
                     ON CONFLICT DO NOTHING
                     "#
                 )
+                .bind(s)
                 .bind(reason)
                 .execute(&pool)
                 .await
             }
         }).await?;
 
-        warn!("Performance Gap Detected: Discovery suggestion pushed to admin queue");
+        warn!(scenario = %scenario_slug, "Performance Gap Detected: Discovery suggestion pushed to admin queue");
         Ok(())
     }
 }

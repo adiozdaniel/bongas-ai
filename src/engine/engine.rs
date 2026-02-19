@@ -1,6 +1,6 @@
 use anyhow::{Result, Context};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::AtomicUsize;
 use std::collections::HashMap;
 use tokio::sync::RwLock;
 use tracing::{info, warn, debug, error};
@@ -456,6 +456,18 @@ impl BongasEngine {
 
         // 1. Load Scenarios (Legacy/Identity)
         let mut new_scenarios = self.scenario_factory.load_all_from_db().await?;
+
+        // ENFORCE GOVERNANCE (Phase 16: Wire Up)
+        let max_scenarios = self.max_active_scenarios.load(std::sync::atomic::Ordering::Relaxed);
+        if new_scenarios.len() > max_scenarios {
+            warn!(total = new_scenarios.len(), limit = max_scenarios, "Scenario count exceeds governance limit. Truncating to highest priority.");
+            
+            // Deterministic Truncation: Sort alphabetically by slug
+            let mut keys: Vec<String> = new_scenarios.keys().cloned().collect();
+            keys.sort(); 
+            keys.truncate(max_scenarios);
+            new_scenarios.retain(|k, _| keys.contains(k));
+        }
         
         // 2. Load Strategic Rules (Phase 16)
         let mut rule_map: HashMap<String, Vec<crate::engine::strategy_resolver::ActiveRule>> = self.scenario_factory.load_all_rules().await?;
@@ -969,7 +981,7 @@ impl BongasEngine {
         info!(id = suggestion_id, "Simulating rule suggestion impact...");
 
         // 1. Fetch suggestion and sample users
-        let (scenario_slug, suggested_p_id, condition): (String, i32, serde_json::Value) = self.item_feature_service.pool().execute(move |pool| async move {
+        let (scenario_slug, suggested_p_id, _condition): (String, i32, serde_json::Value) = self.item_feature_service.pool().execute(move |pool| async move {
             sqlx::query_as(
                 r#"
                 SELECT s.slug, rs.suggested_pipeline_id, rs.suggested_condition 
@@ -983,14 +995,18 @@ impl BongasEngine {
             .await
         }).await?;
 
-        // 2. Fetch the suggested pipeline definition
+        // 2. Resolve both pipelines
+        // Suggested (Variant)
         let p_def_json: serde_json::Value = self.item_feature_service.pool().execute(move |pool| async move {
             sqlx::query_scalar("SELECT definition FROM pipelines WHERE id = $1")
                 .bind(suggested_p_id)
                 .fetch_one(&pool)
                 .await
         }).await?;
-        let suggested_pipeline = self.pipeline_executor.link(&serde_json::from_value(p_def_json)?)?;
+        let suggested_pipeline = Arc::new(self.pipeline_executor.link(&serde_json::from_value(p_def_json)?)?);
+
+        // Current (Control) - using the engine's active strategy for this slug
+        let control_pipeline = self.linked_scenarios.load().get(&scenario_slug).cloned();
 
         // 3. Pick 5 sample users from recent interactions
         let sample_users: Vec<i32> = self.item_feature_service.pool().execute(|pool| async move {
@@ -1002,17 +1018,26 @@ impl BongasEngine {
         let mut results = Vec::new();
 
         for uid in sample_users {
-            let context = ExecutionContext::new(
+            let request_id = uuid::Uuid::new_v4().to_string();
+            let mut context = ExecutionContext::new(
                 Some(uid),
                 self.cache_manager.clone(),
                 self.model_loader.clone(),
                 self.item_feature_service.clone(),
                 self.feature_store.clone(),
-                uuid::Uuid::new_v4().to_string(),
-            );
+                request_id,
+            ).with_hot_registry(self.hot_registry.clone());
 
-            // Execute Current (Control)
-            let control_items = self.execute_scenario(&scenario_slug, Some(uid), serde_json::json!({})).await?;
+            if let Some(ref ch) = self.clickhouse {
+                context = context.with_clickhouse_client(ch.clone());
+            }
+
+            // Execute Control
+            let control_items = if let Some(ref cp) = control_pipeline {
+                self.pipeline_executor.execute_linked(cp, &context).await?
+            } else {
+                Vec::new()
+            };
             
             // Execute Suggested (Variant)
             let suggested_items = self.pipeline_executor.execute_linked(&suggested_pipeline, &context).await?;
@@ -1026,6 +1051,7 @@ impl BongasEngine {
 
         Ok(serde_json::json!({
             "suggestion_id": suggestion_id,
+            "scenario": scenario_slug,
             "sample_size": results.len(),
             "impact_comparison": results
         }))

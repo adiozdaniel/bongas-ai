@@ -9,6 +9,7 @@ use serde_json::Value as JsonValue;
 use tracing::{info, debug};
 use arc_swap::ArcSwap;
 use std::collections::HashMap;
+use chrono::Timelike;
 
 use crate::pipeline::ExecutablePipeline;
 use crate::pipeline::context::ExecutionContext;
@@ -76,26 +77,58 @@ impl StrategyResolver {
         // Simple JSON-Logic-lite evaluation
         if let Some(obj) = condition.as_object() {
             for (key, expected_val) in obj {
-                let actual_val = match key.as_str() {
-                    "context.device_type" => context.device_type.as_deref().map(|s| serde_json::json!(s)),
-                    "context.profile_id" => context.profile_id.as_deref().map(|s| serde_json::json!(s)),
-                    "context.maturity_rating" => context.maturity_rating.as_deref().map(|s| serde_json::json!(s)),
-                    "time.hour" => {
-                        // In production, we'd pull this from a Chrono context helper
-                        // For now, allow numeric comparison
-                        None 
+                match key.as_str() {
+                    "context.device_type" => {
+                        if context.device_type.as_deref().map(|s| serde_json::json!(s)).unwrap_or(JsonValue::Null) != *expected_val {
+                            return false;
+                        }
                     },
-                    _ => None,
-                }.unwrap_or(JsonValue::Null);
-
-                if actual_val != *expected_val {
-                    return false;
+                    "context.profile_id" => {
+                        if context.profile_id.as_deref().map(|s| serde_json::json!(s)).unwrap_or(JsonValue::Null) != *expected_val {
+                            return false;
+                        }
+                    },
+                    "context.maturity_rating" => {
+                        if context.maturity_rating.as_deref().map(|s| serde_json::json!(s)).unwrap_or(JsonValue::Null) != *expected_val {
+                            return false;
+                        }
+                    },
+                    "time.hour" => {
+                        let actual_hour = context.request_time.hour();
+                        if serde_json::json!(actual_hour) != *expected_val {
+                            return false;
+                        }
+                    },
+                    "time.hour_range" => {
+                        if let Some(range) = expected_val.as_array() {
+                            if range.len() == 2 {
+                                let start = range[0].as_u64().unwrap_or(0) as u32;
+                                let end = range[1].as_u64().unwrap_or(23) as u32;
+                                let actual_hour = context.request_time.hour();
+                                
+                                // Handle wrapping ranges (e.g., [22, 4] for 10 PM to 4 AM)
+                                let in_range = if start <= end {
+                                    actual_hour >= start && actual_hour <= end
+                                } else {
+                                    actual_hour >= start || actual_hour <= end
+                                };
+                                
+                                if !in_range {
+                                    return false;
+                                }
+                            }
+                        }
+                    },
+                    _ => {
+                        // Unknown keys cause the rule to NOT match for safety
+                        return false;
+                    }
                 }
             }
             return true;
         }
         
         // If condition is empty/null, it's a "Default" rule
-        condition.is_null()
+        condition.is_null() || (condition.is_object() && condition.as_object().unwrap().is_empty())
     }
 }
