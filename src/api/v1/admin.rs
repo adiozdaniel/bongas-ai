@@ -1,5 +1,5 @@
 use axum::{
-    extract::Extension,
+    extract::{Extension, Path},
     routing::{get, post},
     Json, Router,
 };
@@ -21,9 +21,35 @@ pub fn routes() -> Router {
         .route("/models/reload", post(reload_models))
         .route("/models/stats", get(get_model_stats))
         .route("/security/status", get(get_security_status))
+        .route("/suggestions", get(list_suggestions))
+        .route("/suggestions/:id/approve", post(approve_suggestion))
+        .route("/suggestions/:id/reject", post(reject_suggestion))
 }
 
 // ─── Handlers ───────────────────────────────────────────────────────────────
+
+async fn list_suggestions(
+    Extension(engine): Extension<Arc<BongasEngine>>,
+) -> Result<Json<StandardResponse<Vec<serde_json::Value>>>, AppError> {
+    let suggestions = engine.list_suggestions().await?;
+    Ok(Json(StandardResponse::success(suggestions)))
+}
+
+async fn approve_suggestion(
+    Path(id): Path<i32>,
+    Extension(engine): Extension<Arc<BongasEngine>>,
+) -> Result<Json<StandardResponse<serde_json::Value>>, AppError> {
+    engine.approve_suggestion(id).await?;
+    Ok(Json(StandardResponse::success(serde_json::json!({ "message": "Suggestion approved and rule activated" }))))
+}
+
+async fn reject_suggestion(
+    Path(id): Path<i32>,
+    Extension(engine): Extension<Arc<BongasEngine>>,
+) -> Result<Json<StandardResponse<serde_json::Value>>, AppError> {
+    engine.reject_suggestion(id).await?;
+    Ok(Json(StandardResponse::success(serde_json::json!({ "message": "Suggestion rejected" }))))
+}
 
 async fn get_cache_stats(
     Extension(engine): Extension<Arc<BongasEngine>>,

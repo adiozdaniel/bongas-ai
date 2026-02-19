@@ -33,7 +33,8 @@ use super::staleness_engine::{StalenessEngine, UserEvent};
 use super::scenario_factory::ScenarioFactory;
 use super::predictive_warmer::PredictiveWarmer;
 use super::config::EngineDependencies;
-use super::strategy_resolver::{StrategyResolver, ActiveRule};
+use super::strategy_resolver::StrategyResolver;
+use super::analytics_sidecar::AnalyticsSidecar;
 
 /// Central orchestrator for BONGAS-AI
 pub struct BongasEngine {
@@ -48,6 +49,7 @@ pub struct BongasEngine {
     // Pipeline execution
     pub(crate) pipeline_executor: Arc<PipelineExecutor>,
     pub(crate) strategy_resolver: Arc<StrategyResolver>,
+    pub(crate) analytics_sidecar: Arc<AnalyticsSidecar>,
 
     // Caching & staging
     pub(crate) staging_manager: Arc<StagingManager>,
@@ -137,6 +139,12 @@ impl BongasEngine {
                 predictive_warmer.start().await;
             });
         }
+
+        // Start Analytics Sidecar (Phase 16)
+        let sidecar = engine.analytics_sidecar.clone();
+        tokio::spawn(async move {
+            sidecar.start().await;
+        });
 
         // Phase 15: Run One-Shot Harvest for first launch
         let engine_for_harvest = engine.clone();
@@ -269,6 +277,7 @@ impl BongasEngine {
         ));
 
         let strategy_resolver = Arc::new(StrategyResolver::new());
+        let (shutdown_tx, _) = tokio::sync::broadcast::channel(1);
 
         let ingestion_metrics = Arc::new(IngestionMetrics::new(Vec::new()));
         let ingestion_manager = IngestionManager::new(
@@ -298,8 +307,13 @@ impl BongasEngine {
         ));
 
         let experiment_coordinator = Arc::new(ExperimentCoordinator::new(config.experiments.clone()));
-        let (shutdown_tx, _) = tokio::sync::broadcast::channel(1);
         let max_active_scenarios = Arc::new(AtomicUsize::new(max_scenarios_val as usize));
+
+        let analytics_sidecar = Arc::new(AnalyticsSidecar::new(
+            clickhouse.as_ref().map(|c| (**c).clone()).unwrap_or_else(|| clickhouse::Client::default()),
+            resilient_pool.clone(),
+            shutdown_tx.subscribe(),
+        ));
 
         let engine = Arc::new(Self {
             config: config.clone(),
@@ -308,6 +322,7 @@ impl BongasEngine {
             scenario_factory,
             pipeline_executor,
             strategy_resolver,
+            analytics_sidecar: analytics_sidecar.clone(),
             staging_manager,
             staleness_engine,
             hot_registry: hot_registry.clone(),
@@ -330,10 +345,13 @@ impl BongasEngine {
             shutdown_tx,
         });
 
+        // Wire Weak reference to sidecar for self-awareness
+        analytics_sidecar.set_engine(Arc::downgrade(&engine));
+
         // Wait for models to finish loading
         let _ = model_load_fut.await.context("Model load join error")??;
 
-        info!("BongasEngine ready (Concurrent startup successful)");
+        info!("BongasEngine initialization complete (Concurrent startup successful)");
 
         let engine_clone = engine.clone();
         tokio::spawn(async move {
@@ -425,7 +443,7 @@ impl BongasEngine {
         let mut new_scenarios = self.scenario_factory.load_all_from_db().await?;
         
         // 2. Load Strategic Rules (Phase 16)
-        let mut rule_map: HashMap<String, Vec<ActiveRule>> = self.scenario_factory.load_all_rules().await?;
+        let mut rule_map: HashMap<String, Vec<crate::engine::strategy_resolver::ActiveRule>> = self.scenario_factory.load_all_rules().await?;
 
         // 3. Link all pipelines (both scenarios and rules)
         let mut linked_map = HashMap::new();
@@ -848,6 +866,101 @@ impl BongasEngine {
             security_enabled: true,
             layers_configured: 8,
         }
+    }
+
+    /// List all pending rule suggestions from the Analytics Sidecar.
+    pub async fn list_suggestions(&self) -> Result<Vec<serde_json::Value>> {
+        let rows: Vec<(i32, String, String, serde_json::Value, Option<String>, Option<f64>, String, chrono::DateTime<chrono::Utc>)> = self.item_feature_service.pool().execute(|pool| async move {
+            sqlx::query_as::<_, (i32, String, String, serde_json::Value, Option<String>, Option<f64>, String, chrono::DateTime<chrono::Utc>)>(
+                r#"
+                SELECT 
+                    rs.id, s.slug as scenario_slug, p.slug as suggested_pipeline,
+                    rs.suggested_condition, rs.reasoning, rs.confidence_score, rs.status, rs.created_at
+                FROM rule_suggestions rs
+                JOIN scenarios s ON rs.scenario_id = s.id
+                JOIN pipelines p ON rs.suggested_pipeline_id = p.id
+                WHERE rs.status = 'pending'
+                ORDER BY rs.confidence_score DESC, rs.created_at DESC
+                "#
+            )
+            .fetch_all(&pool)
+            .await
+        })
+        .await
+        .context("Failed to list rule suggestions")?;
+
+        let json_list = rows.into_iter().map(|r| serde_json::json!({
+            "id": r.0,
+            "scenario_slug": r.1,
+            "suggested_pipeline": r.2,
+            "suggested_condition": r.3,
+            "reasoning": r.4,
+            "confidence_score": r.5,
+            "status": r.6,
+            "created_at": r.7,
+        })).collect();
+
+        Ok(json_list)
+    }
+
+    /// Approve a rule suggestion, promoting it to an active rule.
+    pub async fn approve_suggestion(&self, suggestion_id: i32) -> Result<()> {
+        info!(id = suggestion_id, "Approving rule suggestion...");
+
+        self.item_feature_service.pool().execute(move |pool| async move {
+            let mut tx = pool.begin().await?;
+
+            // 1. Get suggestion details
+            let suggestion: (i32, i32, serde_json::Value) = sqlx::query_as(
+                "SELECT scenario_id, suggested_pipeline_id, suggested_condition FROM rule_suggestions WHERE id = $1"
+            )
+            .bind(suggestion_id)
+            .fetch_one(&mut *tx)
+            .await?;
+
+            // 2. Insert into active rules
+            sqlx::query(
+                r#"
+                INSERT INTO scenario_rules (scenario_id, pipeline_id, condition, priority, is_active, description)
+                VALUES ($1, $2, $3, 150, true, 'AI Suggested & Human Approved')
+                "#
+            )
+            .bind(suggestion.0)
+            .bind(suggestion.1)
+            .bind(&suggestion.2)
+            .execute(&mut *tx)
+            .await?;
+
+            // 3. Mark suggestion as approved
+            sqlx::query("UPDATE rule_suggestions SET status = 'approved', applied_at = NOW() WHERE id = $1")
+                .bind(suggestion_id)
+                .execute(&mut *tx)
+                .await?;
+
+            tx.commit().await?;
+            Ok(())
+        })
+        .await?;
+
+        // Trigger hot-reload to apply the new rule immediately
+        self.reload_scenarios().await?;
+        
+        info!(id = suggestion_id, "Rule suggestion approved and activated");
+        Ok(())
+    }
+
+    /// Reject a rule suggestion.
+    pub async fn reject_suggestion(&self, suggestion_id: i32) -> Result<()> {
+        self.item_feature_service.pool().execute(move |pool| async move {
+            sqlx::query("UPDATE rule_suggestions SET status = 'rejected' WHERE id = $1")
+                .bind(suggestion_id)
+                .execute(&pool)
+                .await
+        })
+        .await?;
+
+        info!(id = suggestion_id, "Rule suggestion rejected");
+        Ok(())
     }
 
     /// Get circuit breaker registry for health checks and management
