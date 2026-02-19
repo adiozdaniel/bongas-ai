@@ -72,8 +72,14 @@ impl AnalyticsSidecar {
 
         // 1. Analyze Catalog Coverage (Blindness)
         let blindness = self.get_catalog_blindness().await?;
-        if blindness > 0.6 { // If 60% of catalog is never seen
+        if blindness > 0.6 { 
             self.suggest_discovery_boost(blindness).await?;
+        }
+
+        // 2. Analyze Persona Churn (Drop in engagement)
+        let churned_profiles = self.get_persona_churn().await?;
+        for profile in churned_profiles {
+            self.suggest_retention_strategy(&profile).await?;
         }
 
         Ok(())
@@ -94,6 +100,70 @@ impl AnalyticsSidecar {
 
         info!(blindness = format!("{:.2}%", res * 100.0), "Catalog coverage analysis complete");
         Ok(res)
+    }
+
+    /// Identify profiles with >20% drop in session duration compared to last week's baseline.
+    async fn get_persona_churn(&self) -> Result<Vec<String>> {
+        let query = r#"
+            SELECT profile_id
+            FROM user_interactions
+            WHERE created_at > (toUnixTimestamp(now()) - 604800)
+              AND profile_id != ''
+            GROUP BY profile_id
+            HAVING (avgIf(watch_duration_seconds, created_at > (toUnixTimestamp(now()) - 86400)) < 
+                   (avgIf(watch_duration_seconds, created_at <= (toUnixTimestamp(now()) - 86400)) * 0.8))
+        "#;
+
+        let results: Vec<String> = self.clickhouse.query(query).fetch_all().await
+            .context("Failed to fetch persona churn from ClickHouse")?;
+
+        if !results.is_empty() {
+            info!(count = results.len(), "Persona churn detected in multiple segments");
+        }
+        Ok(results)
+    }
+
+    /// Insert a suggestion to switch to a retention-heavy pipeline for a specific profile.
+    async fn suggest_retention_strategy(&self, profile_id: &str) -> Result<()> {
+        let reasoning = format!(
+            "Persona Churn Detected for profile '{}'. Engagement dropped by >20%. Suggesting Personalized Retention strategy.",
+            profile_id
+        );
+
+        let condition = serde_json::json!({
+            "context.profile_id": profile_id
+        });
+
+        self.pool.execute(move |pool| {
+            let reason = reasoning.clone();
+            let cond = condition.clone();
+            async move {
+                sqlx::query(
+                    r#"
+                    INSERT INTO rule_suggestions (
+                        scenario_id, suggested_pipeline_id, suggested_condition, 
+                        reasoning, confidence_score, status
+                    )
+                    VALUES (
+                        (SELECT id FROM scenarios WHERE slug = 'home_feed' LIMIT 1),
+                        (SELECT id FROM pipelines WHERE slug = 'retention_v1' LIMIT 1),
+                        $1,
+                        $2,
+                        0.85,
+                        'pending'
+                    )
+                    ON CONFLICT DO NOTHING
+                    "#
+                )
+                .bind(cond)
+                .bind(reason)
+                .execute(&pool)
+                .await
+            }
+        }).await?;
+
+        warn!(profile = %profile_id, "Retention gap detected: Strategy suggestion pushed");
+        Ok(())
     }
 
     /// Insert a suggestion to switch to a discovery-heavy pipeline.

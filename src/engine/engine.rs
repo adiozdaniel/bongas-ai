@@ -50,6 +50,7 @@ pub struct BongasEngine {
     pub(crate) pipeline_executor: Arc<PipelineExecutor>,
     pub(crate) strategy_resolver: Arc<StrategyResolver>,
     pub(crate) analytics_sidecar: Arc<AnalyticsSidecar>,
+    pub(crate) hive_mind_connector: Arc<crate::engine::hive_mind::HiveMindConnector>,
 
     // Caching & staging
     pub(crate) staging_manager: Arc<StagingManager>,
@@ -144,6 +145,12 @@ impl BongasEngine {
         let sidecar = engine.analytics_sidecar.clone();
         tokio::spawn(async move {
             sidecar.start().await;
+        });
+
+        // Start Hive Mind Connector (Phase 16)
+        let hive_mind = engine.hive_mind_connector.clone();
+        tokio::spawn(async move {
+            hive_mind.start().await;
         });
 
         // Phase 15: Run One-Shot Harvest for first launch
@@ -315,6 +322,12 @@ impl BongasEngine {
             shutdown_tx.subscribe(),
         ));
 
+        let hive_mind_connector = Arc::new(crate::engine::hive_mind::HiveMindConnector::new(
+            config.hive_mind.clone(),
+            resilient_pool.clone(),
+            shutdown_tx.subscribe(),
+        ));
+
         let engine = Arc::new(Self {
             config: config.clone(),
             scenarios: Arc::new(RwLock::new(HashMap::new())),
@@ -323,6 +336,7 @@ impl BongasEngine {
             pipeline_executor,
             strategy_resolver,
             analytics_sidecar: analytics_sidecar.clone(),
+            hive_mind_connector: hive_mind_connector.clone(),
             staging_manager,
             staleness_engine,
             hot_registry: hot_registry.clone(),
@@ -345,8 +359,9 @@ impl BongasEngine {
             shutdown_tx,
         });
 
-        // Wire Weak reference to sidecar for self-awareness
+        // Wire Weak references
         analytics_sidecar.set_engine(Arc::downgrade(&engine));
+        hive_mind_connector.set_engine(Arc::downgrade(&engine));
 
         // Wait for models to finish loading
         let _ = model_load_fut.await.context("Model load join error")??;

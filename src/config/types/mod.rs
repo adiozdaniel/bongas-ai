@@ -20,6 +20,7 @@ pub mod ingestion;
 pub mod observability;
 pub mod resilience;
 pub mod experiments;
+pub mod hive_mind;
 
 // Re-export commonly used types
 pub use app::AppConfig;
@@ -38,3 +39,4 @@ pub use ingestion::{IngestionConfig, ApiSourceConfig, ClickHouseSourceConfig};
 pub use observability::ObservabilityConfig;
 pub use resilience::ResilienceConfig;
 pub use experiments::ExperimentsConfig;
+pub use hive_mind::HiveMindConfig;

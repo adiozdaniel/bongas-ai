@@ -12,7 +12,7 @@ use super::{
 
     IngestionConfig, SecurityConfig, MlConfig, PipelineConfig,
 
-    ObservabilityConfig, ResilienceConfig, ExperimentsConfig,
+    ObservabilityConfig, ResilienceConfig, ExperimentsConfig, HiveMindConfig,
 
 };
 
@@ -60,6 +60,8 @@ pub struct AppConfig {
 
     pub experiments: ExperimentsConfig,
 
+    pub hive_mind: HiveMindConfig,
+
 }
 
 
@@ -98,6 +100,8 @@ impl AppConfig {
 
         experiments: ExperimentsConfig,
 
+        hive_mind: HiveMindConfig,
+
     ) -> Self {
 
         Self {
@@ -129,6 +133,8 @@ impl AppConfig {
             resilience,
 
             experiments,
+
+            hive_mind,
 
         }
 
@@ -195,6 +201,12 @@ impl AppConfig {
         if self.experiments.enabled {
 
             services.push("experiments");
+
+        }
+
+        if self.hive_mind.enabled {
+
+            services.push("hive_mind");
 
         }
 

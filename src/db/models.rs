@@ -186,3 +186,61 @@ pub struct ModelRegistry {
     pub created_at: DateTime<Utc>,
 }
 
+// ============================================================================
+// 7. Intelligent Brain Models (Phase 16)
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct Pipeline {
+    pub id: i32,
+    pub slug: String,
+    pub name: String,
+    pub definition: JsonValue,
+    pub diversity_score: f64,
+    pub coverage_impact: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct Scenario {
+    pub id: i32,
+    pub slug: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub target_kpi: String,
+    pub category: Option<String>,
+    pub initial_display_limit: i32,
+    pub scope: JsonValue,
+    pub cache_ttl_seconds: i32,
+    pub use_l2_cache: bool,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct ScenarioRule {
+    pub id: i32,
+    pub scenario_id: i32,
+    pub pipeline_id: i32,
+    pub priority: i32,
+    pub condition: JsonValue,
+    pub is_active: bool,
+    pub description: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct RuleSuggestion {
+    pub id: i32,
+    pub scenario_id: i32,
+    pub suggested_pipeline_id: i32,
+    pub suggested_condition: JsonValue,
+    pub reasoning: Option<String>,
+    pub confidence_score: Option<f64>,
+    pub status: String,
+    pub auto_apply_threshold: f64,
+    pub created_at: DateTime<Utc>,
+    pub applied_at: Option<DateTime<Utc>>,
+}
+

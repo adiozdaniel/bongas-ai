@@ -8,6 +8,7 @@ pub mod runtime;
 pub mod predictive_warmer;
 pub mod strategy_resolver;
 pub mod analytics_sidecar;
+pub mod hive_mind;
 
 pub use engine::BongasEngine;
 pub use engine::ScenarioDefinition;
