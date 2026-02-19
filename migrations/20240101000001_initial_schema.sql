@@ -198,24 +198,3 @@ CREATE TABLE system_settings (
 
 INSERT INTO system_settings (key, value, description) VALUES
 ('max_active_scenarios', '20'::jsonb, 'Maximum allowed scenarios with enabled=true');
-
--- ============================================================================
--- Legacy Compatibility (Optional/Internal)
--- ============================================================================
-CREATE TABLE IF NOT EXISTS scenario_configs (
-    id SERIAL PRIMARY KEY,
-    slug VARCHAR(100) UNIQUE NOT NULL,
-    name VARCHAR(200) NOT NULL,
-    description TEXT,
-    pipeline JSONB NOT NULL,
-    initial_display_limit INTEGER DEFAULT 5,
-    scope JSONB DEFAULT '{}'::jsonb,
-    cache_ttl_seconds INTEGER DEFAULT 300,
-    use_l2_cache BOOLEAN DEFAULT true,
-    enabled BOOLEAN DEFAULT true,
-    priority INTEGER DEFAULT 100,
-    category VARCHAR(100),
-    created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW(),
-    version INTEGER DEFAULT 1
-);
