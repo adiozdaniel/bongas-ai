@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Result, Context};
 use std::sync::Arc;
 use std::collections::HashMap;
 use tracing::{info, warn};
@@ -7,6 +7,7 @@ use crate::resilience::ResilienceMetricsCollector;
 use crate::db::ResilientPool;
 use crate::db::repositories::scenario_repository::ScenarioRepository;
 use crate::db::models::PipelineDefinition;
+use crate::engine::strategy_resolver::ActiveRule;
 use super::ScenarioDefinition;
 
 pub struct ScenarioFactory {
@@ -22,6 +23,54 @@ impl ScenarioFactory {
 
     pub fn repo(&self) -> &ScenarioRepository {
         &self.repo
+    }
+
+    /// Load all active rules for the Strategy Resolver.
+    pub async fn load_all_rules(&self) -> Result<HashMap<String, Vec<ActiveRule>>> {
+        info!("Loading strategic rules from database...");
+
+        // Query joining rules, pipelines, and scenarios
+        let rows: Vec<(i32, String, i32, serde_json::Value, String, serde_json::Value)> = self.repo.pool().execute(|pool| async move {
+            sqlx::query_as::<_, (i32, String, i32, serde_json::Value, String, serde_json::Value)>(
+                r#"
+                SELECT 
+                    r.id, 
+                    s.slug as scenario_slug, 
+                    r.priority, 
+                    r.condition, 
+                    p.slug as pipeline_slug, 
+                    p.definition as pipeline_definition
+                FROM scenario_rules r
+                JOIN scenarios s ON r.scenario_id = s.id
+                JOIN pipelines p ON r.pipeline_id = p.id
+                WHERE r.is_active = true
+                ORDER BY s.slug, r.priority DESC
+                "#
+            )
+            .fetch_all(&pool)
+            .await
+        })
+        .await?;
+
+        let mut rule_map: HashMap<String, Vec<ActiveRule>> = HashMap::new();
+
+        for (id, s_slug, priority, condition, p_slug, p_def) in rows {
+            let pipeline_definition: PipelineDefinition = serde_json::from_value(p_def)?;
+            
+            let rule = ActiveRule {
+                id,
+                priority,
+                condition,
+                pipeline_slug: p_slug,
+                pipeline_definition,
+                pipeline: None, // Will be linked by BongasEngine
+            };
+
+            rule_map.entry(s_slug).or_default().push(rule);
+        }
+
+        info!(count = rule_map.values().flatten().count(), "Strategic rules loaded from database");
+        Ok(rule_map)
     }
 
     /// Load all enabled scenarios from database
@@ -47,8 +96,6 @@ impl ScenarioFactory {
                     scenarios.insert(scenario.slug.clone(), scenario);
                 }
                 Err(e) => {
-                    // Track the failure in analytics
-                    
                     warn!(slug = %config.slug, error = %e, "Failed to parse scenario");
                 }
             }

@@ -33,7 +33,7 @@ use super::staleness_engine::{StalenessEngine, UserEvent};
 use super::scenario_factory::ScenarioFactory;
 use super::predictive_warmer::PredictiveWarmer;
 use super::config::EngineDependencies;
-use super::strategy_resolver::StrategyResolver;
+use super::strategy_resolver::{StrategyResolver, ActiveRule};
 
 /// Central orchestrator for BONGAS-AI
 pub struct BongasEngine {
@@ -417,37 +417,20 @@ impl BongasEngine {
     }
 
 
-    /// HOT-RELOAD: Reload all scenarios from database without restart
+    /// HOT-RELOAD: Reload all scenarios and strategic rules from database without restart
     pub async fn reload_scenarios(&self) -> Result<usize> {
-        info!("Reloading scenarios from database...");
+        info!("Reloading scenarios and strategic rules from database...");
 
+        // 1. Load Scenarios (Legacy/Identity)
         let mut new_scenarios = self.scenario_factory.load_all_from_db().await?;
-        let max_cap = self.max_active_scenarios.load(Ordering::SeqCst);
+        
+        // 2. Load Strategic Rules (Phase 16)
+        let mut rule_map: HashMap<String, Vec<ActiveRule>> = self.scenario_factory.load_all_rules().await?;
 
-        // Enforce Cap: If more scenarios are enabled than the limit, prioritize by priority field
-        if new_scenarios.len() > max_cap {
-            warn!(
-                count = new_scenarios.len(),
-                limit = max_cap,
-                "Maximum active scenarios exceeded! Pruning based on priority..."
-            );
-            
-            let mut sorted_scenarios: Vec<_> = new_scenarios.values().collect();
-            // Higher priority first
-            sorted_scenarios.sort_by(|a, b| b.pipeline.stages.len().cmp(&a.pipeline.stages.len())); // Simplified priority for now
-            
-            let keys_to_remove: Vec<String> = new_scenarios.keys()
-                .filter(|k| !sorted_scenarios.iter().take(max_cap).any(|s| &s.slug == *k))
-                .cloned()
-                .collect();
-
-            for key in keys_to_remove {
-                new_scenarios.remove(&key);
-            }
-        }
-
+        // 3. Link all pipelines (both scenarios and rules)
         let mut linked_map = HashMap::new();
 
+        // Link legacy scenarios
         for scenario in new_scenarios.values_mut() {
             match self.pipeline_executor.link(&scenario.pipeline) {
                 Ok(executable) => {
@@ -461,23 +444,30 @@ impl BongasEngine {
             }
         }
 
+        // Link strategic rules
+        for rules in rule_map.values_mut() {
+            for rule in rules {
+                match self.pipeline_executor.link(&rule.pipeline_definition) {
+                    Ok(executable) => {
+                        rule.pipeline = Some(Arc::new(executable));
+                    }
+                    Err(e) => {
+                        warn!(rule_id = rule.id, strategy = %rule.pipeline_slug, error = %e, "Failed to link strategy for rule");
+                    }
+                }
+            }
+        }
+
+        // 4. Atomic Updates
         let mut scenarios = self.scenarios.write().await;
         scenarios.clear();
         scenarios.extend(new_scenarios);
 
         self.linked_scenarios.store(Arc::new(linked_map));
+        self.strategy_resolver.update_rules(rule_map);
 
         let count = scenarios.len();
-
-        let onnx_scenarios = scenarios.values()
-            .filter(|s| s.pipeline.stages.iter().any(|stage| stage.r#type.starts_with("onnx_")))
-            .count();
-
-        info!(
-            total = count,
-            onnx_enabled = onnx_scenarios,
-            "Scenarios reloaded and linked"
-        );
+        info!(total = count, "Scenarios and strategic rules reloaded and linked");
 
         Ok(count)
     }

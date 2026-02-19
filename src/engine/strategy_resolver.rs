@@ -12,6 +12,7 @@ use std::collections::HashMap;
 
 use crate::pipeline::ExecutablePipeline;
 use crate::pipeline::context::ExecutionContext;
+use crate::db::models::PipelineDefinition;
 
 /// Represents an active rule for strategy selection.
 #[derive(Debug, Clone)]
@@ -20,7 +21,8 @@ pub struct ActiveRule {
     pub priority: i32,
     pub condition: JsonValue,
     pub pipeline_slug: String,
-    pub pipeline: Arc<ExecutablePipeline>,
+    pub pipeline_definition: PipelineDefinition,
+    pub pipeline: Option<Arc<ExecutablePipeline>>,
 }
 
 /// In-memory cache of scenario rules for sub-microsecond resolution.
@@ -47,13 +49,15 @@ impl StrategyResolver {
         if let Some(rules) = all_rules.get(scenario_slug) {
             for rule in rules {
                 if self.evaluate_condition(&rule.condition, context) {
-                    debug!(
-                        scenario = %scenario_slug, 
-                        rule_id = rule.id, 
-                        strategy = %rule.pipeline_slug,
-                        "Strategic rule matched"
-                    );
-                    return Some(rule.pipeline.clone());
+                    if let Some(ref pipeline) = rule.pipeline {
+                        debug!(
+                            scenario = %scenario_slug, 
+                            rule_id = rule.id, 
+                            strategy = %rule.pipeline_slug,
+                            "Strategic rule matched"
+                        );
+                        return Some(pipeline.clone());
+                    }
                 }
             }
         }

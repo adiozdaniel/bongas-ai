@@ -31,6 +31,11 @@ impl ScenarioRepository {
         }
     }
 
+    /// Get the underlying resilient pool.
+    pub fn pool(&self) -> &Arc<ResilientPool> {
+        &self.pool
+    }
+
     /// Create a new scenario configuration.
     pub async fn create(&self, req: CreateScenarioRequest) -> AppResult<ScenarioConfig> {
         self.pool
