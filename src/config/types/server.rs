@@ -41,8 +41,16 @@ impl Default for ServerConfig {
 impl ServerConfig {
     /// Get the socket address for the server.
     pub fn socket_addr(&self) -> SocketAddr {
-        format!("{}:{}", self.host, self.port)
-            .parse()
-            .expect("Invalid socket address")
+        let addr_str = format!("{}:{}", self.host, self.port);
+        match addr_str.parse() {
+            Ok(addr) => addr,
+            Err(e) => {
+                tracing::error!(addr = %addr_str, error = %e, "Invalid server socket address configuration. Falling back to 0.0.0.0:{}", self.port);
+                format!("0.0.0.0:{}", self.port).parse().unwrap_or_else(|_| {
+                    // This truly shouldn't happen with 0.0.0.0 and a u16 port
+                    SocketAddr::from(([0, 0, 0, 0], 8080))
+                })
+            }
+        }
     }
 }

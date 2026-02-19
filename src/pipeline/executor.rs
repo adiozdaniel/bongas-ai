@@ -15,7 +15,7 @@ use crate::circuit_breaker::{
 };
 use crate::circuit_breaker::observer::ResilienceObserver;
 use crate::config::PipelineConfig;
-use crate::pipeline::{PipelineStage, ScoredItem, BoundStage, ExecutionNode, ExecutablePipeline, PipelineError as InternalPipelineError};
+use crate::pipeline::{PipelineStage, ScoredItem, BoundStage, ExecutionNode, ExecutablePipeline};
 use crate::pipeline::validator::PipelineValidator;
 use crate::pipeline::optimizer::PipelineOptimizer;
 use crate::pipeline::context::ExecutionContext;
@@ -306,7 +306,7 @@ impl PipelineExecutor {
 
                     // If all branches failed, propagate first error (or a consolidated one)
                     if !errors.is_empty() && merged_map.is_empty() {
-                        return Err(errors.remove(0).into());
+                        return Err(errors.into_iter().next().unwrap().into());
                     }
 
                     if *merge_strategy == crate::pipeline::MergeStrategy::Average {
@@ -375,7 +375,7 @@ impl PipelineExecutor {
 
                     // If all failed, propagate
                     if !errors.is_empty() && ensemble_map.is_empty() {
-                        return Err(errors.remove(0).into());
+                        return Err(errors.into_iter().next().unwrap().into());
                     }
 
                     if *merge_strategy == crate::pipeline::MergeStrategy::Average {

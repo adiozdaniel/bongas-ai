@@ -285,6 +285,14 @@ impl StagingManager {
         let map_key = format!("penalties:{}", user_id);
         Ok(self.cache_manager.get(&map_key).await?.unwrap_or_default())
     }
+
+    /// Fix #M5: Periodically clear penalty locks to prevent memory leak
+    pub fn cleanup_locks(&self) {
+        if self.penalty_locks.len() > 10000 {
+            info!(count = self.penalty_locks.len(), "Cleaning up penalty locks map to prevent memory leak");
+            self.penalty_locks.clear();
+        }
+    }
 }
 
 #[derive(Debug, Clone, serde::Serialize)]

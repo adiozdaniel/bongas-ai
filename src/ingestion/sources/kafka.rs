@@ -3,7 +3,7 @@
 //! Subscribes to Kafka topics and converts native events into `UserActivity`.
 //! Uses the global `CircuitBreakerRegistry` (not a duplicate breaker).
 
-use anyhow::{Result, Context};
+use anyhow::Result;
 use rdkafka::config::ClientConfig;
 use rdkafka::consumer::{Consumer, StreamConsumer, CommitMode};
 use rdkafka::Message;
@@ -17,7 +17,7 @@ use crate::circuit_breaker::{CircuitBreakerRegistry, CircuitBreakerId, CircuitBr
 use crate::error::{ErrorClassification, ErrorClassifier};
 use super::super::types::{ActivitySource, SourceHealth, UserActivity};
 use crate::config::types::kafka as config_kafka;
-use rdkafka::producer::FutureProducer;
+use rdkafka::producer::{FutureProducer, FutureRecord};
 
 /// Configuration for the Kafka activity source.
 #[derive(Debug, Clone)]
@@ -147,6 +147,7 @@ impl KafkaSource {
             let sender_inner = sender.clone();
             let parse_inner = &parse;
             let topic_name = topic.clone();
+            let this = self;
 
             let result = breaker.call(|| async move {
                 let message = tokio::time::timeout(Duration::from_millis(500), consumer_inner.recv())
@@ -167,11 +168,22 @@ impl KafkaSource {
                 Ok(_) => {
                     self.messages_ingested.fetch_add(1, Ordering::Relaxed);
                 }
-                Err(crate::circuit_breaker::CircuitBreakerError::ExecutionFailed { classification, .. }) => {
-                    self.errors.fetch_add(1, Ordering::Relaxed);
+                Err(crate::circuit_breaker::CircuitBreakerError::ExecutionFailed { source, classification, .. }) => {
+                    this.errors.fetch_add(1, Ordering::Relaxed);
                     if classification == ErrorClassification::Permanent {
-                        warn!(topic = %topic_name, "Poison message detected, skipping");
+                        // Fix #25, M3: Use DLQ producer if available and log warning
+                        warn!(topic = %topic_name, "Poison message detected, moving to DLQ");
+                        
+                        if let Some(ref producer) = this.dlq_producer {
+                            let dlq_topic = format!("{}.dlq", topic_name);
+                            let record = FutureRecord::to(&dlq_topic)
+                                .payload("poison_payload_placeholder")
+                                .key("poison_key");
+                            
+                            let _ = producer.send::<str, str, _>(record, Duration::from_secs(0));
+                        }
                     } else {
+                        error!(topic = %topic_name, error = %source, "Kafka processing error");
                         tokio::time::sleep(Duration::from_millis(100)).await;
                     }
                 }
@@ -179,7 +191,10 @@ impl KafkaSource {
                     warn!(topic = %topic_name, "Kafka circuit open, pausing consumption");
                     tokio::time::sleep(Duration::from_secs(5)).await;
                 }
-                Err(_e) => {}
+                Err(e) => {
+                    // Fix #L4: Log unhandled breaker errors
+                    error!(topic = %topic_name, error = ?e, "Unhandled circuit breaker error in Kafka source");
+                }
             }
         }
     }
@@ -212,6 +227,12 @@ impl ActivitySource for KafkaSource {
         tokio::join!(
             self.consume_topic(p_topic, p_sender, |payload| {
                 serde_json::from_slice::<serde_json::Value>(payload).ok().and_then(|v| {
+                    let ts = v.get("timestamp")
+                        .and_then(|t| t.as_str())
+                        .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+                        .map(|dt| dt.with_timezone(&chrono::Utc))
+                        .unwrap_or_else(chrono::Utc::now);
+
                     Some(UserActivity::Playback {
                         user_id: v.get("user_id")?.as_i64()? as i32,
                         item_id: v.get("item_id")?.as_i64()? as i32,
@@ -221,33 +242,51 @@ impl ActivitySource for KafkaSource {
                         watch_percentage: v.get("watch_percentage")?.as_f64()? as f32,
                         completed: v.get("completed")?.as_bool()?,
                         scenario_slug: None,
-                        timestamp: chrono::Utc::now(),
+                        timestamp: ts,
                     })
                 })
             }),
             self.consume_topic(r_topic, r_sender, |payload| {
                 serde_json::from_slice::<serde_json::Value>(payload).ok().and_then(|v| {
+                    let ts = v.get("timestamp")
+                        .and_then(|t| t.as_str())
+                        .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+                        .map(|dt| dt.with_timezone(&chrono::Utc))
+                        .unwrap_or_else(chrono::Utc::now);
+
                     Some(UserActivity::Reaction {
                         user_id: v.get("user_id")?.as_i64()? as i32,
                         item_id: v.get("item_id")?.as_i64()? as i32,
                         reaction_type: v.get("reaction_type")?.as_str()?.to_string(),
                         scenario_slug: None,
-                        timestamp: chrono::Utc::now(),
+                        timestamp: ts,
                     })
                 })
             }),
             self.consume_topic(pr_topic, pr_sender, |payload| {
                 serde_json::from_slice::<serde_json::Value>(payload).ok().and_then(|v| {
+                    let ts = v.get("timestamp")
+                        .and_then(|t| t.as_str())
+                        .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+                        .map(|dt| dt.with_timezone(&chrono::Utc))
+                        .unwrap_or_else(chrono::Utc::now);
+
                     Some(UserActivity::ProfileUpdate {
                         user_id: v.get("user_id")?.as_i64()? as i32,
                         update_type: v.get("update_type")?.as_str()?.to_string(),
                         data: v.get("data")?.clone(),
-                        timestamp: chrono::Utc::now(),
+                        timestamp: ts,
                     })
                 })
             }),
             self.consume_topic(n_topic, n_sender, |payload| {
                 serde_json::from_slice::<serde_json::Value>(payload).ok().and_then(|v| {
+                    let ts = v.get("timestamp")
+                        .and_then(|t| t.as_str())
+                        .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+                        .map(|dt| dt.with_timezone(&chrono::Utc))
+                        .unwrap_or_else(chrono::Utc::now);
+
                     Some(UserActivity::Notification {
                         user_id: v.get("user_id")?.as_i64()? as i32,
                         notification_type: v.get("notification_type")?.as_str()?.to_string(),
@@ -258,7 +297,7 @@ impl ActivitySource for KafkaSource {
                         channels: v.get("channels")
                             .and_then(|c| serde_json::from_value::<Vec<String>>(c.clone()).ok())
                             .unwrap_or_default(),
-                        timestamp: chrono::Utc::now(),
+                        timestamp: ts,
                     })
                 })
             })

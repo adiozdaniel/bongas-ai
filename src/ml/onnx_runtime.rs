@@ -274,7 +274,10 @@ impl OnnxInferenceEngine {
         let item_input = TensorRef::from_array_view(item_features.view())
             .map_err(|e| ModelError::InferenceFailed(format!("item tensor: {e}")))?;
 
-        let mut session = self.session.lock().map_err(|_| ModelError::InferenceFailed("session mutex poisoned".to_string()))?;
+        let mut session = self.session.lock().unwrap_or_else(|e| {
+            warn!(model = %self.model_name, "ONNX session mutex poisoned, recovering");
+            e.into_inner()
+        });
         
         let outputs = session.run(ort::inputs![
             self.input_names[0].clone() => user_input,
@@ -316,7 +319,10 @@ impl OnnxInferenceEngine {
         // Execute via circuit breaker + spawn_blocking
         let result = self.breaker.call(|| async move {
             tokio::task::spawn_blocking(move || {
-                let mut session = engine.session.lock().map_err(|_| ModelError::InferenceFailed("session mutex poisoned".to_string()))?;
+                let mut session = engine.session.lock().unwrap_or_else(|e| {
+                    warn!(model = %engine.model_name, "ONNX session mutex poisoned (multi), recovering");
+                    e.into_inner()
+                });
 
                 let user_input = TensorRef::from_array_view(user_features.view())
                     .map_err(|e| ModelError::InferenceFailed(format!("user tensor: {e}")))?;

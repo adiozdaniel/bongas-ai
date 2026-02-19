@@ -20,6 +20,8 @@ impl PipelineStage for BoostByRecencyStage {
         "boost_by_recency"
     }
 
+    fn is_fusable(&self) -> bool { true }
+
     async fn execute(
         &self,
         _context: &ExecutionContext,

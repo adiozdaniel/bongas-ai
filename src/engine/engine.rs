@@ -461,6 +461,9 @@ impl BongasEngine {
     pub async fn reload_scenarios(&self) -> Result<usize> {
         info!("Reloading scenarios and strategic rules from database...");
 
+        // Maintenance
+        self.staging_manager.cleanup_locks();
+
         // 1. Load Scenarios (Legacy/Identity)
         let mut new_scenarios = self.scenario_factory.load_all_from_db().await?;
 

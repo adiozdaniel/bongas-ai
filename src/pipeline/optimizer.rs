@@ -28,9 +28,8 @@ impl PipelineOptimizer {
         for node in nodes {
             match node {
                 ExecutionNode::Single(bound) => {
-                    // Fusion Rule: Adjacent "boost_" stages that don't do I/O 
-                    // (Note: in real production we'd check a flag like .is_io_bound())
-                    if bound.stage_type.starts_with("boost_") {
+                    // Fix #L3: Use is_fusable() trait method instead of string prefix
+                    if bound.implementation.is_fusable() {
                         current_fusion_batch.push(bound);
                     } else {
                         if !current_fusion_batch.is_empty() {

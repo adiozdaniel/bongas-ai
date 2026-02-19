@@ -99,6 +99,7 @@ impl InteractionRepository {
         types: Vec<String>,
         ratings: Vec<Option<f32>>,
         watch_durations: Vec<Option<i32>>,
+        timestamps: Vec<chrono::DateTime<chrono::Utc>>,
     ) -> AppResult<u64> {
         if user_ids.is_empty() { return Ok(0); }
         self.pool.execute(|pool| async move {
@@ -109,7 +110,7 @@ impl InteractionRepository {
                 "#
             )
             .bind(&user_ids).bind(&item_ids).bind(&types).bind(&ratings).bind(&watch_durations)
-            .bind(vec![chrono::Utc::now(); user_ids.len()])
+            .bind(&timestamps)
             .execute(&pool).await.map(|r| r.rows_affected())
         }).await.map_err(|e| AppError::Postgres(PostgresError::Query { message: e.to_string(), source: None }))
     }

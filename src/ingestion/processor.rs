@@ -158,6 +158,7 @@ impl ActivityProcessor {
         let mut types = Vec::with_capacity(buffer.len());
         let mut ratings = Vec::with_capacity(buffer.len());
         let mut durations = Vec::with_capacity(buffer.len());
+        let mut timestamps = Vec::with_capacity(buffer.len());
 
         let mut processed_indices = Vec::new();
         let mut clickhouse_rows = Vec::with_capacity(buffer.len());
@@ -191,6 +192,7 @@ impl ActivityProcessor {
                     types.push("implicit_rating".to_string());
                     ratings.push(Some(rating));
                     durations.push(Some(*watch_duration_seconds));
+                    timestamps.push(event_timestamp);
                     processed_indices.push(i);
 
                     clickhouse_rows.push(ClickHouseInteraction {
@@ -215,6 +217,7 @@ impl ActivityProcessor {
                     types.push("explicit_rating".to_string());
                     ratings.push(Some(rating));
                     durations.push(None);
+                    timestamps.push(event_timestamp);
                     processed_indices.push(i);
 
                     clickhouse_rows.push(ClickHouseInteraction {
@@ -233,6 +236,7 @@ impl ActivityProcessor {
                     types.push("click".to_string());
                     ratings.push(None);
                     durations.push(None);
+                    timestamps.push(event_timestamp);
                     processed_indices.push(i);
 
                     clickhouse_rows.push(ClickHouseInteraction {
@@ -251,6 +255,7 @@ impl ActivityProcessor {
                     types.push("impression".to_string());
                     ratings.push(None);
                     durations.push(None);
+                    timestamps.push(event_timestamp);
                     processed_indices.push(i);
 
                     clickhouse_rows.push(ClickHouseInteraction {
@@ -280,7 +285,7 @@ impl ActivityProcessor {
         // Batch insert interactions into Postgres
         if !user_ids.is_empty() {
             if let Err(e) = self.interaction_repo.create_interactions_batch(
-                user_ids.clone(), item_ids, types, ratings, durations
+                user_ids.clone(), item_ids, types, ratings, durations, timestamps
             ).await {
                 error!("Failed to batch insert interactions: {}", e);
             }

@@ -53,6 +53,11 @@ pub trait PipelineStage: Send + Sync {
     fn can_parallelize(&self) -> bool {
         false
     }
+
+    /// Returns true if this stage is a mathematical booster that can be fused with others.
+    fn is_fusable(&self) -> bool {
+        false
+    }
 }
 
 /// Item with relevance score and dual-mode metadata.

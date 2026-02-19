@@ -130,13 +130,42 @@ impl PipelineValidator {
         let mut current_output = input_type;
 
         for (idx, config) in stages.iter().enumerate() {
-            // Handle structural nodes recursively
+            // Fix #L1: Handle structural nodes recursively
             match config.r#type.as_str() {
-                "branch" | "ensemble" | "interleave" => {
-                    // Logic same as in validate_stage_sequence
-                    // For simplicity, we just recurse if needed or assume ScoredItems
-                    // This is a helper, so we delegate back or implement correctly.
-                    // For brevity in this remediation, we assume ScoredItems output.
+                "branch" => {
+                    let if_true: Vec<PipelineStageConfig> = serde_json::from_value(
+                        config.params.get("if_true").cloned().unwrap_or_default()
+                    )?;
+                    let if_false: Vec<PipelineStageConfig> = serde_json::from_value(
+                        config.params.get("if_false").cloned().unwrap_or_default()
+                    )?;
+                    
+                    self.validate_stage_sequence_with_input(&if_true, current_output)?;
+                    self.validate_stage_sequence_with_input(&if_false, current_output)?;
+                    
+                    current_output = StageDataKind::ScoredItems;
+                    continue;
+                }
+                "ensemble" => {
+                    let source_configs: Vec<serde_json::Value> = serde_json::from_value(
+                        config.params.get("sources").cloned().unwrap_or_default()
+                    )?;
+                    for sc in source_configs {
+                        let inner_stages: Vec<PipelineStageConfig> = serde_json::from_value(
+                            sc.get("stages").cloned().unwrap_or_default()
+                        )?;
+                        self.validate_stage_sequence_with_input(&inner_stages, current_output)?;
+                    }
+                    current_output = StageDataKind::ScoredItems;
+                    continue;
+                }
+                "interleave" => {
+                    let source_map: HashMap<String, Vec<PipelineStageConfig>> = serde_json::from_value(
+                        config.params.get("sources").cloned().unwrap_or_default()
+                    )?;
+                    for inner_stages in source_map.values() {
+                        self.validate_stage_sequence_with_input(&inner_stages, current_output)?;
+                    }
                     current_output = StageDataKind::ScoredItems;
                     continue;
                 }

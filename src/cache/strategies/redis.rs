@@ -128,17 +128,22 @@
           let mut conn = self.client.clone();
           let full_pattern = self.prefixed_key(pattern);
 
-          // Fix #10: Use EVAL with Lua script for atomic SCAN + DEL
-          // Re-implementing with a safer SCAN approach for large datasets if needed,
-          // but for now KEYS + DEL in Lua is better than wildcard DEL (which doesn't exist).
+          // Fix #10, C1, M2: Use an iterative SCAN approach instead of KEYS
+          // This avoids blocking Redis for O(N) operations and prevents Lua stack limits.
           let result = self.circuit_breaker.call(|| async {
               let script = redis::Script::new(r#"
-                  local keys = redis.call('KEYS', ARGV[1])
-                  if #keys > 0 then
-                      return redis.call('DEL', unpack(keys))
-                  else
-                      return 0
-                  end
+                  local cursor = "0"
+                  local count = 0
+                  repeat
+                      local res = redis.call("SCAN", cursor, "MATCH", ARGV[1], "COUNT", 100)
+                      cursor = res[1]
+                      local keys = res[2]
+                      if #keys > 0 then
+                          redis.call("DEL", unpack(keys))
+                          count = count + #keys
+                      end
+                  until cursor == "0"
+                  return count
               "#);
               
               script.arg(&full_pattern)

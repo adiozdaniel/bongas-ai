@@ -21,6 +21,7 @@ impl PipelineStage for BoostByPopularityStage {
 
     fn input_type(&self) -> StageDataKind { StageDataKind::ScoredItems }
     fn output_type(&self) -> StageDataKind { StageDataKind::ScoredItems }
+    fn is_fusable(&self) -> bool { true }
 
     async fn execute(
         &self,

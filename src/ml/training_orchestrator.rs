@@ -91,12 +91,8 @@ impl TrainingOrchestrator {
             return Err(anyhow::anyhow!("Cannot upload harvest: License not validated"));
         }
 
-        // Create a pipe for streaming (Writer -> Encoder -> Reader)
         let (writer, reader) = tokio::io::duplex(64 * 1024); // 64KB buffer
         
-        // Wrap writer in a Zstd encoder for streaming compression
-        let mut encoder = ZstdEncoder::new(writer);
-
         // ClickHouse Query
         let query = r#"
             SELECT 
@@ -111,14 +107,16 @@ impl TrainingOrchestrator {
         let mut cursor = self.clickhouse.query(query).fetch::<HarvestedInteraction>()?;
 
         // Background task to pump data into the encoder
-        tokio::spawn(async move {
+        // Fix #L2: Properly handle errors in background task
+        let handle = tokio::spawn(async move {
+            let mut encoder = ZstdEncoder::new(writer);
             while let Ok(Some(row)) = cursor.next().await {
-                if let Ok(json_row) = serde_json::to_vec(&row) {
-                    let _ = encoder.write_all(&json_row).await;
-                    let _ = encoder.write_all(b"\n").await; // NDJSON format
-                }
+                let json_row = serde_json::to_vec(&row)?;
+                encoder.write_all(&json_row).await?;
+                encoder.write_all(b"\n").await?; // NDJSON format
             }
-            let _ = encoder.shutdown().await;
+            encoder.shutdown().await?;
+            Ok::<(), anyhow::Error>(())
         });
 
         // Use the reader as the request body
@@ -134,6 +132,12 @@ impl TrainingOrchestrator {
             .send()
             .await
             .context("Failed to stream harvest to training server")?;
+
+        // Ensure the background task completed successfully
+        if let Err(e) = handle.await? {
+            error!(error = %e, "Background data harvest task failed");
+            return Err(e);
+        }
 
         if !response.status().is_success() {
             let status = response.status();
