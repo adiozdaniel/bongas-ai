@@ -159,13 +159,11 @@ impl AnalyticsSidecar {
         });
 
         let s_slug = scenario_slug.to_string();
-        let pipeline_slug = "retention_v1";
 
         let rows_affected = self.pool.execute(move |pool| {
             let reason = reasoning.clone();
             let cond = condition.clone();
             let s = s_slug.clone();
-            let p = pipeline_slug;
             async move {
                 sqlx::query(
                     r#"
@@ -175,21 +173,23 @@ impl AnalyticsSidecar {
                     )
                     SELECT s.id, p.id, $2, $3, 0.85, 'pending'
                     FROM scenarios s, pipelines p
-                    WHERE s.slug = $1 AND p.slug = $4
+                    WHERE s.slug = $1 
+                      AND (p.slug LIKE '%retention%' OR p.slug LIKE '%personalized%' OR p.slug = 'retention_v1')
+                    ORDER BY p.id ASC
+                    LIMIT 1
                     ON CONFLICT ON CONSTRAINT rule_suggestions_scenario_id_suggested_pipeline_id_md5_idx DO NOTHING
                     "#
                 )
                 .bind(s)
                 .bind(cond)
                 .bind(reason)
-                .bind(p)
                 .execute(&pool)
                 .await
             }
         }).await?.rows_affected();
 
         if rows_affected == 0 {
-            warn!(profile = %profile_id, scenario = %scenario_slug, "Retention strategy suggestion SKIPPED (Pipeline 'retention_v1' or Scenario missing, or duplicate exists)");
+            warn!(profile = %profile_id, scenario = %scenario_slug, "Retention strategy suggestion SKIPPED (No suitable pipeline found or duplicate exists)");
         } else {
             info!(profile = %profile_id, scenario = %scenario_slug, "Retention gap detected: Strategy suggestion pushed");
         }
@@ -204,12 +204,10 @@ impl AnalyticsSidecar {
         );
 
         let s_slug = scenario_slug.to_string();
-        let pipeline_slug = "discovery_v1";
 
         let rows_affected = self.pool.execute(move |pool| {
             let reason = reasoning.clone();
             let s = s_slug.clone();
-            let p = pipeline_slug;
             async move {
                 sqlx::query(
                     r#"
@@ -219,20 +217,22 @@ impl AnalyticsSidecar {
                     )
                     SELECT s.id, p.id, '{}'::jsonb, $2, 0.9, 'pending'
                     FROM scenarios s, pipelines p
-                    WHERE s.slug = $1 AND p.slug = $3
+                    WHERE s.slug = $1 
+                      AND (p.slug LIKE '%discovery%' OR p.slug LIKE '%coverage%' OR p.slug = 'discovery_v1')
+                    ORDER BY p.id ASC
+                    LIMIT 1
                     ON CONFLICT ON CONSTRAINT rule_suggestions_scenario_id_suggested_pipeline_id_md5_idx DO NOTHING
                     "#
                 )
                 .bind(s)
                 .bind(reason)
-                .bind(p)
                 .execute(&pool)
                 .await
             }
         }).await?.rows_affected();
 
         if rows_affected == 0 {
-            warn!(scenario = %scenario_slug, "Discovery strategy suggestion SKIPPED (Pipeline 'discovery_v1' or Scenario missing, or duplicate exists)");
+            warn!(scenario = %scenario_slug, "Discovery strategy suggestion SKIPPED (No suitable pipeline found or duplicate exists)");
         } else {
             info!(scenario = %scenario_slug, "Performance Gap Detected: Discovery suggestion pushed to admin queue");
         }

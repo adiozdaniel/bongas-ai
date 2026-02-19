@@ -1130,18 +1130,12 @@ impl BongasEngine {
 
         // PROTOTYPE: Rule-based NLP Translation
         let mut condition = serde_json::json!({});
-        let mut pipeline_slug = "discovery_v1".to_string();
         let mut reasoning = format!("AI Assistant translated: '{}'", query);
 
         if query.to_lowercase().contains("smart tv") || query.to_lowercase().contains("tv") {
             condition["context.device_type"] = serde_json::json!("tv");
         }
         
-        if query.to_lowercase().contains("diverse") || query.to_lowercase().contains("variety") {
-            pipeline_slug = "discovery_v1".to_string();
-            reasoning += " (Optimized for Catalog Coverage)";
-        }
-
         // Dynamically resolve target scenario (fallback from home_feed)
         let target_scenario = {
             let slugs = self.list_scenarios().await;
@@ -1154,9 +1148,33 @@ impl BongasEngine {
             }
         };
 
+        // Dynamically resolve suggested pipeline (Fix #3 refinement)
+        let suggested_pipeline_slug = self.scenario_factory.repo().pool().execute(|pool| async move {
+            let query_lower = query.to_lowercase();
+            let target_slug = if query_lower.contains("diverse") || query_lower.contains("variety") {
+                "discovery"
+            } else if query_lower.contains("personal") || query_lower.contains("retention") {
+                "retention"
+            } else {
+                "v1"
+            };
+
+            sqlx::query_scalar::<_, String>(
+                "SELECT slug FROM pipelines WHERE slug LIKE $1 OR slug LIKE $2 LIMIT 1"
+            )
+            .bind(format!("%{}%", target_slug))
+            .bind("%v1%")
+            .fetch_one(&pool)
+            .await
+        }).await.context("Failed to resolve suggested pipeline for chatbot")?;
+
+        if suggested_pipeline_slug.contains("discovery") {
+            reasoning += " (Optimized for Catalog Coverage)";
+        }
+
         // Insert as a suggestion
         let suggestion_id: i32 = self.scenario_factory.repo().pool().execute(move |pool| {
-            let p_slug = pipeline_slug.clone();
+            let p_slug = suggested_pipeline_slug.clone();
             let cond = condition.clone();
             let reason = reasoning.clone();
             let s_slug = target_scenario.clone();
