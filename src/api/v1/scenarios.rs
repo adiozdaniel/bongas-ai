@@ -12,7 +12,7 @@ use crate::engine::BongasEngine;
 use crate::api::models::StandardResponse;
 use crate::error::AppError;
 
-use crate::db::models::ScenarioConfig;
+use crate::db::models::ScenarioWithStrategy;
 use crate::api::models::scenario::{CreateScenarioRequest, UpdateScenarioRequest};
 
 /// Mount all scenario management routes.
@@ -30,7 +30,7 @@ pub fn routes() -> Router {
 async fn create_scenario(
     Extension(engine): Extension<Arc<BongasEngine>>,
     Json(req): Json<CreateScenarioRequest>,
-) -> Result<Json<StandardResponse<ScenarioConfig>>, AppError> {
+) -> Result<Json<StandardResponse<ScenarioWithStrategy>>, AppError> {
     let slug = req.slug.clone();
     let config = engine.scenario_factory.repo().create(req).await?;
     
@@ -45,8 +45,8 @@ async fn create_scenario(
 /// GET /api/v1/scenarios
 async fn list_scenarios(
     Extension(engine): Extension<Arc<BongasEngine>>,
-) -> Result<Json<StandardResponse<Vec<ScenarioConfig>>>, AppError> {
-    let configs = engine.scenario_factory.repo().find_all_enabled().await?;
+) -> Result<Json<StandardResponse<Vec<ScenarioWithStrategy>>>, AppError> {
+    let configs = engine.scenario_factory.repo().find_all_active().await?;
     Ok(Json(StandardResponse::success(configs)))
 }
 
@@ -54,7 +54,7 @@ async fn list_scenarios(
 async fn get_scenario(
     Path(slug): Path<String>,
     Extension(engine): Extension<Arc<BongasEngine>>,
-) -> Result<Json<StandardResponse<ScenarioConfig>>, AppError> {
+) -> Result<Json<StandardResponse<ScenarioWithStrategy>>, AppError> {
     let config = engine.scenario_factory.repo().find_by_slug(&slug).await?
         .ok_or_else(|| AppError::NotFound(format!("Scenario {} not found", slug)))?;
     Ok(Json(StandardResponse::success(config)))
@@ -65,7 +65,7 @@ async fn update_scenario(
     Path(slug): Path<String>,
     Extension(engine): Extension<Arc<BongasEngine>>,
     Json(req): Json<UpdateScenarioRequest>,
-) -> Result<Json<StandardResponse<ScenarioConfig>>, AppError> {
+) -> Result<Json<StandardResponse<ScenarioWithStrategy>>, AppError> {
     let config = engine.scenario_factory.repo().update(&slug, req).await?;
     
     // Hot-reload the updated scenario

@@ -6,7 +6,7 @@ use tracing::{info, warn};
 use crate::resilience::ResilienceMetricsCollector;
 use crate::db::ResilientPool;
 use crate::db::repositories::scenario_repository::ScenarioRepository;
-use crate::db::models::PipelineDefinition;
+use crate::db::models::{PipelineDefinition, ScenarioWithStrategy};
 use crate::engine::strategy_resolver::ActiveRule;
 use super::ScenarioDefinition;
 
@@ -77,7 +77,7 @@ impl ScenarioFactory {
     pub async fn load_all_from_db(&self) -> Result<HashMap<String, ScenarioDefinition>> {
         info!("Loading scenarios from database...");
 
-        let configs = self.repo.find_all_enabled().await?;
+        let configs = self.repo.find_all_active().await?;
 
         let mut scenarios = HashMap::new();
         let mut onnx_count = 0;
@@ -96,7 +96,7 @@ impl ScenarioFactory {
                     scenarios.insert(scenario.slug.clone(), scenario);
                 }
                 Err(e) => {
-                    warn!(slug = %config.slug, error = %e, "Failed to parse scenario");
+                    warn!(slug = %config.scenario.slug, error = %e, "Failed to parse scenario");
                 }
             }
         }
@@ -121,16 +121,14 @@ impl ScenarioFactory {
     }
 
     /// Parse scenario config into scenario definition
-    fn parse_scenario(&self, config: &crate::db::models::ScenarioConfig) -> Result<ScenarioDefinition> {
-        let pipeline: PipelineDefinition = serde_json::from_value(config.pipeline.clone())?;
-
+    fn parse_scenario(&self, config: &ScenarioWithStrategy) -> Result<ScenarioDefinition> {
         Ok(ScenarioDefinition {
-            slug: config.slug.clone(),
-            pipeline,
-            cache_ttl_seconds: config.cache_ttl_seconds.unwrap_or(300),
-            use_l2_cache: config.use_l2_cache,
-            initial_display_limit: config.initial_display_limit,
-            scope: config.scope.clone(),
+            slug: config.scenario.slug.clone(),
+            pipeline: config.pipeline.clone(),
+            cache_ttl_seconds: config.scenario.cache_ttl_seconds,
+            use_l2_cache: config.scenario.use_l2_cache,
+            initial_display_limit: config.scenario.initial_display_limit,
+            scope: config.scenario.scope.clone(),
             linked_pipeline: None,
         })
     }

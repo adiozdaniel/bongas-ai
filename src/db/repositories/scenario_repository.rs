@@ -6,12 +6,54 @@
 //! - Comprehensive error classification and metrics
 
 use std::sync::Arc;
+use chrono::{DateTime, Utc};
 
 use crate::resilience::ResilienceMetricsCollector;
-use crate::db::models::ScenarioConfig;
+use crate::db::models::{Scenario, ScenarioWithStrategy, PipelineDefinition};
 use crate::db::ResilientPool;
 use crate::error::{AppError, AppResult, PostgresError};
 use crate::api::models::scenario::{CreateScenarioRequest, UpdateScenarioRequest};
+
+#[derive(sqlx::FromRow)]
+struct FlatScenarioRow {
+    pub id: i32,
+    pub slug: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub category: Option<String>,
+    pub target_kpi: String,
+    pub initial_display_limit: i32,
+    pub scope: serde_json::Value,
+    pub cache_ttl_seconds: i32,
+    pub use_l2_cache: bool,
+    pub created_at: DateTime<Utc>,
+    pub pipeline: serde_json::Value,
+    pub is_active: bool,
+    pub priority: i32,
+}
+
+impl FlatScenarioRow {
+    fn into_scenario_with_strategy(self) -> ScenarioWithStrategy {
+        ScenarioWithStrategy {
+            scenario: Scenario {
+                id: self.id,
+                slug: self.slug,
+                name: self.name,
+                description: self.description,
+                category: self.category,
+                target_kpi: self.target_kpi,
+                initial_display_limit: self.initial_display_limit,
+                scope: self.scope,
+                cache_ttl_seconds: self.cache_ttl_seconds,
+                use_l2_cache: self.use_l2_cache,
+                created_at: self.created_at,
+            },
+            pipeline: serde_json::from_value(self.pipeline).unwrap_or_else(|_| PipelineDefinition { stages: vec![], fallback_stages: None }),
+            is_active: self.is_active,
+            priority: self.priority,
+        }
+    }
+}
 
 /// Repository for scenario configuration data with resilience patterns.
 pub struct ScenarioRepository {
@@ -37,7 +79,7 @@ impl ScenarioRepository {
     }
 
     /// Create a new scenario configuration in the Intelligent Brain.
-    pub async fn create(&self, req: CreateScenarioRequest) -> AppResult<ScenarioConfig> {
+    pub async fn create(&self, req: CreateScenarioRequest) -> AppResult<ScenarioWithStrategy> {
         self.pool
             .execute(|pool| async move {
                 let mut tx = pool.begin().await?;
@@ -95,25 +137,7 @@ impl ScenarioRepository {
 
                 tx.commit().await?;
 
-                // Fetch the newly created configuration using the join path
-                sqlx::query_as::<_, ScenarioConfig>(
-                    r#"
-                    SELECT 
-                        s.id, s.slug, s.name, s.description, s.category,
-                        p.definition as pipeline,
-                        s.initial_display_limit, s.scope, 
-                        s.cache_ttl_seconds, s.use_l2_cache,
-                        NULL as staleness_rules, true as enabled, r.priority,
-                        s.created_at, s.created_at as updated_at, NULL as created_by, 1 as version
-                    FROM scenarios s
-                    JOIN scenario_rules r ON s.id = r.scenario_id AND r.condition = '{}'::jsonb
-                    JOIN pipelines p ON r.pipeline_id = p.id
-                    WHERE s.id = $1
-                    "#,
-                )
-                .bind(scenario_id)
-                .fetch_one(&pool)
-                .await
+                self.internal_find_with_strategy_by_id(scenario_id, &pool).await
             })
             .await
             .map_err(|e| {
@@ -125,7 +149,7 @@ impl ScenarioRepository {
     }
 
     /// Update an existing scenario configuration in the Intelligent Brain.
-    pub async fn update(&self, slug: &str, req: UpdateScenarioRequest) -> AppResult<ScenarioConfig> {
+    pub async fn update(&self, slug: &str, req: UpdateScenarioRequest) -> AppResult<ScenarioWithStrategy> {
         let slug = slug.to_string();
         self.pool
             .execute(|pool| async move {
@@ -197,25 +221,7 @@ impl ScenarioRepository {
 
                 tx.commit().await?;
 
-                // Return updated state
-                sqlx::query_as::<_, ScenarioConfig>(
-                    r#"
-                    SELECT 
-                        s.id, s.slug, s.name, s.description, s.category,
-                        p.definition as pipeline,
-                        s.initial_display_limit, s.scope, 
-                        s.cache_ttl_seconds, s.use_l2_cache,
-                        NULL as staleness_rules, r.is_active as enabled, r.priority,
-                        s.created_at, r.updated_at, NULL as created_by, 1 as version
-                    FROM scenarios s
-                    JOIN scenario_rules r ON s.id = r.scenario_id AND r.condition = '{}'::jsonb
-                    JOIN pipelines p ON r.pipeline_id = p.id
-                    WHERE s.id = $1
-                    "#,
-                )
-                .bind(scenario_id)
-                .fetch_one(&pool)
-                .await
+                self.internal_find_with_strategy_by_id(scenario_id, &pool).await
             })
             .await
             .map_err(|e| {
@@ -246,81 +252,80 @@ impl ScenarioRepository {
             })
     }
 
-    /// Load all enabled scenarios from database.
-    ///
-    /// Executes through circuit breaker with bulkhead protection.
-    pub async fn find_all_enabled(&self) -> AppResult<Vec<ScenarioConfig>> {
+    /// Load all active scenarios and their default strategies.
+    pub async fn find_all_active(&self) -> AppResult<Vec<ScenarioWithStrategy>> {
         let start_time = std::time::Instant::now();
         
         let result = self.pool
             .execute(|pool| async move {
-                sqlx::query_as::<_, ScenarioConfig>(
+                let rows: Vec<FlatScenarioRow> = sqlx::query_as(
                     r#"
                     SELECT 
-                        s.id, s.slug, s.name, s.description, s.category,
-                        p.definition as pipeline,
+                        s.id, s.slug, s.name, s.description, s.category, s.target_kpi,
                         s.initial_display_limit, s.scope, 
                         s.cache_ttl_seconds, s.use_l2_cache,
-                        NULL as staleness_rules, true as enabled, 100 as priority,
-                        s.created_at, s.created_at as updated_at, NULL as created_by, 1 as version
+                        s.created_at,
+                        p.definition as pipeline,
+                        r.is_active, r.priority
                     FROM scenarios s
-                    LEFT JOIN scenario_rules r ON s.id = r.scenario_id AND r.condition = '{}'::jsonb
-                    LEFT JOIN pipelines p ON r.pipeline_id = p.id
-                    ORDER BY s.slug
+                    JOIN scenario_rules r ON s.id = r.scenario_id AND r.condition = '{}'::jsonb
+                    JOIN pipelines p ON r.pipeline_id = p.id
+                    WHERE r.is_active = true
+                    ORDER BY r.priority DESC, s.slug
                     "#,
                 )
                 .fetch_all(&pool)
-                .await
+                .await?;
+
+                let res = rows.into_iter().map(|row| row.into_scenario_with_strategy()).collect();
+                Ok(res)
             })
             .await;
 
         let duration = start_time.elapsed();
+        let metrics = self.metrics_collector.registry().get_or_create("scenario");
+        metrics.latency.record_duration(duration);
         
         match result {
             Ok(scenarios) => {
-                // Record successful operation
-                let metrics = self.metrics_collector.registry().get_or_create("scenario_config");
-                metrics.latency.record_duration(duration);
                 metrics.successes.increment();
                 Ok(scenarios)
             }
             Err(e) => {
-                // Record failed operation
-                let metrics = self.metrics_collector.registry().get_or_create("scenario_config");
-                metrics.latency.record_duration(duration);
                 metrics.failures.increment();
-                
                 Err(AppError::Postgres(PostgresError::Query {
-                    message: format!("Failed to fetch enabled scenarios: {}", e),
+                    message: format!("Failed to fetch active scenarios: {}", e),
                     source: None,
                 }))
             }
         }
     }
 
-    /// Find scenario by slug.
-    pub async fn find_by_slug(&self, slug: &str) -> AppResult<Option<ScenarioConfig>> {
+    /// Find scenario and its strategy by slug.
+    pub async fn find_by_slug(&self, slug: &str) -> AppResult<Option<ScenarioWithStrategy>> {
         let slug = slug.to_string();
         self.pool
             .execute(|pool| async move {
-                sqlx::query_as::<_, ScenarioConfig>(
+                let row: Option<FlatScenarioRow> = sqlx::query_as(
                     r#"
                     SELECT 
-                        s.id, s.slug, s.name, s.description, s.category,
-                        p.definition as pipeline,
+                        s.id, s.slug, s.name, s.description, s.category, s.target_kpi,
                         s.initial_display_limit, s.scope, 
                         s.cache_ttl_seconds, s.use_l2_cache,
-                        NULL as staleness_rules, true as enabled, 100 as priority,
-                        s.created_at, s.created_at as updated_at, NULL as created_by, 1 as version
+                        s.created_at,
+                        p.definition as pipeline,
+                        r.is_active, r.priority
                     FROM scenarios s
-                    LEFT JOIN scenario_rules r ON s.id = r.scenario_id AND r.condition = '{}'::jsonb
-                    LEFT JOIN pipelines p ON r.pipeline_id = p.id
+                    JOIN scenario_rules r ON s.id = r.scenario_id AND r.condition = '{}'::jsonb
+                    JOIN pipelines p ON r.pipeline_id = p.id
                     WHERE s.slug = $1
                     "#,
                 )
                 .bind(&slug)
                 .fetch_optional(&pool)
-                .await
+                .await?;
+
+                Ok(row.map(|r| r.into_scenario_with_strategy()))
             })
             .await
             .map_err(|e| {
@@ -331,37 +336,27 @@ impl ScenarioRepository {
             })
     }
 
-    /// Find scenarios by category.
-    pub async fn find_by_category(&self, category: &str) -> AppResult<Vec<ScenarioConfig>> {
-        let category = category.to_string();
-        self.pool
-            .execute(|pool| async move {
-                sqlx::query_as::<_, ScenarioConfig>(
-                    r#"
-                    SELECT 
-                        s.id, s.slug, s.name, s.description, s.category,
-                        p.definition as pipeline,
-                        s.initial_display_limit, s.scope, 
-                        s.cache_ttl_seconds, s.use_l2_cache,
-                        NULL as staleness_rules, true as enabled, 100 as priority,
-                        s.created_at, s.created_at as updated_at, NULL as created_by, 1 as version
-                    FROM scenarios s
-                    LEFT JOIN scenario_rules r ON s.id = r.scenario_id AND r.condition = '{}'::jsonb
-                    LEFT JOIN pipelines p ON r.pipeline_id = p.id
-                    WHERE s.category = $1
-                    ORDER BY s.slug
-                    "#,
-                )
-                .bind(&category)
-                .fetch_all(&pool)
-                .await
-            })
-            .await
-            .map_err(|e| {
-                AppError::Postgres(PostgresError::Query {
-                    message: format!("Failed to fetch scenarios by category: {}", e),
-                    source: None,
-                })
-            })
+    /// Internal helper to fetch strategy by ID
+    async fn internal_find_with_strategy_by_id(&self, id: i32, pool: &sqlx::PgPool) -> sqlx::Result<ScenarioWithStrategy> {
+        let row: FlatScenarioRow = sqlx::query_as(
+            r#"
+            SELECT 
+                s.id, s.slug, s.name, s.description, s.category, s.target_kpi,
+                s.initial_display_limit, s.scope, 
+                s.cache_ttl_seconds, s.use_l2_cache,
+                s.created_at,
+                p.definition as pipeline,
+                r.is_active, r.priority
+            FROM scenarios s
+            JOIN scenario_rules r ON s.id = r.scenario_id AND r.condition = '{}'::jsonb
+            JOIN pipelines p ON r.pipeline_id = p.id
+            WHERE s.id = $1
+            "#,
+        )
+        .bind(id)
+        .fetch_one(pool)
+        .await?;
+
+        Ok(row.into_scenario_with_strategy())
     }
 }

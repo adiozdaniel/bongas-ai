@@ -4,39 +4,30 @@ use chrono::{DateTime, Utc};
 use serde_json::Value as JsonValue;
 
 // ============================================================================
-// 1. ScenarioConfig (CORE DIFFERENTIATOR)
+// 1. Scenario (The Intelligent Brain Core)
 // ============================================================================
 
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow, sqlx::Type)]
+#[sqlx(transparent)]
+pub struct ScenarioId(i32);
+
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
-pub struct ScenarioConfig {
+pub struct Scenario {
     pub id: i32,
     pub slug: String,
     pub name: String,
     pub description: Option<String>,
     pub category: Option<String>,
+    pub target_kpi: String,
 
-    // JSONB pipeline definition
-    pub pipeline: JsonValue,
-
-    // Governance & Scoping (Phase 10)
+    // Configuration
     pub initial_display_limit: i32,
     pub scope: JsonValue,
-
-    // Caching
-    pub cache_ttl_seconds: Option<i32>,
+    pub cache_ttl_seconds: i32,
     pub use_l2_cache: bool,
-    pub staleness_rules: Option<JsonValue>,
-
-
-    // Status
-    pub enabled: bool,
-    pub priority: i32,
 
     // Metadata
     pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-    pub created_by: Option<String>,
-    pub version: i32,
 }
 
 /// Typed representation of the JSONB pipeline column
@@ -203,21 +194,6 @@ pub struct Pipeline {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
-pub struct Scenario {
-    pub id: i32,
-    pub slug: String,
-    pub name: String,
-    pub description: Option<String>,
-    pub target_kpi: String,
-    pub category: Option<String>,
-    pub initial_display_limit: i32,
-    pub scope: JsonValue,
-    pub cache_ttl_seconds: i32,
-    pub use_l2_cache: bool,
-    pub created_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct ScenarioRule {
     pub id: i32,
     pub scenario_id: i32,
@@ -228,6 +204,15 @@ pub struct ScenarioRule {
     pub description: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+}
+
+/// Consolidated view of a scenario and its primary strategy (pipeline).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScenarioWithStrategy {
+    pub scenario: Scenario,
+    pub pipeline: PipelineDefinition,
+    pub is_active: bool,
+    pub priority: i32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
@@ -243,4 +228,3 @@ pub struct RuleSuggestion {
     pub created_at: DateTime<Utc>,
     pub applied_at: Option<DateTime<Utc>>,
 }
-
