@@ -4,6 +4,7 @@ use axum::{
     extract::{Path, Extension},
     routing::{get, post},
     Json, Router,
+    http::HeaderMap,
 };
 use std::sync::Arc;
 use tracing::info;
@@ -24,13 +25,31 @@ pub fn routes() -> Router {
         .route("/reload-all", post(reload_all_scenarios))
 }
 
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+fn authorize_admin(headers: &HeaderMap, engine: &BongasEngine) -> Result<(), AppError> {
+    let system_key = &engine.config.security.system_api_key;
+    
+    let provided_key = headers.get("X-Platform-Key")
+        .and_then(|h| h.to_str().ok())
+        .ok_or_else(|| AppError::Unauthorized("Missing X-Platform-Key for admin access".to_string()))?;
+
+    if provided_key != system_key {
+        return Err(AppError::Unauthorized("Invalid administrative key".to_string()));
+    }
+
+    Ok(())
+}
+
 // ─── Handlers ───────────────────────────────────────────────────────────────
 
 /// POST /api/v1/scenarios
 async fn create_scenario(
+    headers: HeaderMap,
     Extension(engine): Extension<Arc<BongasEngine>>,
     Json(req): Json<CreateScenarioRequest>,
 ) -> Result<Json<StandardResponse<ScenarioWithStrategy>>, AppError> {
+    authorize_admin(&headers, &engine)?;
     let slug = req.slug.clone();
     let config = engine.scenario_factory.repo().create(req).await?;
     
@@ -44,17 +63,21 @@ async fn create_scenario(
 
 /// GET /api/v1/scenarios
 async fn list_scenarios(
+    headers: HeaderMap,
     Extension(engine): Extension<Arc<BongasEngine>>,
 ) -> Result<Json<StandardResponse<Vec<ScenarioWithStrategy>>>, AppError> {
+    authorize_admin(&headers, &engine)?;
     let configs = engine.scenario_factory.repo().find_all_active().await?;
     Ok(Json(StandardResponse::success(configs)))
 }
 
 /// GET /api/v1/scenarios/:slug
 async fn get_scenario(
+    headers: HeaderMap,
     Path(slug): Path<String>,
     Extension(engine): Extension<Arc<BongasEngine>>,
 ) -> Result<Json<StandardResponse<ScenarioWithStrategy>>, AppError> {
+    authorize_admin(&headers, &engine)?;
     let config = engine.scenario_factory.repo().find_by_slug(&slug).await?
         .ok_or_else(|| AppError::NotFound(format!("Scenario {} not found", slug)))?;
     Ok(Json(StandardResponse::success(config)))
@@ -62,10 +85,12 @@ async fn get_scenario(
 
 /// PUT /api/v1/scenarios/:slug
 async fn update_scenario(
+    headers: HeaderMap,
     Path(slug): Path<String>,
     Extension(engine): Extension<Arc<BongasEngine>>,
     Json(req): Json<UpdateScenarioRequest>,
 ) -> Result<Json<StandardResponse<ScenarioWithStrategy>>, AppError> {
+    authorize_admin(&headers, &engine)?;
     let config = engine.scenario_factory.repo().update(&slug, req).await?;
     
     // Hot-reload the updated scenario
@@ -78,9 +103,11 @@ async fn update_scenario(
 
 /// DELETE /api/v1/scenarios/:slug
 async fn delete_scenario(
+    headers: HeaderMap,
     Path(slug): Path<String>,
     Extension(engine): Extension<Arc<BongasEngine>>,
 ) -> Result<Json<StandardResponse<()>>, AppError> {
+    authorize_admin(&headers, &engine)?;
     engine.scenario_factory.repo().delete(&slug).await?;
     
     // Remove from engine's active scenarios
@@ -92,17 +119,21 @@ async fn delete_scenario(
 
 /// POST /api/v1/scenarios/:slug/reload
 async fn reload_scenario(
+    headers: HeaderMap,
     Path(slug): Path<String>,
     Extension(engine): Extension<Arc<BongasEngine>>,
 ) -> Result<Json<StandardResponse<bool>>, AppError> {
+    authorize_admin(&headers, &engine)?;
     let success = engine.reload_scenario(&slug).await?;
     Ok(Json(StandardResponse::success(success)))
 }
 
 /// POST /api/v1/scenarios/reload-all
 async fn reload_all_scenarios(
+    headers: HeaderMap,
     Extension(engine): Extension<Arc<BongasEngine>>,
 ) -> Result<Json<StandardResponse<usize>>, AppError> {
+    authorize_admin(&headers, &engine)?;
     let count = engine.reload_scenarios().await?;
     info!(scenario_count = count, "All scenarios reloaded successfully");
     Ok(Json(StandardResponse::success(count)))

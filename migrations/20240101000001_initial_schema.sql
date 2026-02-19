@@ -85,11 +85,15 @@ CREATE UNIQUE INDEX idx_rule_suggestions_dedup ON rule_suggestions(scenario_id, 
 CREATE TABLE user_features (
     user_id INTEGER PRIMARY KEY,
     genre_affinity JSONB,
+    disliked_genres JSONB,
     total_watch_time_minutes INTEGER DEFAULT 0,
     total_videos_watched INTEGER DEFAULT 0,
     avg_completion_rate FLOAT DEFAULT 0.0,
     favorite_genres JSONB,
+    favorite_creators JSONB,
     watch_patterns JSONB,
+    preferred_content_type VARCHAR(50),
+    embedding FLOAT4[], -- pgvector VECTOR(128) if enabled
     features_updated_at TIMESTAMP DEFAULT NOW(),
     last_interaction_at TIMESTAMP,
     created_at TIMESTAMP DEFAULT NOW()
@@ -104,14 +108,66 @@ CREATE TABLE item_features (
     description TEXT,
     genres JSONB,
     tags JSONB,
+    creators JSONB,
+    directors JSONB,
+    studios JSONB,
+    actors JSONB,
+    content_type VARCHAR(50),
+    language VARCHAR(50),
+    audio_languages JSONB,
+    subtitle_languages JSONB,
+    age_rating VARCHAR(20),
     duration_seconds INTEGER,
-    tfidf_vector JSONB,
+    release_year INTEGER,
+    release_date TIMESTAMP,
+    published_at TIMESTAMP,
+    added_date TIMESTAMP,
+    available_from TIMESTAMP,
+    available_until TIMESTAMP,
+    is_active BOOLEAN DEFAULT true,
+    
+    -- Quality & Technical
+    max_resolution VARCHAR(20),
+    has_hdr BOOLEAN,
+    has_dolby_vision BOOLEAN,
+    has_dolby_atmos BOOLEAN,
+    
+    -- Content Warnings
+    is_explicit BOOLEAN,
+    has_violence BOOLEAN,
+    has_strong_language BOOLEAN,
+    has_drug_content BOOLEAN,
+    
+    -- Country availability
+    available_countries JSONB,
+    blocked_countries JSONB,
+    
+    -- Specialized Tags
+    seasonal_tags JSONB,
+    holiday_tags JSONB,
+    themes JSONB,
+    is_award_winner BOOLEAN,
+    required_tier VARCHAR(50),
+    is_free BOOLEAN,
+    
+    -- Scores
     view_count INTEGER DEFAULT 0,
     like_count INTEGER DEFAULT 0,
+    comment_count BIGINT DEFAULT 0,
+    share_count BIGINT DEFAULT 0,
+    save_count BIGINT DEFAULT 0,
     completion_rate FLOAT DEFAULT 0.0,
     trending_score FLOAT DEFAULT 0.0,
-    is_active BOOLEAN DEFAULT true,
-    published_at TIMESTAMP,
+    popularity_score FLOAT DEFAULT 0.0,
+    user_rating FLOAT,
+    user_rating_count INTEGER,
+    critic_rating FLOAT,
+    critic_rating_count INTEGER,
+    
+    -- Embeddings & vectors
+    embedding FLOAT4[],
+    tfidf_vector JSONB,
+    
     features_updated_at TIMESTAMP DEFAULT NOW(),
     created_at TIMESTAMP DEFAULT NOW()
 );

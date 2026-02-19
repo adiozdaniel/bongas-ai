@@ -951,7 +951,7 @@ impl BongasEngine {
 
     /// List all pending rule suggestions from the Analytics Sidecar.
     pub async fn list_suggestions(&self) -> Result<Vec<serde_json::Value>> {
-        let rows: Vec<(i32, String, String, serde_json::Value, Option<String>, Option<f64>, String, chrono::DateTime<chrono::Utc>)> = self.item_feature_service.pool().execute(|pool| async move {
+        let rows: Vec<(i32, String, String, serde_json::Value, Option<String>, Option<f64>, String, chrono::DateTime<chrono::Utc>)> = self.scenario_factory.repo().pool().execute(|pool| async move {
             sqlx::query_as::<_, (i32, String, String, serde_json::Value, Option<String>, Option<f64>, String, chrono::DateTime<chrono::Utc>)>(
                 r#"
                 SELECT 
@@ -988,7 +988,7 @@ impl BongasEngine {
     pub async fn approve_suggestion(&self, suggestion_id: i32) -> Result<()> {
         info!(id = suggestion_id, "Approving rule suggestion...");
 
-        self.item_feature_service.pool().execute(move |pool| async move {
+        self.scenario_factory.repo().pool().execute(move |pool| async move {
             let mut tx = pool.begin().await?;
 
             // 1. Get suggestion details
@@ -1035,7 +1035,7 @@ impl BongasEngine {
         info!(id = suggestion_id, "Simulating rule suggestion impact...");
 
         // 1. Fetch suggestion and sample users
-        let (scenario_slug, suggested_p_id, condition): (String, i32, serde_json::Value) = self.item_feature_service.pool().execute(move |pool| async move {
+        let (scenario_slug, suggested_p_id, condition): (String, i32, serde_json::Value) = self.scenario_factory.repo().pool().execute(move |pool| async move {
             sqlx::query_as(
                 r#"
                 SELECT s.slug, rs.suggested_pipeline_id, rs.suggested_condition 
@@ -1051,7 +1051,7 @@ impl BongasEngine {
 
         // 2. Resolve both pipelines
         // Suggested (Variant)
-        let p_def_json: serde_json::Value = self.item_feature_service.pool().execute(move |pool| async move {
+        let p_def_json: serde_json::Value = self.scenario_factory.repo().pool().execute(move |pool| async move {
             sqlx::query_scalar("SELECT definition FROM pipelines WHERE id = $1")
                 .bind(suggested_p_id)
                 .fetch_one(&pool)
@@ -1063,7 +1063,7 @@ impl BongasEngine {
         let control_pipeline = self.linked_scenarios.load().get(&scenario_slug).cloned();
 
         // 3. Pick 5 sample users from recent interactions
-        let sample_users: Vec<i32> = self.item_feature_service.pool().execute(|pool| async move {
+        let sample_users: Vec<i32> = self.scenario_factory.repo().pool().execute(|pool| async move {
             sqlx::query_scalar("SELECT DISTINCT user_id FROM user_interactions LIMIT 5")
                 .fetch_all(&pool)
                 .await
@@ -1155,7 +1155,7 @@ impl BongasEngine {
         };
 
         // Insert as a suggestion
-        let suggestion_id: i32 = self.item_feature_service.pool().execute(move |pool| {
+        let suggestion_id: i32 = self.scenario_factory.repo().pool().execute(move |pool| {
             let p_slug = pipeline_slug.clone();
             let cond = condition.clone();
             let reason = reasoning.clone();
@@ -1192,7 +1192,7 @@ impl BongasEngine {
 
     /// Reject a rule suggestion.
     pub async fn reject_suggestion(&self, suggestion_id: i32) -> Result<()> {
-        self.item_feature_service.pool().execute(move |pool| async move {
+        self.scenario_factory.repo().pool().execute(move |pool| async move {
             sqlx::query("UPDATE rule_suggestions SET status = 'rejected' WHERE id = $1")
                 .bind(suggestion_id)
                 .execute(&pool)

@@ -57,6 +57,7 @@ pub struct UserFeatures {
     pub avg_completion_rate: f32,
     pub favorite_genres: Option<JsonValue>,
     pub favorite_creators: Option<JsonValue>,
+    pub watch_patterns: Option<JsonValue>,
     pub preferred_content_type: Option<String>,
     pub embedding: Option<Vec<f32>>,
     pub features_updated_at: DateTime<Utc>,

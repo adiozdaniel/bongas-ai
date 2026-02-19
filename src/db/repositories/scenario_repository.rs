@@ -88,11 +88,11 @@ impl ScenarioRepository {
                 let scenario_id: i32 = sqlx::query_scalar(
                     r#"
                     INSERT INTO scenarios (
-                        slug, name, description, category, 
+                        slug, name, description, category, target_kpi,
                         initial_display_limit, scope,
                         cache_ttl_seconds, use_l2_cache
                     )
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
                     RETURNING id
                     "#,
                 )
@@ -100,6 +100,7 @@ impl ScenarioRepository {
                 .bind(&req.name)
                 .bind(&req.description)
                 .bind(&req.category)
+                .bind(req.target_kpi.as_deref().unwrap_or("retention"))
                 .bind(req.initial_display_limit.unwrap_or(5))
                 .bind(req.scope.clone().unwrap_or_else(|| serde_json::json!({})))
                 .bind(req.cache_ttl_seconds)
@@ -162,10 +163,11 @@ impl ScenarioRepository {
                     SET name = COALESCE($2, name),
                         description = COALESCE($3, description),
                         category = COALESCE($4, category),
-                        initial_display_limit = COALESCE($5, initial_display_limit),
-                        scope = COALESCE($6, scope),
-                        cache_ttl_seconds = COALESCE($7, cache_ttl_seconds),
-                        use_l2_cache = COALESCE($8, use_l2_cache)
+                        target_kpi = COALESCE($5, target_kpi),
+                        initial_display_limit = COALESCE($6, initial_display_limit),
+                        scope = COALESCE($7, scope),
+                        cache_ttl_seconds = COALESCE($8, cache_ttl_seconds),
+                        use_l2_cache = COALESCE($9, use_l2_cache)
                     WHERE slug = $1
                     RETURNING id
                     "#,
@@ -174,6 +176,7 @@ impl ScenarioRepository {
                 .bind(&req.name)
                 .bind(&req.description)
                 .bind(&req.category)
+                .bind(&req.target_kpi)
                 .bind(req.initial_display_limit)
                 .bind(req.scope)
                 .bind(req.cache_ttl_seconds)
