@@ -59,6 +59,7 @@ impl CompressionConfig {
     }
 
     pub fn build(&self) -> CompressionLayer {
+        // Use default layer which includes gzip, brotli, and deflate based on accept-encoding
         CompressionLayer::new()
     }
 }

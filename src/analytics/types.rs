@@ -5,6 +5,7 @@
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
+use std::collections::VecDeque;
 
 /// Client statistics payload for upload to central server.
 #[derive(Debug, serde::Serialize)]
@@ -141,7 +142,8 @@ impl BusinessStats {
 #[derive(Debug, serde::Serialize)]
 pub struct PerformanceStats {
     /// Response time measurements.
-    pub response_times: std::sync::Arc<std::sync::RwLock<Vec<u64>>>,
+    // Fix #86: Use VecDeque for efficient front removal
+    pub response_times: std::sync::Arc<std::sync::RwLock<VecDeque<u64>>>,
     
     /// Throughput measurements.
     pub throughput: AtomicU64,
@@ -153,7 +155,7 @@ pub struct PerformanceStats {
 impl PerformanceStats {
     pub fn new() -> Self {
         Self {
-            response_times: std::sync::Arc::new(std::sync::RwLock::new(Vec::new())),
+            response_times: std::sync::Arc::new(std::sync::RwLock::new(VecDeque::new())),
             throughput: AtomicU64::new(0),
             error_counts: std::sync::Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
         }
@@ -162,12 +164,12 @@ impl PerformanceStats {
     #[inline]
     pub fn record_response_time(&self, _metric_key: &str, duration_ms: u64) {
         let mut times = self.response_times.write().unwrap();
-        times.push(duration_ms);
+        times.push_back(duration_ms);
         
         // Keep only last 1000 measurements to prevent memory growth
+        // Fix #86: VecDeque::pop_front is O(1)
         if times.len() > 1000 {
-            let new_len = times.len() - 1000;
-            times.drain(0..new_len);
+            times.pop_front();
         }
     }
 

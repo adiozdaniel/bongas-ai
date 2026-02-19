@@ -161,15 +161,21 @@ impl ActivityProcessor {
 
         let mut processed_indices = Vec::new();
         let mut clickhouse_rows = Vec::with_capacity(buffer.len());
-        let now_ts = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
 
         for (i, activity) in buffer.iter().enumerate() {
+            // Fix #62: Use event time instead of processing time
+            let event_timestamp = match activity {
+                UserActivity::Playback { timestamp, .. } => *timestamp,
+                UserActivity::Reaction { timestamp, .. } => *timestamp,
+                UserActivity::ProfileUpdate { timestamp, .. } => *timestamp,
+                UserActivity::Notification { timestamp, .. } => *timestamp,
+                UserActivity::Click { timestamp, .. } => *timestamp,
+                UserActivity::Impression { timestamp, .. } => *timestamp,
+            };
+            let ts_secs = event_timestamp.timestamp() as u64;
+
             match activity {
                 UserActivity::Playback { user_id, item_id, watch_percentage, watch_duration_seconds, completed, scenario_slug, .. } => {
-                    // Logic from process_playback
                     let mut rating = match watch_percentage {
                         p if *p < 0.25 => 1.0,
                         p if *p < 0.50 => 2.0,
@@ -194,11 +200,10 @@ impl ActivityProcessor {
                         scenario_slug: scenario_slug.clone().unwrap_or_else(|| "unknown".to_string()),
                         rating,
                         watch_duration_seconds: *watch_duration_seconds,
-                        created_at: now_ts,
+                        created_at: ts_secs,
                     });
                 }
                 UserActivity::Reaction { user_id, item_id, reaction_type, scenario_slug, .. } => {
-                    // Logic from process_reaction
                     let rating = match reaction_type.as_str() {
                         "like" => 5.0,
                         "dislike" => 1.0,
@@ -219,7 +224,7 @@ impl ActivityProcessor {
                         scenario_slug: scenario_slug.clone().unwrap_or_else(|| "unknown".to_string()),
                         rating,
                         watch_duration_seconds: 0,
-                        created_at: now_ts,
+                        created_at: ts_secs,
                     });
                 }
                 UserActivity::Click { user_id, item_id, scenario_slug, .. } => {
@@ -237,7 +242,7 @@ impl ActivityProcessor {
                         scenario_slug: scenario_slug.clone().unwrap_or_else(|| "unknown".to_string()),
                         rating: 0.0,
                         watch_duration_seconds: 0,
-                        created_at: now_ts,
+                        created_at: ts_secs,
                     });
                 }
                 UserActivity::Impression { user_id, item_id, scenario_slug, .. } => {
@@ -255,7 +260,7 @@ impl ActivityProcessor {
                         scenario_slug: scenario_slug.clone().unwrap_or_else(|| "unknown".to_string()),
                         rating: 0.0,
                         watch_duration_seconds: 0,
-                        created_at: now_ts,
+                        created_at: ts_secs,
                     });
                 }
                 // Handle complex types individually
@@ -280,28 +285,33 @@ impl ActivityProcessor {
                 error!("Failed to batch insert interactions: {}", e);
             }
 
-            // Update arrival patterns for all unique users in this batch
             let unique_users: std::collections::HashSet<i32> = user_ids.into_iter().collect();
             for uid in unique_users {
                 let _ = self.interaction_repo.update_arrival_pattern(uid).await;
             }
         }
 
-        // Batch insert into ClickHouse (The OLAP Path)
+        // Batch insert into ClickHouse (Fix #24: Decouple failures)
         if !clickhouse_rows.is_empty() {
             if let Some(ref ch) = self.clickhouse {
-                let mut inserter = ch.insert::<ClickHouseInteraction>("user_interactions").await
-                    .map_err(|e| anyhow::anyhow!("ClickHouse insert preparation failed: {}", e))?;
+                let ch_res = async {
+                    let mut inserter = ch.insert::<ClickHouseInteraction>("user_interactions").await
+                        .map_err(|e| anyhow::anyhow!("ClickHouse insert preparation failed: {}", e))?;
 
-                for row in clickhouse_rows {
-                    inserter.write(&row).await
-                        .map_err(|e| anyhow::anyhow!("ClickHouse write failed: {}", e))?;
+                    for row in clickhouse_rows {
+                        inserter.write(&row).await
+                            .map_err(|e| anyhow::anyhow!("ClickHouse write failed: {}", e))?;
+                    }
+
+                    inserter.end().await
+                        .map_err(|e| anyhow::anyhow!("ClickHouse commit failed: {}", e))
+                }.await;
+
+                if let Err(e) = ch_res {
+                    error!(error = %e, "ClickHouse batch insert failed, continuing with staleness updates");
+                } else {
+                    debug!(count = buffer.len(), "Batch inserted into ClickHouse");
                 }
-
-                inserter.end().await
-                    .map_err(|e| anyhow::anyhow!("ClickHouse commit failed: {}", e))?;
-
-                debug!(count = buffer.len(), "Batch inserted into ClickHouse");
             }
         }
 
