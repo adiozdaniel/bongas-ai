@@ -19,3 +19,6 @@
 /package-lock.json
 /.lock
 .aider*
+
+# Secret files
+.env

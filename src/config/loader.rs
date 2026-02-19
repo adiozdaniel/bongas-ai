@@ -47,6 +47,9 @@ impl ConfigLoader {
 
     /// Load configuration from all sources and create immutable AppConfig.
     pub fn load(self) -> ConfigResult<AppConfig> {
+        // Load .env file if present
+        dotenvy::dotenv().ok();
+
         let mut config_map = HashMap::new();
 
         tracing::info!("Loading application configuration from {} sources...", self.layers.len());
