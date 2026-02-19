@@ -6,6 +6,7 @@ pub mod config;
 pub mod scenario_factory;
 pub mod runtime;
 pub mod predictive_warmer;
+pub mod strategy_resolver;
 
 pub use engine::BongasEngine;
 pub use engine::ScenarioDefinition;

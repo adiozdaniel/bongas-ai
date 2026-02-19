@@ -10,6 +10,7 @@
       cache_manager: Arc<CacheManager>,
       scenarios: Vec<String>,
       interval: Duration,
+      shutdown_rx: tokio::sync::broadcast::Receiver<()>,
   }
 
   impl CacheWarmer {
@@ -17,28 +18,37 @@
           cache_manager: Arc<CacheManager>,
           scenarios: Vec<String>,
           warming_interval: Duration,
+          shutdown_rx: tokio::sync::broadcast::Receiver<()>,
       ) -> Self {
           Self {
               cache_manager,
               scenarios,
               interval: warming_interval,
+              shutdown_rx,
           }
       }
 
       /// Start the cache warming background task.
       pub async fn start(self: Arc<Self>) {
           let mut ticker = interval(self.interval);
+          let mut shutdown_rx = self.shutdown_rx.resubscribe();
 
           loop {
-              ticker.tick().await;
+              tokio::select! {
+                  _ = ticker.tick() => {
+                      tracing::info!(
+                          scenarios = ?self.scenarios,
+                          "Starting cache warming cycle"
+                      );
 
-              tracing::info!(
-                  scenarios = ?self.scenarios,
-                  "Starting cache warming cycle"
-              );
-
-              if let Err(e) = self.warm_caches().await {
-                  tracing::error!(error = %e, "Cache warming failed");
+                      if let Err(e) = self.warm_caches().await {
+                          tracing::error!(error = %e, "Cache warming failed");
+                      }
+                  }
+                  _ = shutdown_rx.recv() => {
+                      tracing::info!("Cache warmer shutting down...");
+                      break;
+                  }
               }
           }
       }

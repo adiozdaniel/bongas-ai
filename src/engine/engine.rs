@@ -33,6 +33,7 @@ use super::staleness_engine::{StalenessEngine, UserEvent};
 use super::scenario_factory::ScenarioFactory;
 use super::predictive_warmer::PredictiveWarmer;
 use super::config::EngineDependencies;
+use super::strategy_resolver::StrategyResolver;
 
 /// Central orchestrator for BONGAS-AI
 pub struct BongasEngine {
@@ -46,6 +47,7 @@ pub struct BongasEngine {
 
     // Pipeline execution
     pub(crate) pipeline_executor: Arc<PipelineExecutor>,
+    pub(crate) strategy_resolver: Arc<StrategyResolver>,
 
     // Caching & staging
     pub(crate) staging_manager: Arc<StagingManager>,
@@ -183,9 +185,10 @@ impl BongasEngine {
 
         // Task B: Cache Manager (Redis)
         let redis_url = config.redis.url.clone();
+        let cache_config_val = CacheConfig::default();
         let cache_manager_fut: tokio::task::JoinHandle<Result<CacheManager, anyhow::Error>> = tokio::spawn(async move {
             info!("Establishing connection to Redis cache...");
-            CacheManager::new(&redis_url, CacheConfig::default()).await
+            CacheManager::new(&redis_url, cache_config_val).await
                 .context("Failed to create CacheManager")
         });
 
@@ -265,6 +268,8 @@ impl BongasEngine {
             Some(performance_stats.clone()),
         ));
 
+        let strategy_resolver = Arc::new(StrategyResolver::new());
+
         let ingestion_metrics = Arc::new(IngestionMetrics::new(Vec::new()));
         let ingestion_manager = IngestionManager::new(
             config.ingestion.clone(),
@@ -302,6 +307,7 @@ impl BongasEngine {
             linked_scenarios: Arc::new(ArcSwap::new(Arc::new(HashMap::new()))),
             scenario_factory,
             pipeline_executor,
+            strategy_resolver,
             staging_manager,
             staleness_engine,
             hot_registry: hot_registry.clone(),
@@ -327,7 +333,7 @@ impl BongasEngine {
         // Wait for models to finish loading
         let _ = model_load_fut.await.context("Model load join error")??;
 
-        info!("BongasEngine initialization complete (Concurrent startup successful)");
+        info!("BongasEngine ready (Concurrent startup successful)");
 
         let engine_clone = engine.clone();
         tokio::spawn(async move {
@@ -555,8 +561,47 @@ impl BongasEngine {
             }
         }
 
-        // Check for linked scenario first (Fast Path)
-        let linked_pipeline = self.linked_scenarios.load().get(scenario_slug).cloned();
+        // Build Execution Context early for strategic resolution
+        let request_id = uuid::Uuid::new_v4().to_string();
+        let mut context = ExecutionContext::new(
+            user_id,
+            self.cache_manager.clone(),
+            self.model_loader.clone(),
+            self.item_feature_service.clone(),
+            self.feature_store.clone(),
+            request_id,
+        )
+        .with_hot_registry(self.hot_registry.clone())
+        .with_analytics(self.performance_stats.clone())
+        .with_experiment_overrides(experiment_overrides)
+        .with_profile_id(profile_id.clone().unwrap_or_default())
+        .with_maturity_rating(maturity_rating.clone().unwrap_or_else(|| "GE".to_string()))
+        .with_device_type(
+            device_type.clone().or_else(|| {
+                context_params.get("device_type")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string())
+            }).unwrap_or_default()
+        )
+        .with_location(
+            context_params.get("location")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+                .unwrap_or_default()
+        );
+
+        if let Some(ref ch) = self.clickhouse {
+            context = context.with_clickhouse_client(ch.clone());
+        }
+
+        // 2. STRATEGIC RESOLUTION (Phase 16)
+        // Try to resolve a dynamic strategy from scenario_rules first.
+        let resolved_pipeline = self.strategy_resolver.resolve(scenario_slug, &context);
+
+        // Fallback to static linked scenario if no rule matches
+        let linked_pipeline = resolved_pipeline.or_else(|| {
+            self.linked_scenarios.load().get(scenario_slug).cloned()
+        });
         
         let scenario = {
             let scenarios = self.scenarios.read().await;
@@ -565,7 +610,7 @@ impl BongasEngine {
                 .ok_or_else(|| anyhow::anyhow!("Scenario '{}' not found", scenario_slug))?
         };
 
-        // 2. Enforce Scope (Phase 10)
+        // 3. Enforce Scope (Phase 10)
         // Check if user's region/context matches scenario scope
         if let Some(scope_obj) = scenario.scope.as_object() {
             if let Some(allowed_regions) = scope_obj.get("regions").and_then(|v| v.as_array()) {
@@ -624,41 +669,8 @@ impl BongasEngine {
             }
         }
 
-        // Execute pipeline
-        let request_id = uuid::Uuid::new_v4().to_string();
-        let mut context = ExecutionContext::new(
-            user_id,
-            self.cache_manager.clone(),
-            self.model_loader.clone(),
-            self.item_feature_service.clone(),
-            self.feature_store.clone(),
-            request_id,
-        )
-        .with_hot_registry(self.hot_registry.clone())
-        .with_analytics(self.performance_stats.clone())
-        .with_experiment_overrides(experiment_overrides)
-        .with_profile_id(profile_id.unwrap_or_default())
-        .with_maturity_rating(maturity_rating.unwrap_or_else(|| "GE".to_string()))
-        .with_device_type(
-            device_type.or_else(|| {
-                context_params.get("device_type")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string())
-            }).unwrap_or_default()
-        )
-        .with_location(
-            context_params.get("location")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string())
-                .unwrap_or_default()
-        );
-
-        if let Some(ref ch) = self.clickhouse {
-            context = context.with_clickhouse_client(ch.clone());
-        }
-
         let scored_items = if let Some(linked) = linked_pipeline {
-            debug!(scenario = %scenario_slug, "Using Fast Path (linked pipeline)");
+            debug!(scenario = %scenario_slug, "Using resolved strategic path");
             self.pipeline_executor.execute_linked(&linked, &context).await?
         } else {
             warn!(scenario = %scenario_slug, "Fast Path not available, falling back to dynamic execution");
@@ -758,7 +770,7 @@ impl BongasEngine {
         self.scenarios.read().await.keys().cloned().collect()
     }
 
-    /// Identify low-performing scenarios based on Click-Through Rate (CTR) from ClickHouse.
+    /// Identify low-performing scenarios based on ClickThrough Rate (CTR) from ClickHouse.
     /// Returns the bottom 3 scenario slugs.
     pub async fn get_low_performing_scenarios(&self) -> Vec<String> {
         if let Some(ref ch) = self.clickhouse {
@@ -803,6 +815,7 @@ impl BongasEngine {
             cache_manager,
             scenarios_clone,
             interval,
+            self.shutdown_tx.subscribe(),
         ));
 
         tokio::spawn(async move {
