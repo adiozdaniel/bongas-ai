@@ -41,6 +41,10 @@
           Ok(())
       }
 
+      async fn delete_pattern(&self, _pattern: &str) -> Result<()> {
+          Ok(())
+      }
+
       async fn exists(&self, _key: &str) -> Result<bool> {
           Ok(false)
       }

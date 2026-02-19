@@ -140,7 +140,7 @@ impl StagingManager {
         } else {
             format!("rec:*:{}:*", user_id)
         };
-        let _ = self.cache_manager.delete(&key_pattern).await;
+        let _ = self.cache_manager.delete_pattern(&key_pattern).await;
         self.cache_manager.metrics_handle().record_invalidation();
 
         // Mark L3 cache as stale
@@ -167,7 +167,7 @@ impl StagingManager {
 
         // Invalidate L1/L2 - specific key patterns
         let key = format!("rec:{}:{}:*", scenario_slug, user_id);
-        let _ = self.cache_manager.delete(&key).await;
+        let _ = self.cache_manager.delete_pattern(&key).await;
 
         let default_key = format!("rec:{}:{}:default", scenario_slug, user_id);
         let _ = self.cache_manager.delete(&default_key).await;

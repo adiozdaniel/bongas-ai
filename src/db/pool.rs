@@ -25,7 +25,6 @@ use super::metrics::DatabaseMetrics;
 use crate::circuit_breaker::{
     CircuitBreaker, CircuitBreakerConfig, CircuitBreakerId, CircuitBreakerRegistry,
 };
-use crate::error::PostgresError;
 
 /// Configuration for the resilient database pool.
 #[derive(Debug, Clone)]
@@ -95,6 +94,8 @@ impl ResilientPoolConfig {
         self
     }
 }
+
+use crate::error::{PostgresError, AppError};
 
 /// Netflix-grade resilient database pool.
 ///
@@ -209,7 +210,7 @@ impl ResilientPool {
     /// Execute a query with full resilience (circuit breaker + bulkhead + timeout).
     ///
     /// The operation receives a reference to the underlying PgPool.
-    pub async fn execute<F, Fut, T>(&self, operation: F) -> Result<T>
+    pub async fn execute<F, Fut, T>(&self, operation: F) -> Result<T, AppError>
     where
         F: FnOnce(PgPool) -> Fut,
         Fut: Future<Output = Result<T, sqlx::Error>> + Send,
@@ -220,7 +221,7 @@ impl ResilientPool {
             .bulkhead
             .acquire()
             .await
-            .map_err(|_| PostgresError::PoolExhausted)?;
+            .map_err(|_| AppError::Postgres(PostgresError::PoolExhausted))?;
 
         self.metrics.record_query_start();
 
@@ -238,7 +239,7 @@ impl ResilientPool {
                     Ok(Ok(result)) => Ok(result),
                     Ok(Err(e)) => Err(PostgresError::Query {
                         message: e.to_string(),
-                        source: Some(Box::new(e)),
+                        source: Some(Arc::new(e)),
                     }),
                     Err(_) => Err(PostgresError::Timeout(query_timeout)),
                 }
@@ -246,22 +247,27 @@ impl ResilientPool {
             .await;
 
         match &result {
-            Ok(_) => self.metrics.record_query_success(),
-            Err(_) => self.metrics.record_query_failure(),
+            Ok(_) => {
+                self.metrics.record_query_success();
+                // Extract T from Result<T, CircuitBreakerError<PostgresError>>
+                result.map_err(|_| unreachable!())
+            }
+            Err(e) => {
+                self.metrics.record_query_failure();
+                match e {
+                    crate::circuit_breaker::CircuitBreakerError::Rejected { .. } => {
+                        self.metrics.record_circuit_open();
+                        Err(AppError::Postgres(PostgresError::CircuitOpen))
+                    }
+                    crate::circuit_breaker::CircuitBreakerError::ExecutionFailed { source, .. } => {
+                        Err(AppError::Postgres(source.clone()))
+                    }
+                    crate::circuit_breaker::CircuitBreakerError::TimedOut { timeout } => {
+                        Err(AppError::Postgres(PostgresError::Timeout(*timeout)))
+                    }
+                }
+            }
         }
-
-        result.map_err(|e| match e {
-            crate::circuit_breaker::CircuitBreakerError::Rejected { .. } => {
-                self.metrics.record_circuit_open();
-                anyhow::anyhow!("Database circuit breaker is open")
-            }
-            crate::circuit_breaker::CircuitBreakerError::ExecutionFailed { source, .. } => {
-                anyhow::anyhow!("Database operation failed: {}", source)
-            }
-            crate::circuit_breaker::CircuitBreakerError::TimedOut { timeout } => {
-                anyhow::anyhow!("Database operation timed out after {:?}", timeout)
-            }
-        })
     }
 
     /// Get the underlying pool for raw access (use sparingly).

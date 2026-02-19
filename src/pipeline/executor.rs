@@ -13,14 +13,15 @@ use crate::circuit_breaker::{
     CircuitBreaker, CircuitBreakerConfig as BreakerConfig,
     CircuitBreakerRegistry, CircuitBreakerId,
 };
-use crate::circuit_breaker::observer::{CircuitState, ResilienceObserver};
+use crate::circuit_breaker::observer::ResilienceObserver;
 use crate::config::PipelineConfig;
-use crate::pipeline::{PipelineStage, ScoredItem, BoundStage, ExecutionNode, ExecutablePipeline, PipelineError};
+use crate::pipeline::{PipelineStage, ScoredItem, BoundStage, ExecutionNode, ExecutablePipeline, PipelineError as InternalPipelineError};
 use crate::pipeline::validator::PipelineValidator;
 use crate::pipeline::optimizer::PipelineOptimizer;
 use crate::pipeline::context::ExecutionContext;
 use crate::pipeline::registry::build_stage_registry;
 use crate::db::models::PipelineDefinition;
+use crate::error::PipelineError;
 
 pub struct PipelineExecutor {
     stage_registry: HashMap<String, Arc<dyn PipelineStage>>,
@@ -241,7 +242,7 @@ impl PipelineExecutor {
                     warn!("Pipeline timed out, using fallback");
                     self.execute_nodes(fallback, context).await
                 } else {
-                    Err(PipelineError::PipelineTimeout.into())
+                    Err(PipelineError::PipelineTimeout { timeout_ms: self.config.pipeline_timeout.as_millis() as u64 }.into())
                 }
             }
         }
@@ -449,31 +450,48 @@ impl PipelineExecutor {
         let stage_name = bound.implementation.name();
         let start = std::time::Instant::now();
 
-        if let Some(ref breaker) = bound.breaker {
-            if breaker.current_state() == CircuitState::Open {
-                if self.config.fallback_pass_through_input { return Ok(input); }
-                return Err(PipelineError::CircuitOpen { stage_type: bound.stage_type.clone() }.into());
-            }
-        }
+        let result: Result<Vec<ScoredItem>, crate::error::AppError> = if let Some(ref breaker) = bound.breaker {
+            // Fix #6: Use breaker.call to record outcomes (success/failure)
+            // We map anyhow::Error to AppError::Internal to satisfy ErrorClassifier bound
+            breaker.call(|| async {
+                bound.implementation.execute(context, &bound.params, input.clone()).await
+                    .map_err(|e| crate::error::AppError::Internal(e.to_string()))
+            }).await
+            .map_err(|cb_err| {
+                match cb_err {
+                    crate::circuit_breaker::CircuitBreakerError::Rejected { .. } => 
+                        crate::error::AppError::Pipeline(PipelineError::CircuitOpen { stage: bound.stage_type.clone() }),
+                    crate::circuit_breaker::CircuitBreakerError::TimedOut { timeout } => 
+                        crate::error::AppError::Pipeline(PipelineError::StageTimeout { stage: bound.stage_type.clone(), timeout_ms: timeout.as_millis() as u64 }),
+                    crate::circuit_breaker::CircuitBreakerError::ExecutionFailed { source, .. } => 
+                        source, // Already an AppError
+                }
+            })
+        } else {
+            // Fallback to direct execution with timeout if no breaker
+            tokio::time::timeout(bound.timeout, bound.implementation.execute(context, &bound.params, input.clone()))
+                .await
+                .map_err(|_| crate::error::AppError::Pipeline(PipelineError::StageTimeout { stage: bound.stage_type.clone(), timeout_ms: bound.timeout.as_millis() as u64 }))
+                .and_then(|res| res.map_err(|e| crate::error::AppError::Internal(e.to_string())))
+        };
 
-        let result = tokio::time::timeout(bound.timeout, bound.implementation.execute(context, &bound.params, input.clone())).await;
         let latency = start.elapsed();
         context.record_stage_latency(stage_name, latency.as_millis() as u64);
 
         match result {
-            Ok(Ok(items)) => {
+            Ok(items) => {
                 context.record_stage_throughput(stage_name);
                 Ok(items)
             }
-            Ok(Err(e)) => {
+            Err(e) => {
                 context.record_stage_error(stage_name);
-                if self.config.fallback_on_stage_error && self.config.fallback_pass_through_input { return Ok(input); }
-                Err(PipelineError::StageFailure { stage_type: bound.stage_type.clone(), source: e }.into())
-            }
-            Err(_) => {
-                context.record_stage_error(stage_name);
-                if self.config.fallback_on_stage_timeout && self.config.fallback_pass_through_input { return Ok(input); }
-                Err(PipelineError::StageTimeout { stage_type: bound.stage_type.clone(), timeout_ms: bound.timeout.as_millis() as u64 }.into())
+                
+                if self.config.fallback_pass_through_input {
+                    warn!(stage = %stage_name, error = %e, "Stage failed, passing through input due to fallback config");
+                    return Ok(input);
+                }
+                
+                Err(e.into())
             }
         }
     }

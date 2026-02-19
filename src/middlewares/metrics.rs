@@ -1,16 +1,18 @@
-  use axum::{
+use axum::{
       extract::Request,
       middleware::Next,
       response::Response,
       body::Body,
   };
   use std::sync::Arc;
+  use tokio::sync::Mutex;
   use std::time::Instant;
   use chrono::Utc;
 
   /// Metrics collector for tracking API performance and usage
   pub struct MetricsCollector {
-      scenario_stats: Arc<std::sync::Mutex<std::collections::HashMap<String, ScenarioStats>>>,
+      // Fix #36: Replace std::sync::Mutex with tokio::sync::Mutex in async context
+      scenario_stats: Arc<Mutex<std::collections::HashMap<String, ScenarioStats>>>,
   }
 
   #[derive(Debug, Clone, Default)]
@@ -23,12 +25,12 @@
   impl MetricsCollector {
       pub fn new() -> Self {
           Self {
-              scenario_stats: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
+              scenario_stats: Arc::new(Mutex::new(std::collections::HashMap::new())),
           }
       }
 
-      pub fn record_scenario_execution(&self, scenario: &str, latency_ms: u64, cache_hit: bool) {
-          let mut stats_map = self.scenario_stats.lock().unwrap();
+      pub async fn record_scenario_execution(&self, scenario: &str, latency_ms: u64, cache_hit: bool) {
+          let mut stats_map = self.scenario_stats.lock().await;
           let stats = stats_map.entry(scenario.to_string()).or_default();
           stats.total_executions += 1;
           if cache_hit {
@@ -37,8 +39,8 @@
           stats.total_latency_ms += latency_ms;
       }
 
-      pub fn get_scenario_stats(&self) -> Vec<(String, ScenarioStats)> {
-          let stats_map = self.scenario_stats.lock().unwrap();
+      pub async fn get_scenario_stats(&self) -> Vec<(String, ScenarioStats)> {
+          let stats_map = self.scenario_stats.lock().await;
           stats_map.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
       }
   }
@@ -85,22 +87,23 @@
 
   /// Endpoint-specific metrics tracking
   pub struct EndpointMetrics {
-      endpoint_stats: Arc<std::sync::Mutex<std::collections::HashMap<String, EndpointStats>>>,
+      // Fix #36: Replace std::sync::Mutex with tokio::sync::Mutex in async context
+      endpoint_stats: Arc<Mutex<std::collections::HashMap<String, EndpointStats>>>,
   }
 
   #[derive(Debug, Clone)]
   pub struct EndpointStats {
-      total_requests: u64,
-      success_requests: u64,
-      error_requests: u64,
-      total_latency_ms: u64,
-      last_accessed: chrono::DateTime<chrono::Utc>,
+      pub total_requests: u64,
+      pub success_requests: u64,
+      pub error_requests: u64,
+      pub total_latency_ms: u64,
+      pub last_accessed: chrono::DateTime<chrono::Utc>,
   }
 
   impl EndpointMetrics {
       pub fn new() -> Self {
           Self {
-              endpoint_stats: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
+              endpoint_stats: Arc::new(Mutex::new(std::collections::HashMap::new())),
           }
       }
 
@@ -120,7 +123,7 @@
 
           // Update endpoint stats
           {
-              let mut stats_map = self.endpoint_stats.lock().unwrap();
+              let mut stats_map = self.endpoint_stats.lock().await;
               let stats = stats_map.entry(path.clone()).or_insert_with(|| EndpointStats {
                   total_requests: 0,
                   success_requests: 0,
@@ -142,9 +145,8 @@
           response
       }
 
-      pub fn get_stats(&self) -> Vec<(String, EndpointStats)> {
-          let stats_map = self.endpoint_stats.lock().unwrap();
+      pub async fn get_stats(&self) -> Vec<(String, EndpointStats)> {
+          let stats_map = self.endpoint_stats.lock().await;
           stats_map.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
       }
   }
-

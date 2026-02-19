@@ -97,8 +97,9 @@ impl IngestionManager {
             all_sources.push(kafka.clone());
 
             let tx = sender.clone();
+            let kafka_for_task = kafka.clone();
             self.handles.push(tokio::spawn(async move {
-                if let Err(e) = kafka.start(tx).await {
+                if let Err(e) = kafka_for_task.start(tx).await {
                     warn!(error = %e, "Kafka source exited with error");
                 }
             }));
@@ -131,8 +132,9 @@ impl IngestionManager {
             all_sources.push(clickhouse.clone());
 
             let tx = sender.clone();
+            let ch_for_task = clickhouse.clone();
             self.handles.push(tokio::spawn(async move {
-                if let Err(e) = clickhouse.start(tx).await {
+                if let Err(e) = ch_for_task.start(tx).await {
                     warn!(error = %e, "ClickHouse source exited with error");
                 }
             }));
@@ -189,8 +191,9 @@ impl IngestionManager {
             all_sources.push(kafka.clone());
 
             let tx = sender.clone();
+            let kafka_for_task = kafka.clone();
             handles.push(tokio::spawn(async move {
-                if let Err(e) = kafka.start(tx).await {
+                if let Err(e) = kafka_for_task.start(tx).await {
                     warn!(error = %e, "Kafka source exited with error");
                 }
             }));
@@ -206,9 +209,9 @@ impl IngestionManager {
             all_sources.push(api_source.clone());
 
             let tx = sender.clone();
-            let api = api_source.clone();
+            let api_for_task = api_source.clone();
             handles.push(tokio::spawn(async move {
-                if let Err(e) = api.start(tx).await {
+                if let Err(e) = api_for_task.start(tx).await {
                     warn!(error = %e, "API source exited with error");
                 }
             }));

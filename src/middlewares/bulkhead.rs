@@ -12,15 +12,16 @@
       response::{IntoResponse, Response},
   };
   use serde_json::json;
-  use dashmap::DashMap;
+  use std::collections::HashMap;
   use std::sync::Arc;
-  use tokio::sync::Semaphore;
+  use tokio::sync::{Semaphore, RwLock};
   use tracing::warn;
 
   /// Bulkhead middleware state.
   #[derive(Clone)]
   pub struct BulkheadMiddleware {
-      semaphores: Arc<DashMap<String, Arc<Semaphore>>>,
+      // Fix #37: Use tokio::sync::RwLock instead of std::sync::RwLock in async context
+      semaphores: Arc<RwLock<HashMap<String, Arc<Semaphore>>>>,
       config: BulkheadConfig,
   }
 
@@ -53,7 +54,7 @@
       /// Create a new bulkhead middleware.
       pub fn new(config: BulkheadConfig) -> Self {
           Self {
-              semaphores: Arc::new(DashMap::new()),
+              semaphores: Arc::new(RwLock::new(HashMap::new())),
               config,
           }
       }
@@ -80,7 +81,7 @@
           };
 
           // Get or create semaphore for this endpoint
-          let semaphore = state.get_or_create_semaphore(&endpoint);
+          let semaphore = state.get_or_create_semaphore(&endpoint).await;
 
           // Try to acquire permit
           let permit = match semaphore.try_acquire_owned() {
@@ -105,25 +106,37 @@
       }
 
       /// Get or create semaphore for an endpoint with protection against unbounded growth.
-      fn get_or_create_semaphore(&self, endpoint: &str) -> Arc<Semaphore> {
-          if let Some(sem) = self.semaphores.get(endpoint) {
+      async fn get_or_create_semaphore(&self, endpoint: &str) -> Arc<Semaphore> {
+          // Fast path: read lock
+          {
+              let semaphores = self.semaphores.read().await;
+              if let Some(sem) = semaphores.get(endpoint) {
+                  return sem.clone();
+              }
+          }
+
+          // Slow path: write lock
+          let mut semaphores = self.semaphores.write().await;
+
+          // Double-check after acquiring write lock
+          if let Some(sem) = semaphores.get(endpoint) {
               return sem.clone();
           }
 
           // Protection against cardinality explosion (DoS via unique paths)
-          if self.semaphores.len() >= self.config.max_tracked_endpoints {
+          if semaphores.len() >= self.config.max_tracked_endpoints {
               warn!(
                   endpoint = %endpoint,
                   "Bulkhead tracking limit reached. Falling back to global limit to prevent memory exhaustion."
               );
-              return self.semaphores.entry("global".to_string())
+              return semaphores.entry("global".to_string())
                   .or_insert_with(|| Arc::new(Semaphore::new(self.config.max_concurrent_calls)))
                   .clone();
           }
 
-          self.semaphores.entry(endpoint.to_string())
-              .or_insert_with(|| Arc::new(Semaphore::new(self.config.max_concurrent_calls)))
-              .clone()
+          let semaphore = Arc::new(Semaphore::new(self.config.max_concurrent_calls));
+          semaphores.insert(endpoint.to_string(), semaphore.clone());
+          semaphore
       }
   }
 

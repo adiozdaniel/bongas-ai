@@ -3,19 +3,21 @@
 //! Subscribes to Kafka topics and converts native events into `UserActivity`.
 //! Uses the global `CircuitBreakerRegistry` (not a duplicate breaker).
 
-use anyhow::Result;
+use anyhow::{Result, Context};
 use rdkafka::config::ClientConfig;
-use rdkafka::consumer::{Consumer, StreamConsumer};
+use rdkafka::consumer::{Consumer, StreamConsumer, CommitMode};
 use rdkafka::Message;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::mpsc;
 use tokio::time::Duration;
-use tracing::{info, error, warn, debug};
+use tracing::{info, error, warn};
 
 use crate::circuit_breaker::{CircuitBreakerRegistry, CircuitBreakerId, CircuitBreakerConfig};
+use crate::error::{ErrorClassification, ErrorClassifier};
 use super::super::types::{ActivitySource, SourceHealth, UserActivity};
 use crate::config::types::kafka as config_kafka;
+use rdkafka::producer::FutureProducer;
 
 /// Configuration for the Kafka activity source.
 #[derive(Debug, Clone)]
@@ -41,15 +43,33 @@ impl From<config_kafka::KafkaConfig> for KafkaSourceConfig {
     }
 }
 
-use rdkafka::producer::{FutureProducer, FutureRecord};
-
 /// Kafka-based activity source.
 pub struct KafkaSource {
     config: KafkaSourceConfig,
     circuit_breaker_registry: Arc<CircuitBreakerRegistry>,
     messages_ingested: AtomicU64,
     errors: AtomicU64,
-    dlq_producer: FutureProducer,
+    dlq_producer: Option<FutureProducer>,
+}
+
+#[derive(Debug, thiserror::Error)]
+enum KafkaSourceError {
+    #[error("Kafka receive error: {0}")]
+    Receive(#[from] rdkafka::error::KafkaError),
+    #[error("Poison message: parsing failed")]
+    Poison,
+    #[error("Channel full: failed to send activity")]
+    ChannelFull,
+}
+
+impl ErrorClassifier for KafkaSourceError {
+    fn classify(&self) -> ErrorClassification {
+        match self {
+            Self::Receive(_) => ErrorClassification::Transient,
+            Self::Poison => ErrorClassification::Permanent,
+            Self::ChannelFull => ErrorClassification::Overload,
+        }
+    }
 }
 
 impl KafkaSource {
@@ -57,11 +77,18 @@ impl KafkaSource {
         config: KafkaSourceConfig,
         circuit_breaker_registry: Arc<CircuitBreakerRegistry>,
     ) -> Self {
-        let dlq_producer: FutureProducer = ClientConfig::new()
+        let dlq_result: Result<FutureProducer, rdkafka::error::KafkaError> = ClientConfig::new()
             .set("bootstrap.servers", &config.brokers)
             .set("message.timeout.ms", "5000")
-            .create()
-            .expect("Kafka DLQ producer creation error");
+            .create();
+
+        let dlq_producer = match dlq_result {
+            Ok(p) => Some(p),
+            Err(e) => {
+                error!("Kafka DLQ producer creation failed: {:?}. DLQ functionality disabled.", e);
+                None
+            }
+        };
 
         Self {
             config,
@@ -81,7 +108,7 @@ impl KafkaSource {
         let consumer: StreamConsumer = ClientConfig::new()
             .set("bootstrap.servers", &self.config.brokers)
             .set("group.id", &self.config.group_id)
-            .set("enable.auto.commit", "false") // Manual commit for reliability
+            .set("enable.auto.commit", "false")
             .set("auto.offset.reset", "earliest")
             .set("session.timeout.ms", "30000")
             .create()?;
@@ -93,16 +120,16 @@ impl KafkaSource {
     /// Run a consumer loop for a single topic, parsing messages into UserActivity.
     async fn consume_topic<F>(
         &self,
-        topic: &str,
-        sender: &mpsc::Sender<UserActivity>,
+        topic: String,
+        sender: mpsc::Sender<UserActivity>,
         parse: F,
     ) where
-        F: Fn(&[u8]) -> Option<UserActivity>,
+        F: Fn(&[u8]) -> Option<UserActivity> + Send + Sync + 'static,
     {
-        let consumer = match self.create_consumer(topic) {
-            Ok(c) => c,
+        let consumer = match self.create_consumer(&topic) {
+            Ok(c) => Arc::new(c),
             Err(e) => {
-                error!(topic, error = %e, "Failed to create Kafka consumer");
+                error!(topic = %topic, error = %e, "Failed to create Kafka consumer");
                 self.errors.fetch_add(1, Ordering::Relaxed);
                 return;
             }
@@ -113,71 +140,46 @@ impl KafkaSource {
             CircuitBreakerConfig::default(),
         );
 
-        info!(topic, "Kafka consumer started with DLQ protection");
+        info!(topic = %topic, "Kafka consumer started with DLQ protection and Circuit Breaker");
 
         loop {
-            // Check if circuit is open before processing
-            if breaker.health().state == crate::circuit_breaker::CircuitState::Open {
-                warn!(source = "kafka", "Circuit breaker open, pausing");
-                tokio::time::sleep(Duration::from_secs(5)).await;
-                continue;
-            }
+            let consumer_inner = consumer.clone();
+            let sender_inner = sender.clone();
+            let parse_inner = &parse;
+            let topic_name = topic.clone();
 
-            // Use recv() for async message consumption
-            match tokio::time::timeout(Duration::from_millis(100), consumer.recv()).await {
-                Ok(Ok(message)) => {
-                    if let Some(payload) = message.payload() {
-                        let mut success = false;
-                        let mut attempts = 0;
-                        const MAX_ATTEMPTS: u32 = 3;
+            let result = breaker.call(|| async move {
+                let message = tokio::time::timeout(Duration::from_millis(500), consumer_inner.recv())
+                    .await
+                    .map_err(|_| rdkafka::error::KafkaError::NoMessageReceived)??;
 
-                        while !success && attempts < MAX_ATTEMPTS {
-                            attempts += 1;
-                            match parse(payload) {
-                                Some(activity) => {
-                                    if sender.send(activity).await.is_ok() {
-                                        self.messages_ingested.fetch_add(1, Ordering::Relaxed);
-                                        success = true;
-                                    }
-                                }
-                                None => {
-                                    // Parsing failed - retry or DLQ
-                                    if attempts < MAX_ATTEMPTS {
-                                        debug!(topic, attempts, "Parsing failed, retrying...");
-                                        tokio::time::sleep(Duration::from_millis(50)).await;
-                                    }
-                                }
-                            }
-                        }
+                let payload = message.payload().ok_or(KafkaSourceError::Poison)?;
+                
+                let activity = parse_inner(payload).ok_or(KafkaSourceError::Poison)?;
+                
+                sender_inner.send(activity).await.map_err(|_| KafkaSourceError::ChannelFull)?;
+                
+                let _ = consumer_inner.commit_message(&message, CommitMode::Async);
+                Ok::<(), KafkaSourceError>(())
+            }).await;
 
-use rdkafka::consumer::CommitMode;
-
-// ... (in consume_topic loop)
-                        if !success {
-                            // POISON MESSAGE DETECTED after retries
-                            self.errors.fetch_add(1, Ordering::Relaxed);
-                            let dlq_topic = format!("{}.dlq", topic);
-                            warn!(topic, dlq_topic, attempts, "Poison message failed after retries, moving to DLQ");
-                            
-                            let record = FutureRecord::to(&dlq_topic)
-                                .payload(payload)
-                                .key("poison");
-                            
-                            let _ = self.dlq_producer.send(record, Duration::from_secs(0)).await;
-                        }
-
-                        // Manual commit after processing (success or DLQ)
-                        let _ = consumer.commit_message(&message, CommitMode::Async);
+            match result {
+                Ok(_) => {
+                    self.messages_ingested.fetch_add(1, Ordering::Relaxed);
+                }
+                Err(crate::circuit_breaker::CircuitBreakerError::ExecutionFailed { classification, .. }) => {
+                    self.errors.fetch_add(1, Ordering::Relaxed);
+                    if classification == ErrorClassification::Permanent {
+                        warn!(topic = %topic_name, "Poison message detected, skipping");
+                    } else {
+                        tokio::time::sleep(Duration::from_millis(100)).await;
                     }
                 }
-                Ok(Err(e)) => {
-                    error!(topic, error = %e, "Kafka receive error");
-                    self.errors.fetch_add(1, Ordering::Relaxed);
-                    tokio::time::sleep(Duration::from_secs(1)).await;
+                Err(crate::circuit_breaker::CircuitBreakerError::Rejected { .. }) => {
+                    warn!(topic = %topic_name, "Kafka circuit open, pausing consumption");
+                    tokio::time::sleep(Duration::from_secs(5)).await;
                 }
-                Err(_) => {
-                    // Timeout - continue loop
-                }
+                Err(_e) => {}
             }
         }
     }
@@ -190,21 +192,25 @@ impl ActivitySource for KafkaSource {
     }
 
     async fn start(&self, sender: mpsc::Sender<UserActivity>) -> Result<()> {
-        info!(brokers = %self.config.brokers, "Starting Kafka activity source");
+        info!(brokers = %self.config.brokers, "Starting Kafka activity source with multi-topic isolation");
 
-        // Spawn a consumer task for each topic
-        let playback_sender = sender.clone();
-        let playback_topic = self.config.playback_topic.clone();
-        let reaction_sender = sender.clone();
-        let reaction_topic = self.config.reaction_topic.clone();
-        let profile_sender = sender.clone();
-        let profile_topic = self.config.profile_topic.clone();
-        let notification_sender = sender;
-        let notification_topic = self.config.notification_topic.clone();
+        // Use tokio::join! to run consumers concurrently without losing dyn compatibility
+        // (Since ActivitySource::start now takes &self)
+        
+        let p_topic = self.config.playback_topic.clone();
+        let p_sender = sender.clone();
+        
+        let r_topic = self.config.reaction_topic.clone();
+        let r_sender = sender.clone();
+        
+        let pr_topic = self.config.profile_topic.clone();
+        let pr_sender = sender.clone();
+        
+        let n_topic = self.config.notification_topic.clone();
+        let n_sender = sender;
 
-        // We run all 4 topic consumers concurrently
-        tokio::select! {
-            _ = self.consume_topic(&playback_topic, &playback_sender, |payload| {
+        tokio::join!(
+            self.consume_topic(p_topic, p_sender, |payload| {
                 serde_json::from_slice::<serde_json::Value>(payload).ok().and_then(|v| {
                     Some(UserActivity::Playback {
                         user_id: v.get("user_id")?.as_i64()? as i32,
@@ -218,8 +224,8 @@ impl ActivitySource for KafkaSource {
                         timestamp: chrono::Utc::now(),
                     })
                 })
-            }) => {}
-            _ = self.consume_topic(&reaction_topic, &reaction_sender, |payload| {
+            }),
+            self.consume_topic(r_topic, r_sender, |payload| {
                 serde_json::from_slice::<serde_json::Value>(payload).ok().and_then(|v| {
                     Some(UserActivity::Reaction {
                         user_id: v.get("user_id")?.as_i64()? as i32,
@@ -229,8 +235,8 @@ impl ActivitySource for KafkaSource {
                         timestamp: chrono::Utc::now(),
                     })
                 })
-            }) => {}
-            _ = self.consume_topic(&profile_topic, &profile_sender, |payload| {
+            }),
+            self.consume_topic(pr_topic, pr_sender, |payload| {
                 serde_json::from_slice::<serde_json::Value>(payload).ok().and_then(|v| {
                     Some(UserActivity::ProfileUpdate {
                         user_id: v.get("user_id")?.as_i64()? as i32,
@@ -239,8 +245,8 @@ impl ActivitySource for KafkaSource {
                         timestamp: chrono::Utc::now(),
                     })
                 })
-            }) => {}
-            _ = self.consume_topic(&notification_topic, &notification_sender, |payload| {
+            }),
+            self.consume_topic(n_topic, n_sender, |payload| {
                 serde_json::from_slice::<serde_json::Value>(payload).ok().and_then(|v| {
                     Some(UserActivity::Notification {
                         user_id: v.get("user_id")?.as_i64()? as i32,
@@ -255,8 +261,8 @@ impl ActivitySource for KafkaSource {
                         timestamp: chrono::Utc::now(),
                     })
                 })
-            }) => {}
-        }
+            })
+        );
 
         Ok(())
     }

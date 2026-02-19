@@ -138,6 +138,16 @@ impl CircuitBreakerState {
                 };
             }
 
+            // Fix #13: Atomic transition with auxiliary state
+            // Lock the auxiliary state BEFORE attempting the CAS to ensure atomicity
+            let mut opened_at_guard = self.lock_opened_at();
+
+            // Re-verify current state after locking to prevent race between CAS and lock
+            let re_current_u8 = self.state.load(Ordering::Acquire);
+            if re_current_u8 != current_u8 {
+                continue; // State changed while acquiring lock, retry
+            }
+
             // Attempt atomic transition
             match self.state.compare_exchange(
                 current_u8,
@@ -146,8 +156,25 @@ impl CircuitBreakerState {
                 Ordering::Acquire,
             ) {
                 Ok(_) => {
-                    // Transition succeeded - update auxiliary state
-                    self.on_transition(current, target);
+                    // Transition succeeded - update auxiliary state while holding lock
+                    match target {
+                        CircuitState::Open => {
+                            *opened_at_guard = Some(Instant::now());
+                            self.half_open_calls.store(0, Ordering::Release);
+                            self.half_open_successes.store(0, Ordering::Release);
+                        }
+                        CircuitState::HalfOpen => {
+                            self.half_open_calls.store(0, Ordering::Release);
+                            self.half_open_successes.store(0, Ordering::Release);
+                        }
+                        CircuitState::Closed => {
+                            *opened_at_guard = None;
+                            self.half_open_calls.store(0, Ordering::Release);
+                            self.half_open_successes.store(0, Ordering::Release);
+                            self.consecutive_failures.store(0, Ordering::Release);
+                        }
+                    }
+                    
                     return TransitionResult::Transitioned {
                         from: current,
                         to: target,
@@ -274,31 +301,6 @@ impl CircuitBreakerState {
     }
 
     // ─── Internal ──────────────────────────────────────────────────────────
-
-    /// Called after a successful transition to update auxiliary state.
-    fn on_transition(&self, from: CircuitState, to: CircuitState) {
-        match (from, to) {
-            (_, CircuitState::Open) => {
-                // Entering Open state - record when
-                *self.lock_opened_at() = Some(Instant::now());
-                self.half_open_calls.store(0, Ordering::Release);
-                self.half_open_successes.store(0, Ordering::Release);
-            }
-            (CircuitState::Open, CircuitState::HalfOpen) => {
-                // Entering HalfOpen - reset counters
-                self.half_open_calls.store(0, Ordering::Release);
-                self.half_open_successes.store(0, Ordering::Release);
-            }
-            (CircuitState::HalfOpen, CircuitState::Closed) => {
-                // Closing circuit - reset all
-                *self.lock_opened_at() = None;
-                self.half_open_calls.store(0, Ordering::Release);
-                self.half_open_successes.store(0, Ordering::Release);
-                self.consecutive_failures.store(0, Ordering::Release);
-            }
-            _ => {}
-        }
-    }
 
     #[inline]
     fn state_to_u8(state: CircuitState) -> u8 {

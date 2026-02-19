@@ -6,7 +6,7 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use std::collections::HashMap;
-use std::sync::Mutex;
+use tokio::sync::Mutex;
 
 use super::event::{CircuitBreakerEvent, CircuitState};
 use super::traits::ResilienceObserver;
@@ -167,7 +167,7 @@ impl Default for AlertConfig {
 pub struct AlertObserver {
     config: AlertConfig,
     http_client: Option<Arc<dyn AlertSender>>,
-    last_alert_times: Mutex<HashMap<String, Instant>>,
+    last_alert_times: Arc<Mutex<HashMap<String, Instant>>>,
 }
 
 impl AlertObserver {
@@ -176,7 +176,7 @@ impl AlertObserver {
     Self {
       config,
       http_client: None,
-      last_alert_times: Mutex::new(HashMap::new()),
+      last_alert_times: Arc::new(Mutex::new(HashMap::new())),
     }
   }
 
@@ -185,7 +185,7 @@ impl AlertObserver {
     Self {
       config,
       http_client: Some(sender),
-      last_alert_times: Mutex::new(HashMap::new()),
+      last_alert_times: Arc::new(Mutex::new(HashMap::new())),
     }
   }
 
@@ -195,65 +195,64 @@ impl AlertObserver {
       return;
     }
 
-    // Enforce cooldown
-    {
-      let mut times = self.last_alert_times.lock().unwrap();
-      if let Some(last) = times.get(&message.breaker_id) {
-        if last.elapsed() < self.config.cooldown {
-          return; // Still in cooldown
-        }
-      }
-      times.insert(message.breaker_id.clone(), Instant::now());
-    }
+    let config = self.config.clone();
+    let http_client = self.http_client.clone();
+    let last_alert_times = self.last_alert_times.clone();
+    let breaker_id = message.breaker_id.clone();
 
-    for channel in &self.config.channels {
-      match channel {
-        AlertChannel::Log => {
-          tracing::warn!(
-            severity = %message.severity,
-            breaker_id = %message.breaker_id,
-            title = %message.title,
-            description = %message.description,
-            "circuit breaker alert"
-          );
+    // Perform the actual check and sending in a background task 
+    // because ResilienceObserver::on_event is synchronous.
+    tokio::spawn(async move {
+        // Enforce cooldown
+        {
+          let mut times = last_alert_times.lock().await;
+          if let Some(last) = times.get(&breaker_id) {
+            if last.elapsed() < config.cooldown {
+              return; // Still in cooldown
+            }
+          }
+          times.insert(breaker_id, Instant::now());
         }
-          
-        AlertChannel::Slack { webhook_url } => {
-          if let Some(ref client) = self.http_client {
-            let json = message.to_slack_json();
-            let url = webhook_url.clone();
-            let client = Arc::clone(client);
+
+        for channel in &config.channels {
+          match channel {
+            AlertChannel::Log => {
+              tracing::warn!(
+                severity = %message.severity,
+                breaker_id = %message.breaker_id,
+                title = %message.title,
+                description = %message.description,
+                "circuit breaker alert"
+              );
+            }
               
-            tokio::spawn(async move {
-              if let Err(e) = client.send(&url, &json).await {
-                tracing::error!(error = %e, "failed to send Slack alert");
+            AlertChannel::Slack { webhook_url } => {
+              if let Some(ref client) = http_client {
+                let json = message.to_slack_json();
+                let url = webhook_url.clone();
+                  
+                if let Err(e) = client.send(&url, &json).await {
+                    tracing::error!(error = %e, "failed to send Slack alert");
+                }
               }
-            });
-          } else {
-            tracing::warn!("Slack alert configured but no HTTP client provided");
-          }
-        }
-          
-        AlertChannel::Webhook { url, auth_header } => {
-          if let Some(ref client) = self.http_client {
-            let json = message.to_webhook_json();
-            let url = url.clone();
-            let auth = auth_header.clone();
-            let client = Arc::clone(client);
+            }
+              
+            AlertChannel::Webhook { url, auth_header } => {
+              if let Some(ref client) = http_client {
+                let json = message.to_webhook_json();
+                let url = url.clone();
+                let auth = auth_header.clone();
 
-            tokio::spawn(async move {
-              if let Err(e) = client.send_with_auth(&url, &json, auth.as_deref()).await {
-                tracing::error!(error = %e, "failed to send webhook alert");
+                if let Err(e) = client.send_with_auth(&url, &json, auth.as_deref()).await {
+                    tracing::error!(error = %e, "failed to send webhook alert");
+                }
               }
-            });
-          } else {
-            tracing::warn!("Webhook alert configured but no HTTP client provided");
+            }
+            
+            AlertChannel::None => {}
           }
         }
-        
-        AlertChannel::None => {}
-      }
-    }
+    });
   }
 
   /// Determine severity based on state transition.

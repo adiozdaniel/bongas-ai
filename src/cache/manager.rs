@@ -148,6 +148,17 @@
           Ok(())
       }
 
+      /// Delete multiple keys matching a pattern from all cache tiers.
+      pub async fn delete_pattern(&self, pattern: &str) -> Result<()> {
+          if let Some(ref l1) = self.l1 {
+              let _ = l1.delete_pattern(pattern).await;
+          }
+          if let Some(ref l2) = self.l2 {
+              let _ = l2.delete_pattern(pattern).await;
+          }
+          Ok(())
+      }
+
       /// Get cache metrics snapshot.
       pub fn metrics(&self) -> CacheMetricsSnapshot {
           self.metrics.snapshot()

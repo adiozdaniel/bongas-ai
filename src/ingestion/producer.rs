@@ -21,23 +21,33 @@ pub struct RecommendationSyncEvent {
 }
 
 pub struct RecommendationProducer {
-    producer: FutureProducer,
+    producer: Option<FutureProducer>,
     topic: String,
 }
 
 impl RecommendationProducer {
     pub fn new(config: &KafkaConfig) -> Self {
-        let producer: FutureProducer = ClientConfig::new()
+        let result: Result<FutureProducer, rdkafka::error::KafkaError> = ClientConfig::new()
             .set("bootstrap.servers", &config.brokers)
             .set("message.timeout.ms", "3600000") // 1 hour delivery timeout
             .set("compression.type", "zstd") // 60% bandwidth reduction
             .set("linger.ms", "20")          // Better batching, lower IOPS cost
-            .create()
-            .expect("Producer creation error");
+            .create();
 
-        Self {
-            producer,
-            topic: "recommendations.sync".to_string(),
+        match result {
+            Ok(producer) => {
+                Self {
+                    producer: Some(producer),
+                    topic: "recommendations.sync".to_string(),
+                }
+            }
+            Err(e) => {
+                error!("Kafka producer creation failed: {:?}. Ecosystem sync disabled.", e);
+                Self {
+                    producer: None,
+                    topic: "recommendations.sync".to_string(),
+                }
+            }
         }
     }
 
@@ -49,6 +59,11 @@ impl RecommendationProducer {
         scenario: String,
         item_ids: Vec<i32>,
     ) {
+        let producer = match &self.producer {
+            Some(p) => p,
+            None => return,
+        };
+
         let event = RecommendationSyncEvent {
             user_id,
             profile_id,
@@ -73,7 +88,7 @@ impl RecommendationProducer {
             .payload(&payload)
             .key(&key);
 
-        let result = self.producer.send(record, Duration::from_secs(0)).await;
+        let result = producer.send(record, Duration::from_secs(0)).await;
 
         match result {
             Ok(_) => info!(user_id, scenario = %event.scenario, "Broadcasted recommendations to Kafka"),

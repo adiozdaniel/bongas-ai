@@ -28,6 +28,9 @@
       /// Delete a value from cache.
       async fn delete(&self, key: &str) -> Result<()>;
 
+      /// Delete multiple keys matching a pattern (wildcards supported).
+      async fn delete_pattern(&self, pattern: &str) -> Result<()>;
+
       /// Check if key exists.
       async fn exists(&self, key: &str) -> Result<bool>;
 

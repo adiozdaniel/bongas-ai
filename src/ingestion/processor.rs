@@ -35,6 +35,8 @@ pub struct ClickHouseInteraction {
     pub created_at: u64, 
 }
 
+use tokio::task::JoinSet;
+
 /// Processes activities from any source and routes them to DB + staleness engine.
 pub struct ActivityProcessor {
     interaction_repo: Arc<InteractionRepository>,
@@ -67,6 +69,9 @@ impl ActivityProcessor {
         let mut buffer = Vec::with_capacity(100);
         let flush_interval = std::time::Duration::from_millis(500);
         let mut interval = tokio::time::interval(flush_interval);
+        
+        // Fix #25: Track tasks to await on shutdown
+        let mut flush_tasks = JoinSet::new();
 
         loop {
             tokio::select! {
@@ -77,13 +82,21 @@ impl ActivityProcessor {
                             if buffer.len() >= 100 {
                                 let batch = std::mem::replace(&mut buffer, Vec::with_capacity(100));
                                 let processor = self.clone();
-                                let permit = self.flush_semaphore.clone().acquire_owned().await.unwrap();
-                                tokio::spawn(async move {
-                                    let _permit = permit;
-                                    if let Err(e) = processor.flush_batch(batch).await {
-                                        error!("Failed to flush batch: {}", e);
+                                
+                                // Fix #26: Handle semaphore acquisition safely
+                                match self.flush_semaphore.clone().acquire_owned().await {
+                                    Ok(permit) => {
+                                        flush_tasks.spawn(async move {
+                                            let _permit = permit;
+                                            if let Err(e) = processor.flush_batch(batch).await {
+                                                error!("Failed to flush batch: {}", e);
+                                            }
+                                        });
                                     }
-                                });
+                                    Err(_) => {
+                                        error!("Flush semaphore closed unexpectedly, dropping batch");
+                                    }
+                                }
                             }
                         }
                         None => {
@@ -91,13 +104,14 @@ impl ActivityProcessor {
                             if !buffer.is_empty() {
                                 let batch = std::mem::take(&mut buffer);
                                 let processor = self.clone();
-                                let permit = self.flush_semaphore.clone().acquire_owned().await.unwrap();
-                                tokio::spawn(async move {
-                                    let _permit = permit;
-                                    if let Err(e) = processor.flush_batch(batch).await {
-                                        error!("Failed to flush final batch: {}", e);
-                                    }
-                                });
+                                if let Ok(permit) = self.flush_semaphore.clone().acquire_owned().await {
+                                    flush_tasks.spawn(async move {
+                                        let _permit = permit;
+                                        if let Err(e) = processor.flush_batch(batch).await {
+                                            error!("Failed to flush final batch: {}", e);
+                                        }
+                                    });
+                                }
                             }
                             break;
                         }
@@ -107,15 +121,26 @@ impl ActivityProcessor {
                     if !buffer.is_empty() {
                         let batch = std::mem::replace(&mut buffer, Vec::with_capacity(100));
                         let processor = self.clone();
-                        let permit = self.flush_semaphore.clone().acquire_owned().await.unwrap();
-                        tokio::spawn(async move {
-                            let _permit = permit;
-                            if let Err(e) = processor.flush_batch(batch).await {
-                                error!("Failed to flush batch on interval: {}", e);
-                            }
-                        });
+                        if let Ok(permit) = self.flush_semaphore.clone().acquire_owned().await {
+                            flush_tasks.spawn(async move {
+                                let _permit = permit;
+                                if let Err(e) = processor.flush_batch(batch).await {
+                                    error!("Failed to flush batch on interval: {}", e);
+                                }
+                            });
+                        }
                     }
                 }
+                // Cleanup finished tasks
+                _ = flush_tasks.join_next(), if !flush_tasks.is_empty() => {}
+            }
+        }
+
+        // Fix #25: Await all remaining flush tasks before exiting
+        info!("Awaiting {} remaining flush tasks...", flush_tasks.len());
+        while let Some(res) = flush_tasks.join_next().await {
+            if let Err(e) = res {
+                error!("Shutdown flush task failed: {:?}", e);
             }
         }
 

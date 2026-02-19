@@ -56,10 +56,20 @@ impl PipelineStage for MetaScorerStage {
         // 2. Prepare features (batch items)
         let mut feature_batch: Vec<Vec<f32>> = Vec::with_capacity(input.len());
         for item in &input {
-            // Phase 6: Zero-Copy Fast Path
+            // Phase 6: Zero-Copy Fast Path (Fix #5: Added validation)
             if let Some(bytes) = &item.fast_metadata {
-                let archived = unsafe { rkyv::archived_root::<CompactMetadata>(bytes) };
-                feature_batch.push(archived.features.to_vec());
+                match rkyv::check_archived_root::<CompactMetadata>(bytes) {
+                    Ok(archived) => {
+                        feature_batch.push(archived.features.to_vec());
+                    }
+                    Err(e) => {
+                        warn!(error = ?e, "Corrupted fast_metadata detected, falling back to legacy JSON");
+                        let vector = item.metadata.get("heuristic_vector")
+                            .and_then(|v| serde_json::from_value::<Vec<f32>>(v.clone()).ok())
+                            .unwrap_or_default();
+                        feature_batch.push(vector);
+                    }
+                }
             } else {
                 // Fallback to legacy JSON
                 let vector = item.metadata.get("heuristic_vector")

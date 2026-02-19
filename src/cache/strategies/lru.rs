@@ -1,4 +1,4 @@
-  //! L1 in-memory LRU cache with size-based eviction and sharding.
+//! L1 in-memory LRU cache with size-based eviction and sharding.
 
   use crate::cache::traits::{CacheStrategy, CacheTier};
   use crate::cache::metrics::CacheMetrics;
@@ -61,6 +61,7 @@
           T: for<'de> Deserialize<'de> + Send,
       {
           let shard_idx = self.get_shard_index(key);
+          // LRU get requires mutable access to update access order
           let mut cache = self.shards[shard_idx].write().await;
 
           if let Some(entry) = cache.get(key) {
@@ -71,7 +72,8 @@
               }
 
               self.metrics.record_l1_hit();
-              let value: T = serde_json::from_slice(&entry.value)?;
+              // Fix #31: Use bincode for parity with L2
+              let value: T = bincode::deserialize(&entry.value)?;
               return Ok(Some(value));
           }
 
@@ -83,7 +85,8 @@
       where
           T: Serialize + Send + Sync,
       {
-          let serialized = serde_json::to_vec(value)?;
+          // Fix #31: Use bincode for parity with L2
+          let serialized = bincode::serialize(value)?;
           let entry = CacheEntry {
               value: serialized,
               expires_at: Instant::now() + ttl,
@@ -91,7 +94,8 @@
 
           let shard_idx = self.get_shard_index(key);
           let mut cache = self.shards[shard_idx].write().await;
-          if cache.put(key.to_string(), entry).is_some() {
+          // put returns the old value if it existed, or None if it was an eviction or replacement
+          if cache.put(key.to_string(), entry).is_none() && cache.len() == cache.cap().get() {
               self.metrics.record_eviction();
           }
 
@@ -105,10 +109,44 @@
           Ok(())
       }
 
+      async fn delete_pattern(&self, pattern: &str) -> Result<()> {
+          // Translate glob-like pattern to simple prefix check or exact match
+          let prefix = pattern.trim_end_matches('*');
+          let is_wildcard = pattern.ends_with('*');
+
+          for shard in &self.shards {
+              let mut cache = shard.write().await;
+              if is_wildcard {
+                  // This is slow (O(N) per shard) but necessary for pattern invalidation in L1
+                  let keys_to_remove: Vec<String> = cache.iter()
+                      .filter(|(k, _)| k.starts_with(prefix))
+                      .map(|(k, _)| k.clone())
+                      .collect();
+                  
+                  for k in keys_to_remove {
+                      cache.pop(&k);
+                  }
+              } else {
+                  cache.pop(pattern);
+              }
+          }
+          Ok(())
+      }
+
       async fn exists(&self, key: &str) -> Result<bool> {
           let shard_idx = self.get_shard_index(key);
-          let cache = self.shards[shard_idx].read().await;
-          Ok(cache.contains(key))
+          let mut cache = self.shards[shard_idx].write().await;
+          
+          // Fix #70: exists() must check expiration
+          if let Some(entry) = cache.get(key) {
+              if entry.is_expired() {
+                  cache.pop(key);
+                  return Ok(false);
+              }
+              Ok(true)
+          } else {
+              Ok(false)
+          }
       }
 
       async fn clear(&self) -> Result<()> {
@@ -127,4 +165,3 @@
           CacheTier::L1
       }
   }
-

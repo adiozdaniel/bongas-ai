@@ -18,6 +18,7 @@
       client: ConnectionManager,
       circuit_breaker: Arc<CircuitBreaker>,
       metrics: Arc<CacheMetrics>,
+      prefix: String,
   }
 
   impl RedisCache {
@@ -42,7 +43,13 @@
               client: conn_manager,
               circuit_breaker,
               metrics,
+              // Fix #69: Namespace keys to avoid wiping other Redis data (like rate limits)
+              prefix: "bongas:cache:".to_string(),
           })
+      }
+
+      fn prefixed_key(&self, key: &str) -> String {
+          format!("{}{}", self.prefix, key)
       }
   }
 
@@ -53,7 +60,7 @@
           T: for<'de> Deserialize<'de> + Send,
       {
           let mut conn = self.client.clone();
-          let key_owned = key.to_string();
+          let key_owned = self.prefixed_key(key);
 
           let result = self.circuit_breaker.call(|| async {
               let value: Option<Vec<u8>> = conn.get(&key_owned).await.map_err(RedisError::from)?;
@@ -84,7 +91,7 @@
       {
           let serialized = bincode::serialize(value)?;
           let mut conn = self.client.clone();
-          let key_owned = key.to_string();
+          let key_owned = self.prefixed_key(key);
           let ttl_secs = ttl.as_secs();
 
           let result = self.circuit_breaker.call(|| async {
@@ -103,7 +110,7 @@
 
       async fn delete(&self, key: &str) -> Result<()> {
           let mut conn = self.client.clone();
-          let key_owned = key.to_string();
+          let key_owned = self.prefixed_key(key);
 
           let result = self.circuit_breaker.call(|| async {
               conn.del::<_, ()>(&key_owned).await.map_err(RedisError::from)?;
@@ -117,9 +124,41 @@
           Ok(())
       }
 
+      async fn delete_pattern(&self, pattern: &str) -> Result<()> {
+          let mut conn = self.client.clone();
+          let full_pattern = self.prefixed_key(pattern);
+
+          // Fix #10: Use EVAL with Lua script for atomic SCAN + DEL
+          // Re-implementing with a safer SCAN approach for large datasets if needed,
+          // but for now KEYS + DEL in Lua is better than wildcard DEL (which doesn't exist).
+          let result = self.circuit_breaker.call(|| async {
+              let script = redis::Script::new(r#"
+                  local keys = redis.call('KEYS', ARGV[1])
+                  if #keys > 0 then
+                      return redis.call('DEL', unpack(keys))
+                  else
+                      return 0
+                  end
+              "#);
+              
+              script.arg(&full_pattern)
+                  .invoke_async::<()>(&mut conn)
+                  .await
+                  .map_err(RedisError::from)?;
+              
+              Ok::<_, RedisError>(())
+          }).await;
+
+          if result.is_err() {
+              self.metrics.record_error();
+          }
+
+          Ok(())
+      }
+
       async fn exists(&self, key: &str) -> Result<bool> {
           let mut conn = self.client.clone();
-          let key_owned = key.to_string();
+          let key_owned = self.prefixed_key(key);
 
           let result = self.circuit_breaker.call(|| async {
               let exists: bool = conn.exists(&key_owned).await.map_err(RedisError::from)?;
@@ -136,21 +175,8 @@
       }
 
       async fn clear(&self) -> Result<()> {
-          let mut conn = self.client.clone();
-
-          let result = self.circuit_breaker.call(|| async {
-              redis::cmd("FLUSHDB")
-                  .query_async::<()>(&mut conn)
-                  .await
-                  .map_err(RedisError::from)?;
-              Ok::<_, RedisError>(())
-          }).await;
-
-          if result.is_err() {
-              self.metrics.record_error();
-          }
-
-          Ok(())
+          // Fix #69: clear() should only clear our namespace, not the whole DB
+          self.delete_pattern("*").await
       }
 
       fn name(&self) -> &'static str {

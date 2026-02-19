@@ -18,6 +18,7 @@
   //! - **Composite**: `AppError` aggregates all domain errors into a single type.
 
   use std::time::{Duration, Instant};
+  use std::sync::Arc;
   use thiserror::Error;
 
   // ─── Error Classification (Strategy Pattern) ────────────────────────────────
@@ -388,10 +389,10 @@
       }
   }
 
-  #[derive(Debug, Error)]
+  #[derive(Debug, Error, Clone)]
   pub enum PostgresError {
       #[error("postgres query failed: {message}")]
-      Query { message: String, #[source] source: Option<Box<dyn std::error::Error + Send + Sync>> },
+      Query { message: String, #[source] source: Option<Arc<dyn std::error::Error + Send + Sync>> },
       #[error("postgres pool exhausted")]
       PoolExhausted,
       #[error("postgres operation timed out after {0:?}")]
@@ -399,9 +400,11 @@
       #[error("postgres migration failed: {0}")]
       Migration(String),
       #[error("postgres connection failed: {message}")]
-      Connection { message: String, #[source] source: Option<Box<dyn std::error::Error + Send + Sync>> },
+      Connection { message: String, #[source] source: Option<Arc<dyn std::error::Error + Send + Sync>> },
       #[error("postgres constraint violation: {0}")]
       ConstraintViolation(String),
+      #[error("postgres circuit breaker is open")]
+      CircuitOpen,
   }
 
   impl ErrorClassifier for PostgresError {
@@ -413,6 +416,7 @@
               PostgresError::Migration(_) => ErrorClassification::Permanent,
               PostgresError::Connection { .. } => ErrorClassification::Transient,
               PostgresError::ConstraintViolation(_) => ErrorClassification::Permanent,
+              PostgresError::CircuitOpen => ErrorClassification::Overload,
           }
       }
   }

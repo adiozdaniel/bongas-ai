@@ -50,6 +50,13 @@ impl CacheStrategy for CacheLayer {
         }
     }
 
+    async fn delete_pattern(&self, pattern: &str) -> Result<()> {
+        match self {
+            CacheLayer::Lru(cache) => cache.delete_pattern(pattern).await,
+            CacheLayer::Redis(cache) => cache.delete_pattern(pattern).await,
+        }
+    }
+
     async fn exists(&self, key: &str) -> Result<bool> {
         match self {
             CacheLayer::Lru(cache) => cache.exists(key).await,
