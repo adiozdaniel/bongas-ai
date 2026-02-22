@@ -12,7 +12,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::mpsc;
 use tokio::time::Duration;
-use tracing::{info, error, warn};
+use tracing::{info, error, warn, debug};
 
 use crate::circuit_breaker::{CircuitBreakerRegistry, CircuitBreakerId, CircuitBreakerConfig};
 use crate::error::{ErrorClassification, ErrorClassifier};
@@ -125,14 +125,17 @@ impl KafkaSource {
             &self.config.notification_topic,
         ];
 
-        let mut new_topics = Vec::new();
+        let mut topic_names = Vec::new();
         for topic in topics {
-            new_topics.push(NewTopic::new(topic, 1, TopicReplication::Fixed(1)));
-            new_topics.push(NewTopic::new(&format!("{}.dlq", topic), 1, TopicReplication::Fixed(1)));
+            topic_names.push(topic.clone());
+            topic_names.push(format!("{}.dlq", topic));
         }
+        topic_names.push("recommendations.sync".to_string());
 
-        // Also ensure the recommendation sync topic exists
-        new_topics.push(NewTopic::new("recommendations.sync", 1, TopicReplication::Fixed(1)));
+        let mut new_topics = Vec::new();
+        for name in &topic_names {
+            new_topics.push(NewTopic::new(name, 1, TopicReplication::Fixed(1)));
+        }
 
         let options = AdminOptions::new().operation_timeout(Some(Duration::from_secs(5)));
         
