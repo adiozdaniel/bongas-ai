@@ -210,7 +210,8 @@ impl KafkaSource {
                     let backoff = self.get_backoff_duration(count);
                     error!(
                         topic = %topic, 
-                        error = %e, 
+                        error_desc = %e,
+                        error_variant = ?e,
                         fail_count = count,
                         next_retry_secs = backoff.as_secs(),
                         "Failed to create Kafka consumer. Entering progressive backoff."
@@ -293,7 +294,8 @@ impl KafkaSource {
                                 let backoff = this.get_backoff_duration(count);
                                 error!(
                                     topic = %topic_name, 
-                                    error = %source, 
+                                    error_desc = %source,
+                                    error_variant = ?source,
                                     fail_count = count,
                                     next_retry_secs = backoff.as_secs(),
                                     "Kafka connection lost. Breaking consumer loop for backoff."
