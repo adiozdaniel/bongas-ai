@@ -28,6 +28,11 @@ use crate::middlewares::{
 use crate::config::{CompressionConfig, CorsConfig};
 use crate::circuit_breaker::CircuitBreakerRegistry;
 
+use crate::middlewares::metrics::MetricsCollector;
+use crate::engine::BongasEngine;
+use crate::config::AppConfig;
+use std::time::Instant;
+
 /// Apply the full middleware stack to a router.
 ///
 /// Middleware is applied in reverse order (outermost layer listed first):
@@ -40,12 +45,19 @@ use crate::circuit_breaker::CircuitBreakerRegistry;
 /// 7. Duration tracking
 /// 8. Endpoint metrics
 /// 9. Request tracing
+#[allow(clippy::too_many_arguments)]
 pub fn apply_middleware(
     router: Router,
     circuit_breaker_registry: Arc<CircuitBreakerRegistry>,
+    engine: Arc<BongasEngine>,
+    config: Arc<AppConfig>,
+    redis: Arc<redis::Client>,
+    rate_limiter: Arc<RateLimiter>,
+    metrics_collector: Arc<MetricsCollector>,
+    start_time: Arc<Instant>,
 ) -> Router {
     let endpoint_metrics = Arc::new(EndpointMetrics::new());
-    let resilience_middleware = Arc::new(ResilienceMiddleware::new(circuit_breaker_registry));
+    let resilience_middleware = Arc::new(ResilienceMiddleware::new(circuit_breaker_registry.clone()));
     let bulkhead_middleware = Arc::new(BulkheadMiddleware::with_defaults());
 
     router
@@ -97,6 +109,15 @@ pub fn apply_middleware(
 
         // 9. Request tracing
         .layer(TraceLayer::new_for_http())
+
+        // 10. Extension injection (Available to all of the above)
+        .layer(axum::Extension(engine))
+        .layer(axum::Extension(config))
+        .layer(axum::Extension(redis))
+        .layer(axum::Extension(rate_limiter))
+        .layer(axum::Extension(circuit_breaker_registry))
+        .layer(axum::Extension(metrics_collector))
+        .layer(axum::Extension(start_time))
 }
 
 /// Rate-limit middleware extracted as a named function for readability.
