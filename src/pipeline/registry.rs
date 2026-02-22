@@ -23,17 +23,20 @@ pub fn build_stage_registry() -> HashMap<String, Arc<dyn PipelineStage>> {
 
     // Category 2: ML Inference (8 stages) - WITH ONNX SUPPORT
     registry.insert("onnx_inference".into(), Arc::new(stages::ml::ONNXInferenceStage));
+    registry.insert("onnx_ranker".into(), Arc::new(stages::ml::ONNXInferenceStage)); // Alias for seed data
     registry.insert("onnx_inference_similarity".into(), Arc::new(stages::ml::ONNXInferenceSimilarityStage));
     registry.insert("ml_inference_two_tower".into(), Arc::new(stages::ml::MLInferenceTwoTowerStage));
     registry.insert("personalized_recommender".into(), Arc::new(stages::ml::MLInferenceTwoTowerStage)); // Alias for seed data
     registry.insert("ml_inference_bert4rec".into(), Arc::new(stages::ml::MLInferenceBERT4RecStage));
     registry.insert("ml_inference_similarity".into(), Arc::new(stages::ml::MLInferenceSimilarityStage));
+    registry.insert("vector_search".into(), Arc::new(stages::ml::MLInferenceSimilarityStage)); // Alias for seed data
     registry.insert("heuristic_aggregator".into(), Arc::new(stages::ml::HeuristicAggregatorStage));
     registry.insert("meta_scorer".into(), Arc::new(stages::ml::MetaScorerStage));
     registry.insert("multi_action_ranker".into(), Arc::new(stages::ml::MultiActionRankerStage));
 
     // Category 3: Filtering (12 stages)
     registry.insert("filter_already_watched".into(), Arc::new(stages::filter::FilterAlreadyWatchedStage));
+    registry.insert("staleness_filter".into(), Arc::new(stages::filter::FilterAlreadyWatchedStage)); // Alias for seed data
     registry.insert("filter_by_genre".into(), Arc::new(stages::filter::FilterByGenreStage));
     registry.insert("filter_by_age_rating".into(), Arc::new(stages::filter::FilterByAgeRatingStage));
     registry.insert("filter_by_language".into(), Arc::new(stages::filter::FilterByLanguageStage));
@@ -49,6 +52,7 @@ pub fn build_stage_registry() -> HashMap<String, Arc<dyn PipelineStage>> {
 
     // Category 4: Boosting/Scoring (10 stages)
     registry.insert("boost_by_recency".into(), Arc::new(stages::boost::BoostByRecencyStage));
+    registry.insert("business_logic".into(), Arc::new(stages::boost::BoostByRecencyStage)); // Alias for seed data
     registry.insert("boost_by_popularity".into(), Arc::new(stages::boost::BoostByPopularityStage));
     registry.insert("boost_trending".into(), Arc::new(stages::boost::BoostTrendingStage));
     registry.insert("boost_new_content".into(), Arc::new(stages::boost::BoostNewContentStage));
@@ -66,6 +70,7 @@ pub fn build_stage_registry() -> HashMap<String, Arc<dyn PipelineStage>> {
     registry.insert("diversify_by_release_year".into(), Arc::new(stages::diversify::DiversifyByReleaseYearStage));
     registry.insert("serendipity".into(), Arc::new(stages::diversify::SerendipityStage));
     registry.insert("diversify_mmr".into(), Arc::new(stages::diversify::DiversifyMMRStage));
+    registry.insert("diversity_reranker".into(), Arc::new(stages::diversify::DiversifyMMRStage)); // Alias for seed data
 
     // Category 6: Sorting/Limiting (5 stages)
     registry.insert("sort_by_score".into(), Arc::new(stages::sort::SortByScoreStage));
@@ -79,6 +84,7 @@ pub fn build_stage_registry() -> HashMap<String, Arc<dyn PipelineStage>> {
 
     // Category 8: Dynamic Stages (7 stages)
     registry.insert("collaborative_filtering".into(), Arc::new(dynamic_stages::collaborative_filtering::CollaborativeFilteringStage));
+    registry.insert("collaborative_filter".into(), Arc::new(dynamic_stages::collaborative_filtering::CollaborativeFilteringStage)); // Alias for seed data
     registry.insert("content_based".into(), Arc::new(dynamic_stages::content_based::ContentBasedStage));
     registry.insert("hybrid".into(), Arc::new(dynamic_stages::hybrid::HybridStage));
     registry.insert("dynamic_filters".into(), Arc::new(dynamic_stages::filters::DynamicFiltersStage));

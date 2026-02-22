@@ -12,13 +12,13 @@ use std::collections::HashMap;
 #[derive(Deserialize)]
 struct Params {
     /// Lambda parameter (0.0 = max diversity, 1.0 = max relevance)
-    #[serde(default = "default_lambda")]
+    #[serde(default = "default_lambda", alias = "diversity_factor")]
     lambda: f32,
     /// Feature to use for similarity: "genre", "embedding", "combined"
     #[serde(default = "default_feature")]
     similarity_feature: String,
     /// Maximum number of items to select
-    #[serde(default = "default_limit")]
+    #[serde(default = "default_limit", alias = "window")]
     limit: usize,
 }
 

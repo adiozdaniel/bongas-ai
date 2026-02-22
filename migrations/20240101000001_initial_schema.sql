@@ -202,6 +202,15 @@ CREATE INDEX idx_interactions_item ON user_interactions(item_id, created_at DESC
 CREATE INDEX idx_interactions_profile ON user_interactions(profile_id);
 
 -- ============================================================================
+-- 7a. user_arrival_patterns (Predictive Warmer)
+-- ============================================================================
+CREATE TABLE user_arrival_patterns (
+    user_id INTEGER PRIMARY KEY,
+    hour_mask BIGINT DEFAULT 0,
+    last_active_at TIMESTAMP DEFAULT NOW()
+);
+
+-- ============================================================================
 -- 8. recommendation_cache_l2 (Staging Manager)
 -- ============================================================================
 CREATE TABLE recommendation_cache_l2 (

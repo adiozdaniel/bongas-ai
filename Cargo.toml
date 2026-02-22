@@ -70,6 +70,7 @@ chrono = { version = "0.4", features = ["serde"] }
 
 # Misc
 uuid = { version = "1", features = ["v4", "serde"] }
+url = "2.5"
 lazy_static = "1.4"
 dashmap = "6"
 rand = "0.8"

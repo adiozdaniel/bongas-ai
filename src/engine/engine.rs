@@ -214,9 +214,17 @@ impl BongasEngine {
         let ch_config = config.clickhouse.clone();
         let clickhouse_fut: tokio::task::JoinHandle<Result<Option<Arc<clickhouse::Client>>, anyhow::Error>> = tokio::spawn(async move {
             if !ch_config.url.is_empty() {
-                info!("Establishing connection to ClickHouse at {}...", ch_config.url);
+                // Fix #4: Strip path from URL if present (ClickHouse client adds its own path based on database name)
+                let base_url = if let Ok(mut url) = url::Url::parse(&ch_config.url) {
+                    url.set_path("");
+                    url.to_string().trim_end_matches('/').to_string()
+                } else {
+                    ch_config.url.clone()
+                };
+
+                info!("Establishing connection to ClickHouse at {}...", base_url);
                 let client = clickhouse::Client::default()
-                    .with_url(&ch_config.url)
+                    .with_url(base_url)
                     .with_user(&ch_config.user)
                     .with_password(&ch_config.password)
                     .with_database(&ch_config.database);

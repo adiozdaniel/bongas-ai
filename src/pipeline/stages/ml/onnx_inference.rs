@@ -9,6 +9,7 @@ use tracing::{info, warn, debug};
 #[derive(Deserialize)]
 struct Params {
     /// Model name to use (e.g., "two_tower", "bert4rec")
+    #[serde(alias = "model")]
     model_name: String,
     /// Model format (for metadata purposes)
     #[serde(default = "default_model_format")]
@@ -17,6 +18,7 @@ struct Params {
     #[serde(default)]
     model_version: Option<String>,
     /// Maximum number of results to return
+    #[serde(alias = "limit")]
     top_k: usize,
     /// Batch size for inference (defaults to 64)
     #[serde(default = "default_batch_size")]
