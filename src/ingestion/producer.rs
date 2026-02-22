@@ -32,6 +32,9 @@ impl RecommendationProducer {
             .set("message.timeout.ms", "3600000") // 1 hour delivery timeout
             .set("compression.type", "gzip") // Use gzip instead of zstd for broader compatibility
             .set("linger.ms", "20")          // Better batching, lower IOPS cost
+            .set("security.protocol", "plaintext")
+            .set("api.version.request", "true")
+            .set("broker.address.family", "v4")
             .create();
 
         match result {

@@ -6,6 +6,7 @@
 use anyhow::Result;
 use rdkafka::config::ClientConfig;
 use rdkafka::consumer::{Consumer, StreamConsumer, CommitMode};
+use rdkafka::admin::{AdminClient, AdminOptions, NewTopic, TopicReplication};
 use rdkafka::Message;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -81,6 +82,9 @@ impl KafkaSource {
         let dlq_result: Result<FutureProducer, rdkafka::error::KafkaError> = ClientConfig::new()
             .set("bootstrap.servers", &config.brokers)
             .set("message.timeout.ms", "5000")
+            .set("security.protocol", "plaintext")
+            .set("api.version.request", "true")
+            .set("broker.address.family", "v4")
             .create();
 
         let dlq_producer = match dlq_result {
@@ -105,6 +109,55 @@ impl KafkaSource {
         CircuitBreakerId::new("ingestion:kafka")
     }
 
+    /// Ensure all required topics and their DLQs exist.
+    async fn ensure_topics(&self) -> Result<()> {
+        let admin_client: AdminClient<_> = ClientConfig::new()
+            .set("bootstrap.servers", &self.config.brokers)
+            .set("security.protocol", "plaintext")
+            .set("api.version.request", "true")
+            .set("broker.address.family", "v4")
+            .create()?;
+
+        let topics = vec![
+            &self.config.playback_topic,
+            &self.config.reaction_topic,
+            &self.config.profile_topic,
+            &self.config.notification_topic,
+        ];
+
+        let mut new_topics = Vec::new();
+        for topic in topics {
+            new_topics.push(NewTopic::new(topic, 1, TopicReplication::Fixed(1)));
+            new_topics.push(NewTopic::new(&format!("{}.dlq", topic), 1, TopicReplication::Fixed(1)));
+        }
+
+        // Also ensure the recommendation sync topic exists
+        new_topics.push(NewTopic::new("recommendations.sync", 1, TopicReplication::Fixed(1)));
+
+        let options = AdminOptions::new().operation_timeout(Some(Duration::from_secs(5)));
+        
+        match admin_client.create_topics(&new_topics, &options).await {
+            Ok(results) => {
+                for result in results {
+                    match result {
+                        Ok(t) => info!(topic = %t, "Created Kafka topic"),
+                        Err((t, rdkafka::types::RDKafkaErrorCode::TopicAlreadyExists)) => {
+                            debug!(topic = %t, "Kafka topic already exists");
+                        }
+                        Err((t, e)) => {
+                            warn!(topic = %t, error = ?e, "Failed to create Kafka topic");
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                warn!(error = ?e, "Failed to execute create_topics request. Broker might be unreachable or auto-topic-creation disabled.");
+            }
+        }
+
+        Ok(())
+    }
+
     /// Calculate backoff duration based on failure count
     fn get_backoff_duration(&self, fail_count: u64) -> Duration {
         match fail_count {
@@ -125,6 +178,9 @@ impl KafkaSource {
             .set("enable.auto.commit", "false")
             .set("auto.offset.reset", "earliest")
             .set("session.timeout.ms", "30000")
+            .set("security.protocol", "plaintext")
+            .set("api.version.request", "true")
+            .set("broker.address.family", "v4")
             .create()?;
 
         consumer.subscribe(&[topic])?;
@@ -269,6 +325,10 @@ impl ActivitySource for KafkaSource {
 
     async fn start(&self, sender: mpsc::Sender<UserActivity>) -> Result<()> {
         info!(brokers = %self.config.brokers, "Starting Kafka activity source with multi-topic isolation");
+
+        // 0. Ensure topics exist (Best effort - don't fail startup if this fails, 
+        // as some brokers might have auto-create or different permissions)
+        let _ = self.ensure_topics().await;
 
         // Use tokio::join! to run consumers concurrently without losing dyn compatibility
         // (Since ActivitySource::start now takes &self)
