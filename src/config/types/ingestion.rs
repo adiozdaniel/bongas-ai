@@ -27,7 +27,6 @@ use super::kafka::KafkaConfig;
 /// API source configuration
 #[derive(Debug, Clone)]
   pub struct ApiSourceConfig {
-      pub enabled: bool,
       pub rate_limit_per_second: u32,
       pub batch_size: usize,
   }
@@ -35,7 +34,6 @@ use super::kafka::KafkaConfig;
 /// ClickHouse polling source configuration
 #[derive(Debug, Clone)]
   pub struct ClickHouseSourceConfig {
-      pub enabled: bool,
       pub poll_interval_secs: u64,
       pub batch_size: usize,
       pub lookback_window_secs: u64,
@@ -56,7 +54,6 @@ use super::kafka::KafkaConfig;
   impl Default for ApiSourceConfig {
       fn default() -> Self {
           Self {
-              enabled: true,
               rate_limit_per_second: 1000,
               batch_size: 100,
           }
@@ -66,7 +63,6 @@ use super::kafka::KafkaConfig;
   impl Default for ClickHouseSourceConfig {
       fn default() -> Self {
           Self {
-              enabled: true,
               poll_interval_secs: 60,
               batch_size: 1000,
               lookback_window_secs: 300, // 5 minutes

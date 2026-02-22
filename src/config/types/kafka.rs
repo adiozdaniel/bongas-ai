@@ -10,7 +10,6 @@ use serde::{Deserialize, Serialize};
 /// group ID, and topic configurations.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KafkaConfig {
-    pub enabled: bool,
     pub brokers: String,
     pub group_id: String,
     pub profile_topic: String,
@@ -26,7 +25,6 @@ pub struct KafkaConfig {
 impl Default for KafkaConfig {
     fn default() -> Self {
         Self {
-            enabled: true,
             brokers: "localhost:9092".to_string(),
             group_id: "bongas-ai-consumers".to_string(),
             profile_topic: "user.profiles".to_string(),

@@ -21,8 +21,6 @@ use crate::config::types::ingestion as config_ingestion;
 pub struct ClickHouseSourceConfig {
     /// How often to poll (seconds).
     pub poll_interval_secs: u64,
-    /// Whether this source is enabled.
-    pub enabled: bool,
     /// Max events to fetch per poll.
     pub batch_size: u32,
 }
@@ -31,7 +29,6 @@ impl Default for ClickHouseSourceConfig {
     fn default() -> Self {
         Self {
             poll_interval_secs: 60,
-            enabled: true,
             batch_size: 1000,
         }
     }
@@ -41,7 +38,6 @@ impl From<config_ingestion::ClickHouseSourceConfig> for ClickHouseSourceConfig {
     fn from(config: config_ingestion::ClickHouseSourceConfig) -> Self {
         ClickHouseSourceConfig {
             poll_interval_secs: config.poll_interval_secs,
-            enabled: config.enabled,
             batch_size: config.batch_size as u32,
         }
     }
@@ -67,6 +63,7 @@ pub struct ClickHouseSource {
     errors: AtomicU64,
     /// Tracks the last processed event timestamp to avoid re-processing.
     last_checkpoint: tokio::sync::RwLock<chrono::DateTime<chrono::Utc>>,
+    fail_count: AtomicU64,
 }
 
 impl ClickHouseSource {
@@ -82,11 +79,24 @@ impl ClickHouseSource {
             messages_ingested: AtomicU64::new(0),
             errors: AtomicU64::new(0),
             last_checkpoint: tokio::sync::RwLock::new(chrono::Utc::now() - chrono::Duration::try_minutes(5).unwrap()),
+            fail_count: AtomicU64::new(0),
         }
     }
 
     fn breaker_id() -> CircuitBreakerId {
         CircuitBreakerId::new("ingestion:clickhouse")
+    }
+
+    /// Calculate backoff duration based on failure count
+    fn get_backoff_duration(&self, fail_count: u64) -> Duration {
+        match fail_count {
+            0 => Duration::from_secs(0),
+            1 => Duration::from_secs(300),   // 5 mins
+            2 => Duration::from_secs(600),   // 10 mins
+            3 => Duration::from_secs(900),   // 15 mins
+            4 => Duration::from_secs(10800), // 3 hours
+            _ => Duration::from_secs(86400), // Daily
+        }
     }
 
     /// Poll ClickHouse for recent interactions.
@@ -183,10 +193,6 @@ impl ActivitySource for ClickHouseSource {
     }
 
     async fn start(&self, sender: mpsc::Sender<UserActivity>) -> Result<()> {
-        if !self.config.enabled {
-            return Ok(());
-        }
-
         info!(
             poll_interval_secs = self.config.poll_interval_secs,
             "ClickHouse polling source started"
@@ -199,14 +205,23 @@ impl ActivitySource for ClickHouseSource {
 
             match self.poll_interactions(&sender).await {
                 Ok(count) => {
+                    self.fail_count.store(0, Ordering::Relaxed);
                     if count > 0 {
                         self.messages_ingested.fetch_add(count, Ordering::Relaxed);
                         info!(count, "ClickHouse backfill delivered activities");
                     }
                 }
                 Err(e) => {
-                    error!(error = %e, "ClickHouse poll failed");
+                    let count = self.fail_count.fetch_add(1, Ordering::Relaxed) + 1;
+                    let backoff = self.get_backoff_duration(count);
+                    error!(
+                        error = %e, 
+                        fail_count = count,
+                        next_retry_secs = backoff.as_secs(),
+                        "ClickHouse poll failed. Entering progressive backoff."
+                    );
                     self.errors.fetch_add(1, Ordering::Relaxed);
+                    tokio::time::sleep(backoff).await;
                 }
             }
         }

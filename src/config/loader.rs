@@ -148,8 +148,6 @@ impl ConfigLoader {
         // Ingestion
         let ingestion = IngestionConfig {
             kafka: KafkaConfig {
-                enabled: parse_bool("ingestion.kafka.enabled", true)
-                    .or_else(|_| parse_bool("kafka.enabled", true))?,
                 brokers: parse_val("kafka.brokers", "localhost:9092"),
                 group_id: parse_val("kafka.group_id", "bongas-ai-consumers"),
                 profile_topic: parse_val("kafka.profile_topic", "user.profiles"),
@@ -162,12 +160,10 @@ impl ConfigLoader {
                 retry_backoff: parse_u64("kafka.retry_backoff", 1000)?,
             },
             api: ApiSourceConfig {
-                enabled: parse_bool("ingestion.api.enabled", true)?,
                 rate_limit_per_second: parse_u64("ingestion.api.rate_limit_per_second", 1000)? as u32,
                 batch_size: parse_u32("ingestion.api.batch_size", 100)? as usize,
             },
             clickhouse: ClickHouseSourceConfig {
-                enabled: parse_bool("ingestion.clickhouse.enabled", true)?,
                 poll_interval_secs: parse_u64("ingestion.clickhouse.poll_interval_secs", 60)?,
                 batch_size: parse_u32("ingestion.clickhouse.batch_size", 1000)? as usize,
                 lookback_window_secs: parse_u64("ingestion.clickhouse.lookback_window_secs", 300)?,

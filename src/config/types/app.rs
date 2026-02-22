@@ -168,22 +168,14 @@ impl AppConfig {
 
         }
 
-        if self.ingestion.kafka.enabled {
-
+        if !self.ingestion.kafka.brokers.is_empty() {
             services.push("ingestion:kafka");
-
         }
 
-        if self.ingestion.api.enabled {
+        services.push("ingestion:api");
 
-            services.push("ingestion:api");
-
-        }
-
-        if self.ingestion.clickhouse.enabled {
-
+        if !self.clickhouse.url.is_empty() {
             services.push("ingestion:clickhouse");
-
         }
 
         if self.circuit_breaker.enabled {

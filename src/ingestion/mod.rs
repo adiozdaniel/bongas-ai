@@ -88,7 +88,7 @@ impl IngestionManager {
         // ── Build sources ───────────────────────────────────────────────
         let mut all_sources: Vec<Arc<dyn ActivitySource>> = Vec::new();
 
-        // 1. Kafka source (if brokers configured)
+        // 1. Kafka source (auto-enable if brokers configured)
         if !self.config.kafka.brokers.is_empty() {
             let kafka = Arc::new(KafkaSource::new(
                 self.config.kafka.clone().into(),
@@ -104,11 +104,13 @@ impl IngestionManager {
                 }
             }));
 
-            info!("Kafka activity source enabled");
+            info!("Kafka activity source enabled (auto-detected brokers)");
+        } else {
+            info!("Kafka activity source disabled (no brokers configured)");
         }
 
-        // 2. API source
-        if self.config.api.enabled {
+        // 2. API source (Always enabled)
+        {
             all_sources.push(self.api_source.clone());
 
             let tx = sender.clone();
@@ -122,7 +124,7 @@ impl IngestionManager {
             info!("API activity source enabled");
         }
 
-        // 3. ClickHouse polling source
+        // 3. ClickHouse polling source (auto-enable if client and URL provided)
         if let Some(ref client) = self.clickhouse_client {
             let clickhouse = Arc::new(ClickHouseSource::new(
                 self.config.clickhouse.clone().into(),
@@ -139,9 +141,9 @@ impl IngestionManager {
                 }
             }));
 
-            info!("ClickHouse polling enabled");
+            info!("ClickHouse polling enabled (auto-detected client)");
         } else {
-            warn!("ClickHouse client not provided, ClickHouse polling source disabled");
+            info!("ClickHouse polling disabled (no client/URL provided)");
         }
 
         // ── Start processor ─────────────────────────────────────────────
@@ -182,7 +184,7 @@ impl IngestionManager {
         let mut all_sources: Vec<Arc<dyn ActivitySource>> = Vec::new();
         let mut handles: Vec<JoinHandle<()>> = Vec::new();
 
-        // 1. Kafka source (if brokers configured)
+        // 1. Kafka source (auto-enable if brokers configured)
         if !config.kafka.brokers.is_empty() {
             let kafka = Arc::new(KafkaSource::new(
                 config.kafka.clone().into(),
@@ -198,14 +200,14 @@ impl IngestionManager {
                 }
             }));
 
-            info!("Kafka activity source enabled");
+            info!("Kafka activity source enabled (auto-detected brokers)");
         } else {
             info!("Kafka activity source disabled (no brokers configured)");
         }
 
-        // 2. API source (always created — handlers may call ingest())
+        // 2. API source (Always created — handlers may call ingest())
         let api_source = Arc::new(ApiSource::new());
-        if config.api.enabled {
+        {
             all_sources.push(api_source.clone());
 
             let tx = sender.clone();

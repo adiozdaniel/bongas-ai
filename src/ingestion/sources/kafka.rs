@@ -50,6 +50,7 @@ pub struct KafkaSource {
     messages_ingested: AtomicU64,
     errors: AtomicU64,
     dlq_producer: Option<FutureProducer>,
+    fail_count: AtomicU64,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -96,11 +97,24 @@ impl KafkaSource {
             messages_ingested: AtomicU64::new(0),
             errors: AtomicU64::new(0),
             dlq_producer,
+            fail_count: AtomicU64::new(0),
         }
     }
 
     fn breaker_id() -> CircuitBreakerId {
         CircuitBreakerId::new("ingestion:kafka")
+    }
+
+    /// Calculate backoff duration based on failure count
+    fn get_backoff_duration(&self, fail_count: u64) -> Duration {
+        match fail_count {
+            0 => Duration::from_secs(0),
+            1 => Duration::from_secs(300),  // 5 mins
+            2 => Duration::from_secs(600),  // 10 mins
+            3 => Duration::from_secs(900),  // 15 mins
+            4 => Duration::from_secs(10800), // 3 hours
+            _ => Duration::from_secs(86400), // Daily
+        }
     }
 
     /// Create a consumer for a specific topic.
@@ -126,80 +140,121 @@ impl KafkaSource {
     ) where
         F: Fn(&[u8]) -> Option<UserActivity> + Send + Sync + 'static,
     {
-        let consumer = match self.create_consumer(&topic) {
-            Ok(c) => Arc::new(c),
-            Err(e) => {
-                error!(topic = %topic, error = %e, "Failed to create Kafka consumer");
-                self.errors.fetch_add(1, Ordering::Relaxed);
-                return;
-            }
-        };
-
-        let breaker = self.circuit_breaker_registry.get_or_create(
-            Self::breaker_id(),
-            CircuitBreakerConfig::default(),
-        );
-
-        info!(topic = %topic, "Kafka consumer started with DLQ protection and Circuit Breaker");
-
         loop {
-            let consumer_inner = consumer.clone();
-            let sender_inner = sender.clone();
-            let parse_inner = &parse;
-            let topic_name = topic.clone();
-            let this = self;
-
-            let result = breaker.call(|| async move {
-                let message = tokio::time::timeout(Duration::from_millis(500), consumer_inner.recv())
-                    .await
-                    .map_err(|_| rdkafka::error::KafkaError::NoMessageReceived)??;
-
-                let payload = message.payload().ok_or_else(|| KafkaSourceError::Poison(Vec::new()))?;
-                
-                let activity = parse_inner(payload).ok_or_else(|| KafkaSourceError::Poison(payload.to_vec()))?;
-                
-                sender_inner.send(activity).await.map_err(|_| KafkaSourceError::ChannelFull)?;
-                
-                let _ = consumer_inner.commit_message(&message, CommitMode::Async);
-                Ok::<(), KafkaSourceError>(())
-            }).await;
-
-            match result {
-                Ok(_) => {
-                    self.messages_ingested.fetch_add(1, Ordering::Relaxed);
-                }
-                Err(crate::circuit_breaker::CircuitBreakerError::ExecutionFailed { source, classification, .. }) => {
-                    this.errors.fetch_add(1, Ordering::Relaxed);
-                    if classification == ErrorClassification::Permanent {
-                        // Fix #25, M3, N3: Forward original payload to DLQ
-                        warn!(topic = %topic_name, "Poison message detected, moving to DLQ");
-                        
-                        if let Some(ref producer) = this.dlq_producer {
-                            let payload = if let KafkaSourceError::Poison(ref p) = source {
-                                p.as_slice()
-                            } else {
-                                b"unparseable"
-                            };
-
-                            let dlq_topic = format!("{}.dlq", topic_name);
-                            let record = FutureRecord::to(&dlq_topic)
-                                .payload(payload)
-                                .key("poison_key");
-                            
-                            let _ = producer.send::<str, [u8], _>(record, Duration::from_secs(0));
-                        }
-                    } else {
-                        error!(topic = %topic_name, error = %source, "Kafka processing error");
-                        tokio::time::sleep(Duration::from_millis(100)).await;
-                    }
-                }
-                Err(crate::circuit_breaker::CircuitBreakerError::Rejected { .. }) => {
-                    warn!(topic = %topic_name, "Kafka circuit open, pausing consumption");
-                    tokio::time::sleep(Duration::from_secs(5)).await;
+            let consumer = match self.create_consumer(&topic) {
+                Ok(c) => {
+                    self.fail_count.store(0, Ordering::Relaxed);
+                    Arc::new(c)
                 }
                 Err(e) => {
-                    // Fix #L4: Log unhandled breaker errors
-                    error!(topic = %topic_name, error = ?e, "Unhandled circuit breaker error in Kafka source");
+                    let count = self.fail_count.fetch_add(1, Ordering::Relaxed) + 1;
+                    let backoff = self.get_backoff_duration(count);
+                    error!(
+                        topic = %topic, 
+                        error = %e, 
+                        fail_count = count,
+                        next_retry_secs = backoff.as_secs(),
+                        "Failed to create Kafka consumer. Entering progressive backoff."
+                    );
+                    tokio::time::sleep(backoff).await;
+                    continue;
+                }
+            };
+
+            let breaker = self.circuit_breaker_registry.get_or_create(
+                Self::breaker_id(),
+                CircuitBreakerConfig::default(),
+            );
+
+            info!(topic = %topic, "Kafka consumer started with DLQ protection and Circuit Breaker");
+
+            loop {
+                let consumer_inner = consumer.clone();
+                let sender_inner = sender.clone();
+                let parse_inner = &parse;
+                let topic_name = topic.clone();
+                let this = self;
+
+                let result = breaker.call(|| async move {
+                    let message = tokio::time::timeout(Duration::from_millis(500), consumer_inner.recv())
+                        .await
+                        .map_err(|_| rdkafka::error::KafkaError::NoMessageReceived)??;
+
+                    let payload = message.payload().ok_or_else(|| KafkaSourceError::Poison(Vec::new()))?;
+                    
+                    let activity = parse_inner(payload).ok_or_else(|| KafkaSourceError::Poison(payload.to_vec()))?;
+                    
+                    sender_inner.send(activity).await.map_err(|_| KafkaSourceError::ChannelFull)?;
+                    
+                    let _ = consumer_inner.commit_message(&message, CommitMode::Async);
+                    Ok::<(), KafkaSourceError>(())
+                }).await;
+
+                match result {
+                    Ok(_) => {
+                        this.fail_count.store(0, Ordering::Relaxed);
+                        this.messages_ingested.fetch_add(1, Ordering::Relaxed);
+                    }
+                    Err(crate::circuit_breaker::CircuitBreakerError::ExecutionFailed { source, classification, .. }) => {
+                        this.errors.fetch_add(1, Ordering::Relaxed);
+                        
+                        if let KafkaSourceError::Receive(rdkafka::error::KafkaError::NoMessageReceived) = source {
+                            // Normal timeout, just continue
+                            continue;
+                        }
+
+                        if classification == ErrorClassification::Permanent {
+                            // Fix #25, M3, N3: Forward original payload to DLQ
+                            warn!(topic = %topic_name, "Poison message detected, moving to DLQ");
+                            
+                            if let Some(ref producer) = this.dlq_producer {
+                                let payload = if let KafkaSourceError::Poison(ref p) = source {
+                                    p.as_slice()
+                                } else {
+                                    b"unparseable"
+                                };
+
+                                let dlq_topic = format!("{}.dlq", topic_name);
+                                let record = FutureRecord::to(&dlq_topic)
+                                    .payload(payload)
+                                    .key("poison_key");
+                                
+                                let _ = producer.send::<str, [u8], _>(record, Duration::from_secs(0));
+                            }
+                        } else {
+                            // Check if this is a connection-level failure that warrants re-creating the consumer
+                            // We treat all KafkaErrors that aren't NoMessageReceived as potential connection issues
+                            let is_connection_error = match &source {
+                                KafkaSourceError::Receive(ke) => !matches!(ke, rdkafka::error::KafkaError::NoMessageReceived),
+                                _ => false,
+                            };
+
+                            if is_connection_error {
+                                let count = this.fail_count.fetch_add(1, Ordering::Relaxed) + 1;
+                                let backoff = this.get_backoff_duration(count);
+                                error!(
+                                    topic = %topic_name, 
+                                    error = %source, 
+                                    fail_count = count,
+                                    next_retry_secs = backoff.as_secs(),
+                                    "Kafka connection lost. Breaking consumer loop for backoff."
+                                );
+                                tokio::time::sleep(backoff).await;
+                                break; // Break inner loop to re-create consumer
+                            } else {
+                                error!(topic = %topic_name, error = %source, "Kafka processing error");
+                                tokio::time::sleep(Duration::from_millis(100)).await;
+                            }
+                        }
+                    }
+                    Err(crate::circuit_breaker::CircuitBreakerError::Rejected { .. }) => {
+                        warn!(topic = %topic_name, "Kafka circuit open, pausing consumption");
+                        tokio::time::sleep(Duration::from_secs(5)).await;
+                    }
+                    Err(e) => {
+                        // Fix #L4: Log unhandled breaker errors
+                        error!(topic = %topic_name, error = ?e, "Unhandled circuit breaker error in Kafka source");
+                    }
                 }
             }
         }

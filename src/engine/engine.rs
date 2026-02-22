@@ -118,9 +118,8 @@ impl BongasEngine {
         engine.reload_scenarios().await?;
 
         // Start ingestion if enabled
-        if engine.config.ingestion.kafka.enabled || 
-           engine.config.ingestion.api.enabled || 
-           engine.config.ingestion.clickhouse.enabled {
+        if !engine.config.ingestion.kafka.brokers.is_empty() || 
+           !engine.config.clickhouse.url.is_empty() {
             engine.start_ingestion(&engine.config.ingestion).await?;
         }
 
@@ -426,14 +425,9 @@ impl BongasEngine {
     /// Start activity ingestion from all configured sources
     pub async fn start_ingestion(
         self: &Arc<Self>,
-        config: &crate::config::IngestionConfig,
+        _config: &crate::config::IngestionConfig,
     ) -> Result<()> {
-        info!(
-            kafka_enabled = config.kafka.enabled,
-            api_enabled = config.api.enabled,
-            clickhouse_enabled = config.clickhouse.enabled,
-            "Starting activity ingestion..."
-        );
+        info!("Starting activity ingestion...");
 
         let mut manager = self.ingestion_manager.write().await;
         manager.start().await?;
