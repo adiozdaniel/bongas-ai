@@ -33,7 +33,7 @@ pub trait PipelineStage: Send + Sync {
 
     /// The type of data this stage expects as input.
     fn input_type(&self) -> StageDataKind {
-        StageDataKind::ScoredItems
+        StageDataKind::Empty
     }
 
     /// The type of data this stage produces as output.

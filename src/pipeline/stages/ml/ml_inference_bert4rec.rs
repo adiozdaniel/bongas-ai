@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use anyhow::Result;
 use serde_json::{Value as JsonValue, json};
 use serde::Deserialize;
-use crate::pipeline::{PipelineStage, ScoredItem};
+use crate::pipeline::{PipelineStage, ScoredItem, StageDataKind};
 use crate::pipeline::context::ExecutionContext;
 use crate::db::repositories::item_feature_service::ItemFeatureRow;
 use tracing::info;
@@ -10,6 +10,7 @@ use tracing::info;
 #[derive(Deserialize)]
 struct Params {
     sequence_length: usize,
+    #[serde(alias = "limit")]
     top_k: usize,
 
     use_onnx: Option<bool>,
@@ -23,11 +24,15 @@ impl PipelineStage for MLInferenceBERT4RecStage {
         "ml_inference_bert4rec"
     }
 
+    fn input_type(&self) -> StageDataKind {
+        StageDataKind::Empty
+    }
+
     async fn execute(
         &self,
         context: &ExecutionContext,
         params: &JsonValue,
-        _input: Vec<ScoredItem>,
+        mut input: Vec<ScoredItem>,
     ) -> Result<Vec<ScoredItem>> {
         let params: Params = serde_json::from_value(params.clone())?;
         let user_id = context.user_id.ok_or_else(|| anyhow::anyhow!("user_id required"))?;
@@ -38,8 +43,28 @@ impl PipelineStage for MLInferenceBERT4RecStage {
             user_id = user_id,
             sequence_length = params.sequence_length,
             use_onnx = use_onnx,
+            input_count = input.len(),
             "Running BERT4Rec inference"
         );
+
+        // If used as a retrieval stage (Empty input), fetch candidates first
+        if input.is_empty() {
+            let candidates = context.item_feature_service
+                .get_popular_content(0, (params.top_k * 5) as i64)
+                .await?;
+            
+            input = candidates.into_iter().map(|row| {
+                ScoredItem::new(
+                    row.item_id,
+                    row.trending_score,
+                    json!({
+                        "view_count": row.view_count,
+                        "age_rating": row.age_rating,
+                        "genres": row.genres,
+                    }),
+                )
+            }).collect();
+        }
 
         // Get user's recent interaction sequence
         let sequence = context.item_feature_service
@@ -54,14 +79,17 @@ impl PipelineStage for MLInferenceBERT4RecStage {
         // For now, fetch items similar to the most recent items in the sequence
         let recent_items = &sequence[..std::cmp::min(5, sequence.len())];
 
-        let all_item_ids_in_input: Vec<i32> = _input.iter().map(|item| item.item_id).collect(); // Use _input here
-        let all_item_features_map = context.item_feature_service
-            .get_item_features_batch(&all_item_ids_in_input)
+        let mut candidates_features: Vec<ItemFeatureRow> = Vec::new();
+        let item_ids: Vec<i32> = input.iter().map(|item| item.item_id).collect();
+        let item_features_map = context.item_feature_service
+            .get_item_features_batch(&item_ids)
             .await?;
 
-        let mut candidates_features: Vec<ItemFeatureRow> = all_item_features_map.into_values()
-            .filter(|feature_row| !recent_items.contains(&feature_row.item_id))
-            .collect();
+        for (_, row) in item_features_map {
+             if !recent_items.contains(&row.item_id) {
+                 candidates_features.push(row);
+             }
+        }
 
         // The original query ordered by trending_score DESC LIMIT $2.
         // We apply this in-memory for now.

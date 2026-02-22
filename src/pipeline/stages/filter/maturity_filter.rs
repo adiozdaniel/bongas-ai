@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use anyhow::Result;
 use serde_json::Value as JsonValue;
-use crate::pipeline::{PipelineStage, ScoredItem, MaturityRating};
+use crate::pipeline::{PipelineStage, ScoredItem, MaturityRating, StageDataKind};
 use crate::pipeline::context::ExecutionContext;
 use tracing::debug;
 
@@ -15,6 +15,10 @@ pub struct MaturityFilterStage;
 impl PipelineStage for MaturityFilterStage {
     fn name(&self) -> &str {
         "maturity_filter"
+    }
+
+    fn input_type(&self) -> StageDataKind {
+        StageDataKind::ScoredItems
     }
 
     async fn execute(

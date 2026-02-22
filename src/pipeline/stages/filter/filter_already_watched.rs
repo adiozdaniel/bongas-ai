@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use anyhow::Result;
 use serde_json::Value as JsonValue;
-use crate::pipeline::{PipelineStage, ScoredItem};
+use crate::pipeline::{PipelineStage, ScoredItem, StageDataKind};
 use crate::pipeline::context::ExecutionContext;
 use std::collections::HashSet;
 
@@ -11,6 +11,10 @@ pub struct FilterAlreadyWatchedStage;
 impl PipelineStage for FilterAlreadyWatchedStage {
     fn name(&self) -> &str {
         "filter_already_watched"
+    }
+
+    fn input_type(&self) -> StageDataKind {
+        StageDataKind::ScoredItems
     }
 
     async fn execute(

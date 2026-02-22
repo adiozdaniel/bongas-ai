@@ -51,12 +51,10 @@ impl From<config_ingestion::ClickHouseSourceConfig> for ClickHouseSourceConfig {
 struct ClickHouseEvent {
     pub user_id: i32,
     pub item_id: i32,
-    pub event_type: String,
-    pub watch_duration: i32,
-    pub watch_percentage: f32,
-    pub completed: bool,
-    pub reaction_type: String,
-    pub event_time: u32,
+    pub interaction_type: String,
+    pub watch_duration_seconds: i32,
+    pub rating: f32,
+    pub created_at: u64,
 }
 
 /// ClickHouse-based activity source for backfill/fallback.
@@ -103,16 +101,16 @@ impl ClickHouseSource {
             return Ok(0);
         }
 
-        let query = "SELECT user_id, item_id, event_type, watch_duration, watch_percentage, \
-                     completed, reaction_type, toUnixTimestamp(event_time) as event_time \
-                     FROM user_events \
-                     WHERE event_time > toDateTime(?) \
-                     ORDER BY event_time ASC \
+        let query = "SELECT user_id, item_id, interaction_type, watch_duration_seconds, \
+                     rating, created_at \
+                     FROM user_interactions \
+                     WHERE created_at > ? \
+                     ORDER BY created_at ASC \
                      LIMIT ?";
 
         let rows: Vec<ClickHouseEvent> = self.client
             .query(query)
-            .bind(checkpoint.timestamp() as u32)
+            .bind(checkpoint.timestamp() as u64)
             .bind(self.config.batch_size)
             .fetch_all()
             .await?;
@@ -121,33 +119,29 @@ impl ClickHouseSource {
         let mut latest_timestamp = checkpoint;
 
         for row in rows {
-            let event_time = chrono::DateTime::from_timestamp(row.event_time as i64, 0)
+            let event_time = chrono::DateTime::from_timestamp(row.created_at as i64, 0)
                 .unwrap_or_else(|| chrono::Utc::now());
 
             if event_time > latest_timestamp {
                 latest_timestamp = event_time;
             }
 
-            let activity = match row.event_type.as_str() {
+            let activity = match row.interaction_type.as_str() {
                 "playback" => UserActivity::Playback {
                     user_id: row.user_id,
                     item_id: row.item_id,
                     session_id: "clickhouse_backfill".to_string(),
-                    watch_duration_seconds: row.watch_duration,
-                    total_duration_seconds: if row.watch_percentage > 0.0 {
-                        (row.watch_duration as f32 / row.watch_percentage) as i32
-                    } else {
-                        row.watch_duration
-                    },
-                    watch_percentage: row.watch_percentage,
-                    completed: row.completed,
+                    watch_duration_seconds: row.watch_duration_seconds,
+                    total_duration_seconds: row.watch_duration_seconds, // Fallback
+                    watch_percentage: 0.0, // Fallback
+                    completed: false, // Fallback
                     scenario_slug: None,
                     timestamp: event_time,
                 },
-                "reaction" => UserActivity::Reaction {
+                "like" | "dislike" => UserActivity::Reaction {
                     user_id: row.user_id,
                     item_id: row.item_id,
-                    reaction_type: row.reaction_type,
+                    reaction_type: row.interaction_type,
                     scenario_slug: None,
                     timestamp: event_time,
                 },

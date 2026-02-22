@@ -2,16 +2,16 @@ use async_trait::async_trait;
 use anyhow::Result;
 use serde_json::{Value as JsonValue, json};
 use serde::Deserialize;
-use crate::pipeline::{PipelineStage, ScoredItem};
+use crate::pipeline::{PipelineStage, ScoredItem, StageDataKind};
 use crate::pipeline::context::ExecutionContext;
 use tracing::info;
 
 #[derive(Deserialize)]
 struct Params {
-
+    #[serde(alias = "model")]
     model_name: Option<String>,
+    #[serde(alias = "limit")]
     top_k: usize,
-
     use_onnx: Option<bool>,
 }
 
@@ -23,17 +23,40 @@ impl PipelineStage for MLInferenceTwoTowerStage {
         "ml_inference_two_tower"
     }
 
+    fn input_type(&self) -> StageDataKind {
+        StageDataKind::Empty
+    }
+
     async fn execute(
         &self,
         context: &ExecutionContext,
         params: &JsonValue,
-        input: Vec<ScoredItem>,
+        mut input: Vec<ScoredItem>,
     ) -> Result<Vec<ScoredItem>> {
         let params: Params = serde_json::from_value(params.clone())?;
         let user_id = context.user_id.ok_or_else(|| anyhow::anyhow!("user_id required"))?;
         
         let model_name = params.model_name.unwrap_or_else(|| "two_tower_default".to_string());
         let use_onnx = params.use_onnx.unwrap_or(true);
+
+        // If used as a retrieval stage (Empty input), fetch candidates first
+        if input.is_empty() {
+            let candidates = context.item_feature_service
+                .get_popular_content(0, (params.top_k * 5) as i64)
+                .await?;
+            
+            input = candidates.into_iter().map(|row| {
+                ScoredItem::new(
+                    row.item_id,
+                    row.trending_score,
+                    json!({
+                        "view_count": row.view_count,
+                        "age_rating": row.age_rating,
+                        "genres": row.genres,
+                    }),
+                )
+            }).collect();
+        }
 
         info!(
             request_id = %context.request_id,

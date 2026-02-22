@@ -12,12 +12,13 @@ url = "redis://localhost:6379"
 pool_size = 10
 
 [clickhouse]
-url = "http://localhost:8123"
+url = "http://54.217.162.34:8123/?socket_timeout=60000&connection_timeout=30000&max_execution_time=60&retry_on_failure=2&failover=3"
 user = "default"
-password = ""
-database = "baze_analytics"
+password = "Zr4G3g6sjglvbrj9YkO3w1Q"
+database = "baze_reports"
 
 [kafka]
+enabled = false
 brokers = "localhost:9092"
 group_id = "bongas-ai-consumers"
 profile_topic = "profile.events"

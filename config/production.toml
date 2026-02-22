@@ -51,12 +51,13 @@ retry_backoff = 100
 # ]
 
 [clickhouse]
-url = "http://clickhouse.example.com:8123"
+url = "http://54.217.162.34:8123/?socket_timeout=60000&connection_timeout=30000&max_execution_time=60&retry_on_failure=2&failover=3"
 user = "default"
-password = ""
-database = "baze_analytics"
+password = "Zr4G3g6sjglvbrj9YkO3w1Q"
+database = "baze_reports"
 
 [kafka]
+enabled = false
 brokers = "kafka-1.example.com:9092,kafka-2.example.com:9092,kafka-3.example.com:9092"
 group_id = "bongas-ai-consumers"
 profile_topic = "profile.events"
