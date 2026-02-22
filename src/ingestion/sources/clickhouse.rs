@@ -52,6 +52,7 @@ struct ClickHouseEvent {
     pub user_id: i32,
     pub item_id: i32,
     pub interaction_type: String,
+    pub scenario_slug: String,
     pub watch_duration_seconds: i32,
     pub rating: f32,
     pub created_at: u64,
@@ -101,8 +102,8 @@ impl ClickHouseSource {
             return Ok(0);
         }
 
-        let query = "SELECT user_id, item_id, interaction_type, watch_duration_seconds, \
-                     rating, created_at \
+        let query = "SELECT user_id, item_id, interaction_type, scenario_slug, \
+                     watch_duration_seconds, rating, created_at \
                      FROM user_interactions \
                      WHERE created_at > ? \
                      ORDER BY created_at ASC \
@@ -126,6 +127,8 @@ impl ClickHouseSource {
                 latest_timestamp = event_time;
             }
 
+            let slug = if row.scenario_slug == "unknown" { None } else { Some(row.scenario_slug.clone()) };
+
             let activity = match row.interaction_type.as_str() {
                 "playback" => UserActivity::Playback {
                     user_id: row.user_id,
@@ -133,28 +136,28 @@ impl ClickHouseSource {
                     session_id: "clickhouse_backfill".to_string(),
                     watch_duration_seconds: row.watch_duration_seconds,
                     total_duration_seconds: row.watch_duration_seconds, // Fallback
-                    watch_percentage: 0.0, // Fallback
-                    completed: false, // Fallback
-                    scenario_slug: None,
+                    watch_percentage: (row.rating / 5.0).min(1.0), // Reconstruct from rating if possible
+                    completed: row.rating >= 4.5, // Heuristic from rating
+                    scenario_slug: slug,
                     timestamp: event_time,
                 },
                 "like" | "dislike" => UserActivity::Reaction {
                     user_id: row.user_id,
                     item_id: row.item_id,
                     reaction_type: row.interaction_type,
-                    scenario_slug: None,
+                    scenario_slug: slug,
                     timestamp: event_time,
                 },
                 "click" => UserActivity::Click {
                     user_id: row.user_id,
                     item_id: row.item_id,
-                    scenario_slug: None,
+                    scenario_slug: slug,
                     timestamp: event_time,
                 },
                 "impression" => UserActivity::Impression {
                     user_id: row.user_id,
                     item_id: row.item_id,
-                    scenario_slug: None,
+                    scenario_slug: slug,
                     timestamp: event_time,
                 },
                 _ => continue,
