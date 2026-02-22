@@ -6,7 +6,7 @@
 
   use axum::{
       body::Body,
-      extract::{Request, State},
+      extract::{Request, Extension},
       http::StatusCode,
       middleware::Next,
       response::{IntoResponse, Response},
@@ -66,7 +66,7 @@
 
       /// Middleware layer that limits concurrent requests.
       pub async fn layer(
-          State(state): State<Arc<Self>>,
+          Extension(state): Extension<Arc<Self>>,
           req: Request,
           next: Next,
       ) -> Response {

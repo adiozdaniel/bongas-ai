@@ -12,7 +12,7 @@
 
   use axum::{
       body::Body,
-      extract::{Request, State},
+      extract::{Request, Extension},
       http::StatusCode,
       middleware::Next,
       response::{IntoResponse, Response},
@@ -79,7 +79,7 @@
       /// All metrics recording is automatic via the Observer pattern - the CircuitBreaker
       /// emits events that are captured by ResilienceMetricsCollector.
       pub async fn layer(
-          State(middleware): State<Arc<Self>>,
+          Extension(middleware): Extension<Arc<Self>>,
           req: Request,
           next: Next,
       ) -> Response {

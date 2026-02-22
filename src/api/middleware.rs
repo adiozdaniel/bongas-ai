@@ -15,6 +15,7 @@ use axum::{
 use std::sync::Arc;
 use tower_http::trace::TraceLayer;
 use serde_json::json;
+use tracing::error;
 
 use crate::middlewares::{
     unified_error::unified_error_middleware,
@@ -58,7 +59,7 @@ pub fn apply_middleware(
         .layer(from_fn(move |req: Request<Body>, next: Next| {
             let mw = Arc::clone(&resilience_middleware);
             async move {
-                let state = axum::extract::State(mw);
+                let state = axum::extract::Extension(mw);
                 ResilienceMiddleware::layer(state, req, next).await
             }
         }))
@@ -67,7 +68,7 @@ pub fn apply_middleware(
         .layer(from_fn(move |req: Request<Body>, next: Next| {
             let mw = Arc::clone(&bulkhead_middleware);
             async move {
-                let state = axum::extract::State(mw);
+                let state = axum::extract::Extension(mw);
                 BulkheadMiddleware::layer(state, req, next).await
             }
         }))
@@ -100,7 +101,16 @@ pub fn apply_middleware(
 
 /// Rate-limit middleware extracted as a named function for readability.
 async fn rate_limit_layer(req: Request<Body>, next: Next) -> Response {
-    let rate_limiter = req.extensions().get::<Arc<RateLimiter>>().expect("RateLimiter extension missing").clone();
+    let rate_limiter = match req.extensions().get::<Arc<RateLimiter>>() {
+        Some(rl) => rl.clone(),
+        None => {
+            error!("RateLimiter extension missing in request extensions");
+            return Response::builder()
+                .status(StatusCode::INTERNAL_SERVER_ERROR)
+                .body(Body::from(json!({"error": "Internal server configuration error (RateLimiter missing)"}).to_string()))
+                .unwrap();
+        }
+    };
 
     // Use peer addr as primary IP source to prevent spoofing via X-Forwarded-For
     // In production, this should only trust X-Forwarded-For if it comes from a known proxy CIDR.
