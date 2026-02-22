@@ -92,15 +92,17 @@ impl AnalyticsSidecar {
             };
 
             // 1. Analyze Catalog Coverage (Blindness)
-            let blindness = self.get_catalog_blindness().await?;
+            // Fetch total active items from Postgres first
+            let total_active_items = engine.item_feature_service.get_active_item_count().await?;
+            let blindness = self.get_catalog_blindness(total_active_items).await?;
             if blindness > 0.6 { 
                 self.suggest_discovery_boost(&target_slug, blindness).await?;
             }
 
             // 2. Analyze Persona Churn (Drop in engagement)
-            let churned_profiles = self.get_persona_churn().await?;
-            for profile in churned_profiles {
-                self.suggest_retention_strategy(&target_slug, &profile).await?;
+            let churned_users = self.get_user_churn().await?;
+            for user_id in churned_users {
+                self.suggest_retention_strategy(&target_slug, user_id).await?;
             }
         } else {
             warn!("Analytics sidecar lost engine reference");
@@ -110,52 +112,51 @@ impl AnalyticsSidecar {
     }
 
     /// Calculate the percentage of items with 0 impressions in the last 24h.
-    async fn get_catalog_blindness(&self) -> Result<f64> {
-        let query = r#"
-            SELECT
-                (1 - (count(DISTINCT item_id) / GREATEST((SELECT count() FROM item_features WHERE is_active = true), 1))) as blindness
-            FROM user_interactions
-            WHERE created_at > (toUnixTimestamp(now()) - 86400)
-              AND interaction_type = 'impression'
-        "#;
+    async fn get_catalog_blindness(&self, total_active_items: i64) -> Result<f64> {
+        let query = format!(
+            "SELECT (1 - (count(DISTINCT item_id) / {})) as blindness \
+             FROM user_interactions \
+             WHERE created_at > (toUnixTimestamp(now()) - 86400) \
+               AND interaction_type = 'impression'",
+            total_active_items.max(1)
+        );
 
-        let res: f64 = self.clickhouse.query(query).fetch_one().await
+        let res: f64 = self.clickhouse.query(&query).fetch_one().await
             .context("Failed to fetch catalog blindness from ClickHouse")?;
 
         info!(blindness = format!("{:.2}%", res * 100.0), "Catalog coverage analysis complete");
         Ok(res)
     }
 
-    /// Identify profiles with >20% drop in session duration compared to last week's baseline.
-    async fn get_persona_churn(&self) -> Result<Vec<String>> {
+    /// Identify users with >20% drop in session duration compared to last week's baseline.
+    async fn get_user_churn(&self) -> Result<Vec<i32>> {
         let query = r#"
-            SELECT profile_id
+            SELECT user_id
             FROM user_interactions
             WHERE created_at > (toUnixTimestamp(now()) - 604800)
-              AND profile_id != ''
-            GROUP BY profile_id
+            GROUP BY user_id
             HAVING (avgIf(watch_duration_seconds, created_at > (toUnixTimestamp(now()) - 86400)) < 
                    (avgIf(watch_duration_seconds, created_at <= (toUnixTimestamp(now()) - 86400)) * 0.8))
         "#;
 
-        let results: Vec<String> = self.clickhouse.query(query).fetch_all().await
-            .context("Failed to fetch persona churn from ClickHouse")?;
+        let results: Vec<i32> = self.clickhouse.query(query).fetch_all().await
+            .context("Failed to fetch user churn from ClickHouse")?;
 
         if !results.is_empty() {
-            info!(count = results.len(), "Persona churn detected in multiple segments");
+            info!(count = results.len(), "Engagement drop detected for multiple users");
         }
         Ok(results)
     }
 
-    /// Insert a suggestion to switch to a retention-heavy pipeline for a specific profile.
-    async fn suggest_retention_strategy(&self, scenario_slug: &str, profile_id: &str) -> Result<()> {
+    /// Insert a suggestion to switch to a retention-heavy pipeline for a specific user.
+    async fn suggest_retention_strategy(&self, scenario_slug: &str, user_id: i32) -> Result<()> {
         let reasoning = format!(
-            "Persona Churn Detected for profile '{}' in scenario '{}'. Engagement dropped by >20%. Suggesting Personalized Retention strategy.",
-            profile_id, scenario_slug
+            "Engagement Churn Detected for user_id '{}' in scenario '{}'. Duration dropped by >20%. Suggesting Personalized Retention strategy.",
+            user_id, scenario_slug
         );
 
         let condition = serde_json::json!({
-            "context.profile_id": profile_id
+            "user_id": user_id
         });
 
         let s_slug = scenario_slug.to_string();
@@ -177,7 +178,7 @@ impl AnalyticsSidecar {
                       AND (p.slug LIKE '%retention%' OR p.slug LIKE '%personalized%' OR p.slug = 'retention_v1')
                     ORDER BY p.id ASC
                     LIMIT 1
-                    ON CONFLICT ON CONSTRAINT rule_suggestions_scenario_id_suggested_pipeline_id_md5_idx DO NOTHING
+                    ON CONFLICT (scenario_id, suggested_pipeline_id, md5(suggested_condition::text)) WHERE status = 'pending' DO NOTHING
                     "#
                 )
                 .bind(s)
@@ -189,9 +190,9 @@ impl AnalyticsSidecar {
         }).await?.rows_affected();
 
         if rows_affected == 0 {
-            warn!(profile = %profile_id, scenario = %scenario_slug, "Retention strategy suggestion SKIPPED (No suitable pipeline found or duplicate exists)");
+            warn!(user_id = %user_id, scenario = %scenario_slug, "Retention strategy suggestion SKIPPED (No suitable pipeline found or duplicate exists)");
         } else {
-            info!(profile = %profile_id, scenario = %scenario_slug, "Retention gap detected: Strategy suggestion pushed");
+            info!(user_id = %user_id, scenario = %scenario_slug, "Retention gap detected: Strategy suggestion pushed");
         }
         Ok(())
     }
@@ -221,7 +222,7 @@ impl AnalyticsSidecar {
                       AND (p.slug LIKE '%discovery%' OR p.slug LIKE '%coverage%' OR p.slug = 'discovery_v1')
                     ORDER BY p.id ASC
                     LIMIT 1
-                    ON CONFLICT ON CONSTRAINT rule_suggestions_scenario_id_suggested_pipeline_id_md5_idx DO NOTHING
+                    ON CONFLICT (scenario_id, suggested_pipeline_id, md5(suggested_condition::text)) WHERE status = 'pending' DO NOTHING
                     "#
                 )
                 .bind(s)

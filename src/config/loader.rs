@@ -148,7 +148,8 @@ impl ConfigLoader {
         // Ingestion
         let ingestion = IngestionConfig {
             kafka: KafkaConfig {
-                enabled: parse_bool("ingestion.kafka.enabled", true)?,
+                enabled: parse_bool("ingestion.kafka.enabled", true)
+                    .or_else(|_| parse_bool("kafka.enabled", true))?,
                 brokers: parse_val("kafka.brokers", "localhost:9092"),
                 group_id: parse_val("kafka.group_id", "bongas-ai-consumers"),
                 profile_topic: parse_val("kafka.profile_topic", "user.profiles"),

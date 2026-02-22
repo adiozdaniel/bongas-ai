@@ -213,6 +213,27 @@ impl ItemFeatureService {
         Ok(rows.into_iter().map(|r| (r.item_id, r)).collect())
     }
 
+    /// Get total count of active items in the catalog.
+    pub async fn get_active_item_count(&self) -> Result<i64> {
+        let start = std::time::Instant::now();
+
+        let count: i64 = self
+            .pool
+            .execute(|pool| async move {
+                sqlx::query_scalar::<_, i64>("SELECT count(*) FROM item_features WHERE is_active = true")
+                    .fetch_one(&pool)
+                    .await
+            })
+            .await?;
+
+        let duration = start.elapsed();
+        let metrics = self.metrics.registry().get_or_create("item_feature_service.count");
+        metrics.latency.record_duration(duration);
+        metrics.successes.increment();
+
+        Ok(count)
+    }
+
     // ── User queries ──────────────────────────────────────────────────
 
     /// Get user features for a single user.
