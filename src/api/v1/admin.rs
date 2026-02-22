@@ -23,9 +23,9 @@ pub fn routes() -> Router {
         .route("/models/stats", get(get_model_stats))
         .route("/security/status", get(get_security_status))
         .route("/suggestions", get(list_suggestions))
-        .route("/suggestions/:id/approve", post(approve_suggestion))
-        .route("/suggestions/:id/reject", post(reject_suggestion))
-        .route("/suggestions/:id/simulate", get(simulate_suggestion))
+        .route("/suggestions/{id}/approve", post(approve_suggestion))
+        .route("/suggestions/{id}/reject", post(reject_suggestion))
+        .route("/suggestions/{id}/simulate", get(simulate_suggestion))
         .route("/chatbot/ask", post(chatbot_ask))
 }
 

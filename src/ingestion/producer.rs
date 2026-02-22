@@ -30,7 +30,7 @@ impl RecommendationProducer {
         let result: Result<FutureProducer, rdkafka::error::KafkaError> = ClientConfig::new()
             .set("bootstrap.servers", &config.brokers)
             .set("message.timeout.ms", "3600000") // 1 hour delivery timeout
-            .set("compression.type", "zstd") // 60% bandwidth reduction
+            .set("compression.type", "gzip") // Use gzip instead of zstd for broader compatibility
             .set("linger.ms", "20")          // Better batching, lower IOPS cost
             .create();
 

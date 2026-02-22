@@ -13,6 +13,7 @@ pub fn build_stage_registry() -> HashMap<String, Arc<dyn PipelineStage>> {
     registry.insert("fetch_clickhouse_trending".into(), Arc::new(stages::fetch::FetchClickHouseTrendingStage));
     registry.insert("fetch_recent_watches".into(), Arc::new(stages::fetch::FetchRecentWatchesStage));
     registry.insert("fetch_popular_content".into(), Arc::new(stages::fetch::FetchPopularContentStage));
+    registry.insert("hot_items".into(), Arc::new(stages::fetch::FetchPopularContentStage)); // Alias for seed data
     registry.insert("fetch_user_preferences".into(), Arc::new(stages::fetch::FetchUserPreferencesStage));
     registry.insert("fetch_similar_content".into(), Arc::new(stages::fetch::FetchSimilarContentStage));
     registry.insert("fetch_new_releases".into(), Arc::new(stages::fetch::FetchNewReleasesStage));
@@ -24,6 +25,7 @@ pub fn build_stage_registry() -> HashMap<String, Arc<dyn PipelineStage>> {
     registry.insert("onnx_inference".into(), Arc::new(stages::ml::ONNXInferenceStage));
     registry.insert("onnx_inference_similarity".into(), Arc::new(stages::ml::ONNXInferenceSimilarityStage));
     registry.insert("ml_inference_two_tower".into(), Arc::new(stages::ml::MLInferenceTwoTowerStage));
+    registry.insert("personalized_recommender".into(), Arc::new(stages::ml::MLInferenceTwoTowerStage)); // Alias for seed data
     registry.insert("ml_inference_bert4rec".into(), Arc::new(stages::ml::MLInferenceBERT4RecStage));
     registry.insert("ml_inference_similarity".into(), Arc::new(stages::ml::MLInferenceSimilarityStage));
     registry.insert("heuristic_aggregator".into(), Arc::new(stages::ml::HeuristicAggregatorStage));

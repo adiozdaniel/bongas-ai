@@ -17,8 +17,8 @@ use crate::error::{AppError, ScenarioError, CacheError};
 /// Mount all feature routes.
 pub fn routes() -> Router {
     Router::new()
-        .route("/user/:user_id", get(get_user_features))
-        .route("/item/:item_id", get(get_item_features))
+        .route("/user/{user_id}", get(get_user_features))
+        .route("/item/{item_id}", get(get_item_features))
         .route("/trending", get(get_trending_items))
 }
 

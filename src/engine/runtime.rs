@@ -56,6 +56,12 @@ impl BongasRuntime {
             sqlx::postgres::PgPoolOptions::new()
                 .max_connections(db_config.max_connections)
                 .acquire_timeout(std::time::Duration::from_secs(db_config.connection_timeout))
+                .after_connect(|conn, _meta| Box::pin(async move {
+                    sqlx::query("SET search_path TO bongas, public")
+                        .execute(conn)
+                        .await?;
+                    Ok(())
+                }))
                 .connect(db_config.url.as_ref().unwrap())
                 .await
                 .map_err(|e| {
@@ -80,6 +86,26 @@ impl BongasRuntime {
         let db_pool = db_pool_res.context("Postgres join error")?
             .context("Failed to connect to database")?;
         info!("Established PostgreSQL connection pool");
+
+        // HARD RESET: Drop existing schema and migration metadata (Fresh Start)
+        info!("Hard resetting database for a fresh start...");
+        sqlx::query("DROP SCHEMA IF EXISTS bongas CASCADE")
+            .execute(&db_pool)
+            .await
+            .context("Failed to drop bongas schema")?;
+            
+        sqlx::query("DROP TABLE IF EXISTS _sqlx_migrations CASCADE")
+            .execute(&db_pool)
+            .await
+            .context("Failed to drop migration metadata table")?;
+
+        // Run migrations
+        info!("Running database migrations...");
+        sqlx::migrate!("./migrations")
+            .run(&db_pool)
+            .await
+            .context("Failed to run database migrations")?;
+        info!("Database migrations completed successfully (Clean Slate)");
 
         let _redis_client = Arc::new(redis_client_res.context("Redis join error")?
             .context("Failed to create Redis client")?);

@@ -20,8 +20,8 @@ use crate::api::models::scenario::{CreateScenarioRequest, UpdateScenarioRequest}
 pub fn routes() -> Router {
     Router::new()
         .route("/", post(create_scenario).get(list_scenarios))
-        .route("/:slug", get(get_scenario).put(update_scenario).delete(delete_scenario))
-        .route("/:slug/reload", post(reload_scenario))
+        .route("/{slug}", get(get_scenario).put(update_scenario).delete(delete_scenario))
+        .route("/{slug}/reload", post(reload_scenario))
         .route("/reload-all", post(reload_all_scenarios))
 }
 

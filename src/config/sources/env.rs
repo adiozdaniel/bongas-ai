@@ -51,8 +51,10 @@ impl EnvSource {
                 key[prefix.len()..].trim_start_matches('_').to_lowercase()
             };
 
-            // Convert underscore-separated to dot-separated
-            let dot_key = clean_key.replace('_', ".");
+            // Convert double underscore-separated to dot-separated
+            // Fix: Only double underscores represent nesting levels. 
+            // Single underscores are part of the key name itself.
+            let dot_key = clean_key.replace("__", ".");
             
             result.insert(dot_key, value);
         }
