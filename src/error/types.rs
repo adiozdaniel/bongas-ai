@@ -834,6 +834,8 @@
       NotFound(String),
       #[error("unauthorized: {0}")]
       Unauthorized(String),
+      #[error("forbidden: {0}")]
+      Forbidden(String),
   }
 
   impl ErrorClassifier for AppError {
@@ -854,6 +856,7 @@
               AppError::Internal(_) => ErrorClassification::Transient,
               AppError::NotFound(_) => ErrorClassification::Permanent,
               AppError::Unauthorized(_) => ErrorClassification::Permanent,
+              AppError::Forbidden(_) => ErrorClassification::Permanent,
           }
       }
   }
@@ -874,32 +877,29 @@
   impl IntoResponse for AppError {
       fn into_response(self) -> Response {
           let classification = self.classify();
-          let (status, error_code, message) = match classification {
-              ErrorClassification::Permanent => {
-                  match &self {
-                      AppError::Scenario(ScenarioError::NotFound(slug)) => {
-                          (StatusCode::NOT_FOUND, "SCENARIO_NOT_FOUND", format!("Scenario '{}' not found", slug))
-                      }
-                      AppError::Unauthorized(msg) => {
-                          (StatusCode::UNAUTHORIZED, "UNAUTHORIZED", msg.clone())
-                      }
-                      _ => (StatusCode::BAD_REQUEST, "PERMANENT_ERROR", "Request cannot be processed due to client error".to_string())
-                  }
+          let (status, error_code, message) = match &self {
+              AppError::NotFound(msg) => (StatusCode::NOT_FOUND, "RESOURCE_NOT_FOUND", msg.clone()),
+              AppError::Unauthorized(msg) => (StatusCode::UNAUTHORIZED, "UNAUTHORIZED", msg.clone()),
+              AppError::Forbidden(msg) => (StatusCode::FORBIDDEN, "FORBIDDEN", msg.clone()),
+              
+              AppError::Scenario(ScenarioError::NotFound(slug)) => {
+                  (StatusCode::NOT_FOUND, "SCENARIO_NOT_FOUND", format!("Scenario '{}' not found", slug))
               }
-              ErrorClassification::Transient => {
-                  (StatusCode::BAD_GATEWAY, "TRANSIENT_ERROR", "Service temporarily unavailable".to_string())
+              
+              AppError::Middleware(MiddlewareError::RateLimitExceeded) => {
+                  (StatusCode::TOO_MANY_REQUESTS, "RATE_LIMIT_EXCEEDED", "Rate limit exceeded. Please slow down.".to_string())
               }
-              ErrorClassification::Timeout => {
-                  (StatusCode::GATEWAY_TIMEOUT, "TIMEOUT_ERROR", "Request timed out".to_string())
+
+              AppError::Postgres(PostgresError::CircuitOpen) | AppError::Redis(RedisError::PoolExhausted) => {
+                  (StatusCode::SERVICE_UNAVAILABLE, "SERVICE_OVERLOADED", "Internal system resources are currently overwhelmed".to_string())
               }
-              ErrorClassification::Overload => {
-                  (StatusCode::TOO_MANY_REQUESTS, "OVERLOAD_ERROR", "Service is overloaded".to_string())
-              }
-              ErrorClassification::Degraded => {
-                  (StatusCode::MULTI_STATUS, "DEGRADED_ERROR", "Service returned degraded result".to_string())
-              }
-              ErrorClassification::PartialFailure => {
-                  (StatusCode::MULTI_STATUS, "PARTIAL_FAILURE", "Partial failure occurred".to_string())
+
+              _ => match classification {
+                  ErrorClassification::Permanent => (StatusCode::BAD_REQUEST, "CLIENT_ERROR", format!("{}", self)),
+                  ErrorClassification::Transient => (StatusCode::SERVICE_UNAVAILABLE, "SERVICE_UNAVAILABLE", "Service is temporarily unavailable".to_string()),
+                  ErrorClassification::Timeout => (StatusCode::GATEWAY_TIMEOUT, "GATEWAY_TIMEOUT", "The request timed out".to_string()),
+                  ErrorClassification::Overload => (StatusCode::TOO_MANY_REQUESTS, "SYSTEM_OVERLOAD", "System is under heavy load".to_string()),
+                  ErrorClassification::Degraded | ErrorClassification::PartialFailure => (StatusCode::MULTI_STATUS, "PARTIAL_SUCCESS", "Operation completed with partial results".to_string()),
               }
           };
 
