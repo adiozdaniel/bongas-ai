@@ -304,6 +304,15 @@ impl ResilientPool {
         self.circuit_breaker.health()
     }
 
+    /// Check if the database is reachable.
+    pub async fn check_health(&self) -> bool {
+        self.execute(|pool| async move {
+            sqlx::query("SELECT 1").execute(&pool).await
+        })
+        .await
+        .is_ok()
+    }
+
     /// Close the pool gracefully.
     pub async fn close(&self) {
         self.pool.close().await;
