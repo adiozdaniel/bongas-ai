@@ -308,11 +308,10 @@ impl KafkaSource {
                             }
                         }
                     }
-                    Err(crate::circuit_breaker::CircuitBreakerError::Rejected { .. }) => {
-                        warn!(topic = %topic_name, "Kafka circuit open, pausing consumption");
-                        tokio::time::sleep(Duration::from_secs(5)).await;
-                    }
-                    Err(e) => {
+                                    Err(crate::circuit_breaker::CircuitBreakerError::Rejected { .. }) => {
+                                        debug!(topic = %topic_name, "Kafka circuit open, pausing consumption");
+                                        tokio::time::sleep(Duration::from_secs(5)).await;
+                                    }                    Err(e) => {
                         // Fix #L4: Log unhandled breaker errors
                         error!(topic = %topic_name, error = ?e, "Unhandled circuit breaker error in Kafka source");
                     }

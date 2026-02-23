@@ -9,7 +9,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::mpsc;
 use tokio::time::{Duration, interval};
-use tracing::{info, error, warn};
+use tracing::{info, error, debug};
 use async_trait::async_trait;
 
 use crate::circuit_breaker::{CircuitBreakerRegistry, CircuitBreakerId, CircuitBreakerConfig, CircuitState};
@@ -108,7 +108,7 @@ impl ClickHouseSource {
         );
 
         if breaker.current_state() == CircuitState::Open {
-            warn!("ClickHouse circuit breaker open, skipping poll");
+            debug!("ClickHouse circuit breaker open, skipping poll");
             return Ok(0);
         }
 
