@@ -80,32 +80,12 @@ impl BongasRuntime {
             client
         });
 
-        // Wait for foundational connections
+        // wait for foundational connections
         let (db_pool_res, redis_client_res) = tokio::join!(db_pool_fut, redis_client_fut);
         
         let db_pool = db_pool_res.context("Postgres join error")?
             .context("Failed to connect to database")?;
         info!("Established PostgreSQL connection pool");
-
-        // HARD RESET: Drop existing schema and migration metadata (Fresh Start)
-        info!("Hard resetting database for a fresh start...");
-        sqlx::query("DROP SCHEMA IF EXISTS bongas CASCADE")
-            .execute(&db_pool)
-            .await
-            .context("Failed to drop bongas schema")?;
-            
-        sqlx::query("DROP TABLE IF EXISTS _sqlx_migrations CASCADE")
-            .execute(&db_pool)
-            .await
-            .context("Failed to drop migration metadata table")?;
-
-        // Run migrations
-        info!("Running database migrations...");
-        sqlx::migrate!("./migrations")
-            .run(&db_pool)
-            .await
-            .context("Failed to run database migrations")?;
-        info!("Database migrations completed successfully (Clean Slate)");
 
         let _redis_client = Arc::new(redis_client_res.context("Redis join error")?
             .context("Failed to create Redis client")?);

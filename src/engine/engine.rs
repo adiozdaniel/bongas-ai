@@ -112,58 +112,79 @@ impl BongasEngine {
     pub async fn bootstrap(deps: EngineDependencies) -> Result<Arc<Self>> {
         info!("Bootstrapping BongasEngine...");
 
+        let db_pool = deps.db_pool.clone();
         let engine = Self::new(deps).await?;
         
-        // Load initial scenarios
-        engine.reload_scenarios().await?;
-
-        // Start ingestion if enabled
-        if !engine.config.ingestion.kafka.brokers.is_empty() || 
-           !engine.config.clickhouse.url.is_empty() {
-            engine.start_ingestion(&engine.config.ingestion).await?;
-        }
-
-        // Start cache warming if enabled
-        let cache_config = CacheConfig::default();
-        if cache_config.warming_enabled {
-            engine.clone().start_cache_warming(
-                cache_config.warm_scenarios.clone(),
-                cache_config.warming_interval,
-            );
-
-            // Phase 6: Start Predictive Warmer
-            let shutdown_rx = engine.shutdown_tx.subscribe();
-            let predictive_warmer = PredictiveWarmer::new(
-                engine.clone(),
-                cache_config.warm_scenarios,
-                shutdown_rx,
-            );
-            tokio::spawn(async move {
-                predictive_warmer.start().await;
-            });
-        }
-
-        // Start Analytics Sidecar (Phase 16)
-        let sidecar = engine.analytics_sidecar.clone();
+        // Start background initialization
+        let engine_for_bg = engine.clone();
         tokio::spawn(async move {
-            sidecar.start().await;
-        });
+            // 1. Foundational DB Setup (Sequential but Backgrounded)
+            info!("Hard resetting database for a fresh start...");
+            if let Err(e) = sqlx::query("DROP SCHEMA IF EXISTS bongas CASCADE").execute(&db_pool).await {
+                error!(error = %e, "Failed to drop bongas schema");
+                return;
+            }
+            if let Err(e) = sqlx::query("DROP TABLE IF EXISTS _sqlx_migrations CASCADE").execute(&db_pool).await {
+                error!(error = %e, "Failed to drop migration metadata table");
+                return;
+            }
 
-        // Start Hive Mind Connector (Phase 16)
-        let hive_mind = engine.hive_mind_connector.clone();
-        tokio::spawn(async move {
-            hive_mind.start().await;
-        });
+            info!("Running database migrations...");
+            if let Err(e) = sqlx::migrate!("./migrations").run(&db_pool).await {
+                error!(error = %e, "Failed to run database migrations");
+                return;
+            }
+            info!("Database migrations completed successfully (Clean Slate)");
 
-        // Phase 15: Run One-Shot Harvest for first launch
-        let engine_for_harvest = engine.clone();
-        tokio::spawn(async move {
-            if let Err(e) = engine_for_harvest.training_orchestrator.run_one_shot_harvest().await {
+            // 2. Load Scenarios (Dependent on DB)
+            if let Err(e) = engine_for_bg.reload_scenarios().await {
+                error!(error = %e, "Failed to load initial scenarios");
+            }
+
+            // 3. Start ingestion
+            if !engine_for_bg.config.ingestion.kafka.brokers.is_empty() || 
+               !engine_for_bg.config.clickhouse.url.is_empty() {
+                if let Err(e) = engine_for_bg.start_ingestion(&engine_for_bg.config.ingestion).await {
+                    error!(error = %e, "Ingestion failed to start");
+                }
+            }
+
+            // 4. Start other background subsystems
+            let cache_config = CacheConfig::default();
+            if cache_config.warming_enabled {
+                engine_for_bg.clone().start_cache_warming(
+                    cache_config.warm_scenarios.clone(),
+                    cache_config.warming_interval,
+                );
+
+                let shutdown_rx = engine_for_bg.shutdown_tx.subscribe();
+                let warmer = crate::engine::predictive_warmer::PredictiveWarmer::new(
+                    engine_for_bg.clone(),
+                    cache_config.warm_scenarios,
+                    shutdown_rx,
+                );
+                tokio::spawn(async move { warmer.start().await; });
+            }
+
+            let sidecar = engine_for_bg.analytics_sidecar.clone();
+            tokio::spawn(async move { sidecar.start().await; });
+
+            let hive = engine_for_bg.hive_mind_connector.clone();
+            tokio::spawn(async move { hive.start().await; });
+
+            if let Err(e) = engine_for_bg.training_orchestrator.run_one_shot_harvest().await {
                 error!(error = %e, "One-Shot Harvest failed");
             }
         });
 
-        info!("BongasEngine bootstrapped successfully");
+        // Independent Pulse Worker
+        let engine_for_registry = engine.clone();
+        tokio::spawn(async move {
+            info!("Starting Hot Registry pulse worker...");
+            engine_for_registry.start_hot_registry_pulse().await;
+        });
+
+        info!("BongasEngine bootstrapped successfully (Async-mode)");
         Ok(engine)
     }
 
@@ -267,7 +288,7 @@ impl BongasEngine {
         let staging_manager = Arc::new(StagingManager::new(cache_manager.clone(), resilient_pool.clone(), resilience_metrics.clone()));
         let staleness_engine = Arc::new(StalenessEngine::new(staging_manager.clone(), item_feature_service.clone()));
 
-        // 4. Concurrently load models (Heavy Task)
+        // 4. Concurrently load models (Background Task)
         let model_repo = Arc::new(ModelRepository::new(resilient_pool.clone(), resilience_metrics.clone()));
         let model_loader = Arc::new(ModelLoader::new(
             config.ml.model_path.to_str().unwrap_or("models"),
@@ -277,10 +298,14 @@ impl BongasEngine {
             None,
         ));
 
-        let model_loader_clone = model_loader.clone();
-        let model_load_fut: tokio::task::JoinHandle<Result<usize, anyhow::Error>> = tokio::spawn(async move {
+        let model_loader_bg = model_loader.clone();
+        tokio::spawn(async move {
             info!("Starting background model loading...");
-            model_loader_clone.load_all_models().await.map_err(|e| e.into())
+            if let Err(e) = model_loader_bg.load_all_models().await {
+                error!(error = %e, "Failed to load models in background");
+            } else {
+                info!("All models loaded successfully in background");
+            }
         });
 
         // 5. Build remaining engine components
@@ -369,14 +394,58 @@ impl BongasEngine {
             shutdown_tx,
         });
 
-        // Wire Weak references
+        // Step 3: Wire Weak references
         analytics_sidecar.set_engine(Arc::downgrade(&engine));
         hive_mind_connector.set_engine(Arc::downgrade(&engine));
 
-        // Wait for models to finish loading
-        let _ = model_load_fut.await.context("Model load join error")??;
+        // Step 4: Initial scenario load (Sequential - needed for immediate health status)
+        engine.reload_scenarios().await?;
 
-        info!("BongasEngine initialization complete (Concurrent startup successful)");
+        // Step 5: Start background subsystems
+        let engine_for_bg = engine.clone();
+        tokio::spawn(async move {
+            // Start ingestion
+            if !engine_for_bg.config.ingestion.kafka.brokers.is_empty() || 
+               !engine_for_bg.config.clickhouse.url.is_empty() {
+                if let Err(e) = engine_for_bg.start_ingestion(&engine_for_bg.config.ingestion).await {
+                    error!(error = %e, "Ingestion failed to start in background");
+                }
+            }
+
+            // Start cache warming
+            let cache_config = crate::cache::config::CacheConfig::default();
+            if cache_config.warming_enabled {
+                engine_for_bg.clone().start_cache_warming(
+                    cache_config.warm_scenarios.clone(),
+                    cache_config.warming_interval,
+                );
+
+                // Phase 6: Start Predictive Warmer
+                let warmer = crate::engine::predictive_warmer::PredictiveWarmer::new(
+                    engine_for_bg.clone(),
+                    cache_config.warm_scenarios,
+                    engine_for_bg.shutdown_tx.subscribe(),
+                );
+                tokio::spawn(warmer.start());
+            }
+
+            // Start Sidecar
+            let sidecar = engine_for_bg.analytics_sidecar.clone();
+            tokio::spawn(sidecar.start());
+
+            // Start Hive Mind
+            let hive = engine_for_bg.hive_mind_connector.clone();
+            tokio::spawn(hive.start());
+        });
+
+        let engine_for_registry = engine.clone();
+        tokio::spawn(async move {
+            info!("Starting Hot Registry pulse worker...");
+            engine_for_registry.start_hot_registry_pulse().await;
+        });
+
+        Ok(engine)
+    }
 
         let engine_clone = engine.clone();
         tokio::spawn(async move {
