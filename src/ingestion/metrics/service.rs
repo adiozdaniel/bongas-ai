@@ -7,7 +7,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use serde::Serialize;
 
-use super::types::{ActivitySource, SourceHealth};
+use crate::ingestion::types::{ActivitySource, SourceHealth};
 
 /// Aggregated health across all ingestion sources.
 #[derive(Debug, Clone, Serialize)]

@@ -16,7 +16,7 @@ use tracing::{info, error, warn, debug};
 
 use crate::circuit_breaker::{CircuitBreakerRegistry, CircuitBreakerId, CircuitBreakerConfig};
 use crate::error::{ErrorClassification, ErrorClassifier};
-use super::super::types::{ActivitySource, SourceHealth, UserActivity};
+use crate::ingestion::types::{ActivitySource, SourceHealth, UserActivity};
 use crate::config::types::kafka as config_kafka;
 use rdkafka::producer::{FutureProducer, FutureRecord};
 

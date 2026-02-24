@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::mpsc;
 use tracing::{info, warn};
 
-use super::super::types::{ActivitySource, SourceHealth, UserActivity};
+use crate::ingestion::types::{ActivitySource, SourceHealth, UserActivity};
 
 /// API-based activity source for direct endpoint ingestion.
 ///

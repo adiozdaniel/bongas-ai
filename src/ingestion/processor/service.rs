@@ -17,7 +17,7 @@ use crate::db::repositories::interaction_repository::InteractionRepository;
 use crate::engine::staleness_engine::{StalenessEngine, UserEvent};
 use crate::resilience::ResilienceMetricsCollector;
 
-use super::types::UserActivity;
+use crate::ingestion::types::UserActivity;
 use clickhouse::Row;
 use serde::{Serialize, Deserialize};
 
