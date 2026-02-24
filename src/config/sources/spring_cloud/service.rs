@@ -8,7 +8,7 @@
 //! - **Composite Pattern**: Supports nested configuration structures
 //! - **Immutable Configuration**: Parses to HashMap for later merging
 
-use super::{ConfigSource, ConfigResult, ConfigError};
+use crate::config::sources::{ConfigSource, ConfigResult, ConfigError};
 use std::collections::HashMap;
 use reqwest::blocking::Client;
 use serde::Deserialize;

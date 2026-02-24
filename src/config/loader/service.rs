@@ -1,17 +1,13 @@
-//! Configuration loader for the Composite Configuration Pattern.
-//!
-//! Orchestrates loading configuration from multiple sources with precedence:
-//! TOML defaults → ENV overrides → Spring Cloud Config. Provides immutable
-//! configuration for Netflix-grade resilience patterns.
-
-use super::sources::{ConfigSource, ConfigResult, ConfigError, TomlSource, EnvSource, SpringCloudSource};
-use super::types::{
+use crate::config::sources::{ConfigSource, ConfigResult, ConfigError, TomlSource, EnvSource, SpringCloudSource};
+use crate::config::types::{
     AppConfig, CircuitBreakerConfig, ErrorConfig, AnalyticsConfig,
     ServerConfig, DatabaseConfig, RedisConfig, ClickHouseConfig,
     IngestionConfig, KafkaConfig, ApiSourceConfig, ClickHouseSourceConfig,
     SecurityConfig, MlConfig, PipelineConfig, ObservabilityConfig, ResilienceConfig,
     HiveMindConfig, SlidingWindowType, BackoffStrategy, ExportFormat,
+    experiments::ExperimentsConfig, resilience::{ResilienceDefaults, RetryConfig},
 };
+use crate::config::validation::validate_app_config as validate_config_fn;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::Duration;
@@ -60,7 +56,7 @@ impl ConfigLoader {
         }
 
         let app_config = Self::parse_config_map(config_map)?;
-        Self::validate_config(&app_config)?;
+        Self::validate_app_config(&app_config)?;
 
         tracing::info!("Application configuration loaded and validated successfully");
         Ok(app_config)
@@ -191,7 +187,7 @@ impl ConfigLoader {
         pipeline.stage_breaker_enabled = parse_bool("pipeline.stage_breaker_enabled", true)?;
 
         // Experiments
-        let experiments = super::types::experiments::ExperimentsConfig {
+        let experiments = ExperimentsConfig {
             enabled: parse_bool("experiments.enabled", false)?,
             assignment_method: parse_val("experiments.assignment_method", "random"),
         };
@@ -264,9 +260,9 @@ impl ConfigLoader {
         };
 
         let resilience = ResilienceConfig {
-            defaults: super::types::resilience::ResilienceDefaults {
+            defaults: ResilienceDefaults {
                 circuit_breaker: circuit_breaker.clone(),
-                retry: super::types::resilience::RetryConfig {
+                retry: RetryConfig {
                     max_retries: error.max_retries,
                     base_delay: match &error.retry_backoff_strategy {
                         BackoffStrategy::Exponential { base, .. } => *base,
@@ -301,9 +297,9 @@ impl ConfigLoader {
     }
 
     /// Validate cross-module configuration dependencies.
-    fn validate_config(config: &AppConfig) -> ConfigResult<()> {
-        super::validation::validate_app_config(config)
-            .map_err(|e| ConfigError::Validation(e.to_string()))
+    fn validate_app_config(config: &AppConfig) -> ConfigResult<()> {
+        validate_config_fn(config)
+            .map_err(|e: anyhow::Error| ConfigError::Validation(e.to_string()))
     }
 }
 

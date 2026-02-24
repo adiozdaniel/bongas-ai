@@ -8,7 +8,7 @@
 //! - **Composite Pattern**: Supports nested environment variable structures
 //! - **Immutable Configuration**: Parses to HashMap for later merging
 
-use super::{ConfigSource, ConfigResult};
+use crate::config::sources::{ConfigSource, ConfigResult};
 use std::collections::HashMap;
 
 /// Environment variable configuration source.

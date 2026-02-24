@@ -1,4 +1,4 @@
-use super::{ConfigSource, ConfigResult, ConfigError};
+use crate::config::sources::{ConfigSource, ConfigResult, ConfigError};
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;

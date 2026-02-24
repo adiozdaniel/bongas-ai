@@ -1,6 +1,6 @@
 //! Cross-module configuration validation.
 
-  use super::types::AppConfig;
+  use crate::config::types::AppConfig;
   use anyhow::{anyhow, Result};
 
   /// Validate the entire application configuration.

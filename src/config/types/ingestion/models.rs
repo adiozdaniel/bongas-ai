@@ -3,7 +3,7 @@
 //! Provides configuration for multi-source activity ingestion including Kafka,
 //! API endpoints, and ClickHouse polling.
 
-use super::kafka::KafkaConfig;
+use crate::config::types::kafka::KafkaConfig;
 
 /// Ingestion configuration.
 ///

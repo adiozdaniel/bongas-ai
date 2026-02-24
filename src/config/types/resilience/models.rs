@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::time::Duration;
 use serde::Deserialize;
-use super::circuit_breaker::CircuitBreakerConfig;
+use crate::config::types::circuit_breaker::CircuitBreakerConfig;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct RetryConfig {

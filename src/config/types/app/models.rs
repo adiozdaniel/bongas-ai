@@ -4,16 +4,11 @@
 //! error handling, and analytics. Provides immutable configuration for
 //! Netflix-grade resilience patterns.
 
-use super::{
-
+use crate::config::types::{
     CircuitBreakerConfig, ErrorConfig, AnalyticsConfig,
-
     ServerConfig, DatabaseConfig, RedisConfig, ClickHouseConfig,
-
     IngestionConfig, SecurityConfig, MlConfig, PipelineConfig,
-
     ObservabilityConfig, ResilienceConfig, ExperimentsConfig, HiveMindConfig,
-
 };
 
 
