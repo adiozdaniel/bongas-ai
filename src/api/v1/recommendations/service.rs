@@ -37,9 +37,9 @@ pub async fn execute_and_map(
         .execute_scenario_with_stats_contextual(
             scenario_slug, 
             user_id, 
-            profile_id.clone(),
-            maturity_rating.clone(),
-            device_type.clone(),
+            profile_id.as_ref().map(|s: &String| s.clone()),
+            maturity_rating.as_ref().map(|s: &String| s.clone()),
+            device_type.as_ref().map(|s: &String| s.clone()),
             context_data.clone(), 
             Some(display_limit)
         )

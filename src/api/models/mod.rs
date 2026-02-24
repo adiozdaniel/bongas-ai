@@ -1,13 +1,12 @@
-//! API models organized by domain.
+//! API data models.
 
-pub mod response;
 pub mod recommendation;
-pub mod system;
+pub mod response;
 pub mod scenario;
+pub mod system;
 
-// Re-export all types for convenience
-pub use response::{StandardResponse, ErrorBody, ResponseMeta, PaginationMeta, PaginationParams, ContextParams};
-pub use recommendation::RecommendationItem;
+pub use recommendation::{RecommendationItem, FeedRow, HomeFeedResponse};
+pub use response::{StandardResponse, ContextParams};
 pub use scenario::{CreateScenarioRequest, UpdateScenarioRequest};
 pub use system::{
     HealthResponse, CacheStatsResponse, KafkaMetricsResponse, KafkaHealthResponse,
