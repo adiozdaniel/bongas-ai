@@ -1,3 +1,5 @@
+//! Database layer — resilient storage, connection pooling, and repositories.
+
 pub mod metrics;
 pub mod models;
 pub mod pool;
