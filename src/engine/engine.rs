@@ -158,7 +158,7 @@ impl BongasEngine {
                 );
 
                 let shutdown_rx = engine_for_bg.shutdown_tx.subscribe();
-                let warmer = crate::engine::predictive_warmer::PredictiveWarmer::new(
+                let warmer = PredictiveWarmer::new(
                     engine_for_bg.clone(),
                     cache_config.warm_scenarios,
                     shutdown_rx,
@@ -421,7 +421,7 @@ impl BongasEngine {
                 );
 
                 // Phase 6: Start Predictive Warmer
-                let warmer = crate::engine::predictive_warmer::PredictiveWarmer::new(
+                let warmer = PredictiveWarmer::new(
                     engine_for_bg.clone(),
                     cache_config.warm_scenarios,
                     engine_for_bg.shutdown_tx.subscribe(),
@@ -442,15 +442,6 @@ impl BongasEngine {
         tokio::spawn(async move {
             info!("Starting Hot Registry pulse worker...");
             engine_for_registry.start_hot_registry_pulse().await;
-        });
-
-        Ok(engine)
-    }
-
-        let engine_clone = engine.clone();
-        tokio::spawn(async move {
-            info!("Starting Hot Registry pulse worker...");
-            engine_clone.start_hot_registry_pulse().await;
         });
 
         Ok(engine)
