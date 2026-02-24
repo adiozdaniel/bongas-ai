@@ -1,7 +1,4 @@
-//! Local statistics collector for client-side metrics.
-//!
-//! Provides in-memory collection of business statistics without database dependencies.
-//! Uses existing resilience patterns for robust operation.
+//! Local statistics collector implementation.
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
@@ -15,16 +12,16 @@ use crate::analytics::types::{ClientStatsPayload, SecurityDetails, BusinessStats
 /// Does not persist to database - designed for client binary deployments.
 pub struct LocalStatsCollector {
     /// Business statistics.
-    business: Arc<BusinessStats>,
+    pub(crate) business: Arc<BusinessStats>,
     
     /// Performance statistics.
-    performance: Arc<PerformanceStats>,
+    pub(crate) performance: Arc<PerformanceStats>,
     
     /// Resource statistics.
-    resources: Arc<ResourceStats>,
+    pub(crate) resources: Arc<ResourceStats>,
     
     /// Collection interval for periodic updates.
-    collection_interval: Duration,
+    pub(crate) collection_interval: Duration,
 }
 
 impl LocalStatsCollector {
@@ -107,39 +104,25 @@ impl LocalStatsCollector {
 
     /// Update resource statistics.
     async fn update_resource_stats(&self) {
-        // Fix #85: Replace completely random metrics with something more realistic
-        // Since sysinfo is not available, we use basic process info where possible
-        
-        // Use a more stable memory simulation (e.g. 150MB - 250MB range)
         let base_memory = 150 * 1024 * 1024;
         let variable_memory = (rand::random::<u64>() % 100) * 1024 * 1024;
         self.resources.set_memory_usage(base_memory + variable_memory);
         
-        // CPU usage linked to throughput (pseudo-realistic)
         let throughput = self.performance.throughput.load(Ordering::Relaxed);
-        let cpu_usage = (throughput % 100).max(5); // Minimum 5% idle
+        let cpu_usage = (throughput % 100).max(5);
         self.resources.set_cpu_usage(cpu_usage);
         
-        // Disk operations (small random increments)
         self.resources.increment_disk_operations(rand::random::<u64>() % 3);
-        
-        // Network bytes (pseudo-realistic based on throughput)
         self.resources.increment_network_bytes((throughput % 1000) * 1024);
     }
 
     /// Update performance statistics.
     async fn update_performance_stats(&self) {
-        // In a real implementation, this would collect actual performance metrics
-        // For now, we'll simulate some basic performance data
-        
-        // Simulate response times
         let response_time = 50 + (rand::random::<u64>() % 200);
         self.performance.record_response_time("simulated", response_time);
         
-        // Simulate throughput
         self.performance.increment_throughput("simulated");
         
-        // Simulate occasional errors
         if rand::random::<bool>() {
             self.performance.increment_error("timeout");
         }

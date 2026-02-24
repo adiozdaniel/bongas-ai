@@ -1,7 +1,4 @@
 //! Client-side statistics types for business analytics.
-//!
-//! Provides types for collecting and uploading client-side statistics
-//! including usage metrics, performance data, and security information.
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -10,22 +7,11 @@ use std::collections::VecDeque;
 /// Client statistics payload for upload to central server.
 #[derive(Debug, serde::Serialize)]
 pub struct ClientStatsPayload {
-    /// Unique client identifier.
     pub client_id: String,
-    
-    /// Timestamp of when statistics were collected.
     pub timestamp: u64,
-    
-    /// Security details for validation.
     pub security: SecurityDetails,
-    
-    /// Business metrics.
     pub business: BusinessStats,
-    
-    /// Performance metrics.
     pub performance: PerformanceStats,
-    
-    /// Resource usage metrics.
     pub resources: ResourceStats,
 }
 
@@ -48,13 +34,8 @@ impl ClientStatsPayload {
 /// Security details for client validation.
 #[derive(Debug, serde::Serialize)]
 pub struct SecurityDetails {
-    /// License status.
     pub license_valid: bool,
-    
-    /// Hardware fingerprint.
     pub hardware_fingerprint: String,
-    
-    /// Client version.
     pub client_version: String,
 }
 
@@ -71,16 +52,9 @@ impl SecurityDetails {
 /// Business statistics for tracking usage and engagement.
 #[derive(Debug, serde::Serialize)]
 pub struct BusinessStats {
-    /// Total API calls made.
     pub api_calls: AtomicU64,
-    
-    /// Successful API calls.
     pub successful_calls: AtomicU64,
-    
-    /// Failed API calls.
     pub failed_calls: AtomicU64,
-    
-    /// Feature usage counts.
     pub feature_usage: std::sync::Arc<std::sync::RwLock<std::collections::HashMap<String, AtomicU64>>>,
 }
 
@@ -141,14 +115,8 @@ impl BusinessStats {
 /// Performance statistics for tracking response times and throughput.
 #[derive(Debug, serde::Serialize)]
 pub struct PerformanceStats {
-    /// Response time measurements.
-    // Fix #86: Use VecDeque for efficient front removal
     pub response_times: std::sync::Arc<std::sync::RwLock<VecDeque<u64>>>,
-    
-    /// Throughput measurements.
     pub throughput: AtomicU64,
-    
-    /// Error counts by type.
     pub error_counts: std::sync::Arc<std::sync::RwLock<std::collections::HashMap<String, AtomicU64>>>,
 }
 
@@ -166,8 +134,6 @@ impl PerformanceStats {
         let mut times = self.response_times.write().unwrap();
         times.push_back(duration_ms);
         
-        // Keep only last 1000 measurements to prevent memory growth
-        // Fix #86: VecDeque::pop_front is O(1)
         if times.len() > 1000 {
             times.pop_front();
         }
@@ -211,16 +177,9 @@ impl PerformanceStats {
 /// Resource usage statistics for monitoring system resources.
 #[derive(Debug, serde::Serialize)]
 pub struct ResourceStats {
-    /// Memory usage in bytes.
     pub memory_usage: AtomicU64,
-    
-    /// CPU usage percentage (0-100).
     pub cpu_usage: AtomicU64,
-    
-    /// Disk I/O operations.
     pub disk_operations: AtomicU64,
-    
-    /// Network I/O bytes.
     pub network_bytes: AtomicU64,
 }
 
