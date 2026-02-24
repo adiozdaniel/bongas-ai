@@ -48,7 +48,7 @@
   }
 
   /// Circuit breaker state for event reporting.
-  #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+  #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize)]
   pub enum CircuitState {
       Closed,
       Open,
