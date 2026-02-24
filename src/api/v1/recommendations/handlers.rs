@@ -1,9 +1,6 @@
-//! Recommendation endpoints and handlers.
-
 use axum::{
     extract::{Path, Extension, Query},
-    routing::get,
-    Json, Router,
+    Json,
     response::sse::{Event, Sse},
 };
 use futures::stream::{self, Stream};
@@ -15,135 +12,9 @@ use crate::engine::BongasEngine;
 use crate::api::models::{StandardResponse, RecommendationItem, ContextParams};
 use crate::api::models::recommendation::FeedRow;
 use crate::error::AppError;
-use crate::ingestion::types::UserActivity;
+use super::service::execute_and_map;
 
-/// Mount all recommendation routes.
-pub fn routes() -> Router {
-    Router::new()
-        .route("/home/{user_id}", get(get_home_recommendations))
-        .route("/continue-watching/{user_id}", get(get_continue_watching))
-        .route("/trending", get(get_trending))
-        .route("/because-you-watched/{user_id}/{item_id}", get(get_because_you_watched))
-        .route("/genre/{genre}/{user_id}", get(get_genre_recommendations))
-        .route("/new-releases/{user_id}", get(get_new_releases))
-        .route("/live-tv/{user_id}", get(get_live_tv))
-}
-
-// ─── Shared Helper ──────────────────────────────────────────────────────────
-
-/// Execute a scenario and map engine items to API RecommendationItems.
-async fn execute_and_map(
-    engine: Arc<BongasEngine>,
-    scenario_slug: &str,
-    user_id: Option<i32>,
-    context_params: Option<ContextParams>,
-    context_data: serde_json::Value,
-    offset: usize,
-    _limit: usize,
-) -> Result<Vec<RecommendationItem>, AppError> {
-    let engine_ref = engine.as_ref();
-    
-    // Extract context parameters
-    let (profile_id, maturity_rating, device_type) = if let Some(cp) = context_params {
-        (cp.profile_id, cp.maturity_rating, cp.device_type)
-    } else {
-        (None, None, None)
-    };
-    
-    // 1. Get Scenario display limit
-    let display_limit = {
-        let scenarios = engine_ref.scenarios.read().await;
-        scenarios.get(scenario_slug)
-            .map(|s| s.initial_display_limit as usize)
-            .unwrap_or(5)
-    };
-
-    // 2. Execute First Window (Instant-On)
-    let (items, _stats) = engine_ref
-        .execute_scenario_with_stats_contextual(
-            scenario_slug, 
-            user_id, 
-            profile_id.clone(),
-            maturity_rating.clone(),
-            device_type.clone(),
-            context_data.clone(), 
-            Some(display_limit)
-        )
-        .await?;
-
-    let final_items: Vec<RecommendationItem> = items
-        .into_iter()
-        .skip(offset)
-        .take(display_limit)
-        .enumerate()
-        .map(|(idx, item)| RecommendationItem {
-            item_id: item.item_id,
-            title: item.metadata.get("title")
-                .and_then(|v| v.as_str())
-                .unwrap_or("Unknown")
-                .to_string(),
-            thumbnail_url: item.metadata.get("thumbnail")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string(),
-            score: item.score,
-            rank: (offset + idx + 1) as i32,
-            metadata: item.metadata.clone(),
-        })
-        .collect();
-
-    // ─── Impression Tracking (Baze-Style) ──────────────────────────────
-    if let Some(uid) = user_id {
-        let activities: Vec<UserActivity> = final_items.iter().map(|item| {
-            UserActivity::Impression {
-                user_id: uid,
-                item_id: item.item_id,
-                scenario_slug: Some(scenario_slug.to_string()),
-                timestamp: chrono::Utc::now(),
-            }
-        }).collect();
-
-        // Ingest activities asynchronously
-        let engine_clone_for_ingestion = engine_ref.ingestion_manager.clone();
-        tokio::spawn(async move {
-            let manager = engine_clone_for_ingestion.read().await;
-            let api_source = manager.api_source();
-            for act in activities {
-                let _ = api_source.ingest(act).await;
-            }
-        });
-
-        // ─── Ecosystem Synergy (Phase 14) ──────────────────────────────────
-        let engine_clone_for_synergy = engine.clone();
-        let uid = uid;
-        let pid = profile_id.clone();
-        let slug = scenario_slug.to_string();
-        let item_ids: Vec<i32> = final_items.iter().map(|i| i.item_id).collect();
-        
-        tokio::spawn(async move {
-            let manager = engine_clone_for_synergy.ingestion_manager.read().await;
-            manager.broadcast_recommendations(uid, pid, slug, item_ids).await;
-        });
-    }
-
-    // 3. ─── Background Pre-Warming (Phase 12) ───────────────────────────
-    if offset == 0 {
-        let engine_clone_for_warming = engine.clone();
-        let slug = scenario_slug.to_string();
-        let ctx = context_data.clone();
-        
-        tokio::spawn(async move {
-            // We force a refresh of the cache by executing the scenario with a larger internal limit (None)
-            let _ = engine_clone_for_warming.execute_scenario_with_stats(&slug, user_id, ctx, None).await;
-        });
-    }
-
-    Ok(final_items)
-}
-
-// ─── Handlers ───────────────────────────────────────────────────────────────
-
-async fn get_home_recommendations(
+pub async fn get_home_recommendations(
     Path(user_id): Path<i32>,
     Query(context_params): Query<ContextParams>,
     Extension(engine): Extension<Arc<BongasEngine>>,
@@ -185,12 +56,6 @@ async fn get_home_recommendations(
                 ).await;
 
                 if let Ok(items) = items_res {
-                    if items.is_empty() && slug == "continue_watching" {
-                        // Return empty row for Continue Watching instead of skip to keep client logic simple
-                        // or just return the next row.
-                        // Let's recurse or just return an empty row.
-                    }
-
                     let row = FeedRow {
                         title: match slug {
                             "continue_watching" => "Continue Watching".to_string(),
@@ -217,7 +82,7 @@ async fn get_home_recommendations(
     Sse::new(stream).keep_alive(axum::response::sse::KeepAlive::default())
 }
 
-async fn get_continue_watching(
+pub async fn get_continue_watching(
     Path(user_id): Path<i32>,
     Query(context_params): Query<ContextParams>,
     Extension(engine): Extension<Arc<BongasEngine>>,
@@ -236,7 +101,7 @@ async fn get_continue_watching(
     Ok(Json(StandardResponse::success(items)))
 }
 
-async fn get_trending(
+pub async fn get_trending(
     Query(context_params): Query<ContextParams>,
     Extension(engine): Extension<Arc<BongasEngine>>,
 ) -> Result<Json<StandardResponse<Vec<RecommendationItem>>>, AppError> {
@@ -254,7 +119,7 @@ async fn get_trending(
     Ok(Json(StandardResponse::success(items)))
 }
 
-async fn get_because_you_watched(
+pub async fn get_because_you_watched(
     Path((user_id, item_id)): Path<(i32, i32)>,
     Query(context_params): Query<ContextParams>,
     Extension(engine): Extension<Arc<BongasEngine>>,
@@ -274,7 +139,7 @@ async fn get_because_you_watched(
     Ok(Json(StandardResponse::success(items)))
 }
 
-async fn get_genre_recommendations(
+pub async fn get_genre_recommendations(
     Path((genre, user_id)): Path<(String, i32)>,
     Query(context_params): Query<ContextParams>,
     Extension(engine): Extension<Arc<BongasEngine>>,
@@ -294,7 +159,7 @@ async fn get_genre_recommendations(
     Ok(Json(StandardResponse::success(items)))
 }
 
-async fn get_new_releases(
+pub async fn get_new_releases(
     Path(user_id): Path<i32>,
     Query(context_params): Query<ContextParams>,
     Extension(engine): Extension<Arc<BongasEngine>>,
@@ -313,7 +178,7 @@ async fn get_new_releases(
     Ok(Json(StandardResponse::success(items)))
 }
 
-async fn get_live_tv(
+pub async fn get_live_tv(
     Path(user_id): Path<i32>,
     Query(context_params): Query<ContextParams>,
     Extension(engine): Extension<Arc<BongasEngine>>,

@@ -19,6 +19,8 @@
 /package-lock.json
 /.lock
 .aider*
+.gemini/
+.claude/
 
 # Secret files
 .env
