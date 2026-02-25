@@ -1,23 +1,13 @@
-mod boost_by_recency;
-mod boost_by_popularity;
-mod boost_trending;
-mod boost_new_content;
-mod boost_user_affinity;
-mod boost_seasonal;
-mod boost_engagement;
-mod boost_completion_rate;
-mod boost_promoted;
-mod boost_personalization;
-mod affinity_freshness;
+//! Scoring and boosting stages.
 
-pub use boost_by_recency::BoostByRecencyStage;
-pub use boost_by_popularity::BoostByPopularityStage;
-pub use boost_trending::BoostTrendingStage;
-pub use boost_new_content::BoostNewContentStage;
-pub use boost_user_affinity::BoostUserAffinityStage;
-pub use boost_seasonal::BoostSeasonalStage;
-pub use boost_engagement::BoostEngagementStage;
-pub use boost_completion_rate::BoostCompletionRateStage;
-pub use boost_promoted::BoostPromotedStage;
-pub use boost_personalization::BoostPersonalizationStage;
-pub use affinity_freshness::AffinityFreshnessStage;
+pub mod affinity_freshness;
+pub mod boost_by_popularity;
+pub mod boost_by_recency;
+pub mod boost_completion_rate;
+pub mod boost_engagement;
+pub mod boost_new_content;
+pub mod boost_personalization;
+pub mod boost_promoted;
+pub mod boost_seasonal;
+pub mod boost_trending;
+pub mod boost_user_affinity;

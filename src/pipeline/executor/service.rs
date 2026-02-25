@@ -15,16 +15,16 @@ use crate::circuit_breaker::{
 };
 use crate::circuit_breaker::observer::ResilienceObserver;
 use crate::config::PipelineConfig;
-use crate::pipeline::{PipelineStage, ScoredItem, BoundStage, ExecutionNode, ExecutablePipeline};
+use crate::pipeline::{ScoredItem, BoundStage, ExecutionNode, ExecutablePipeline};
 use crate::pipeline::validator::PipelineValidator;
 use crate::pipeline::optimizer::PipelineOptimizer;
 use crate::pipeline::context::ExecutionContext;
-use crate::pipeline::registry::build_stage_registry;
+use crate::pipeline::registry::PipelineRegistry;
 use crate::db::models::PipelineDefinition;
 use crate::error::PipelineError;
 
 pub struct PipelineExecutor {
-    stage_registry: HashMap<String, Arc<dyn PipelineStage>>,
+    registry: PipelineRegistry,
     stage_breakers: HashMap<String, Arc<CircuitBreaker>>,
     validator: PipelineValidator,
     config: PipelineConfig,
@@ -38,11 +38,11 @@ impl PipelineExecutor {
         observer: Arc<dyn ResilienceObserver>,
         analytics: Option<Arc<PerformanceStats>>,
     ) -> Self {
-        Self::with_registry(config, breaker_registry, observer, analytics, build_stage_registry())
+        Self::with_registry(config, breaker_registry, observer, analytics, PipelineRegistry::new())
     }
 
     pub fn stage_count(&self) -> usize {
-        self.stage_registry.len()
+        self.registry.list_stages().len()
     }
 
     pub fn with_registry(
@@ -50,13 +50,13 @@ impl PipelineExecutor {
         breaker_registry: Arc<CircuitBreakerRegistry>,
         observer: Arc<dyn ResilienceObserver>,
         analytics: Option<Arc<PerformanceStats>>,
-        registry: HashMap<String, Arc<dyn PipelineStage>>,
+        registry: PipelineRegistry,
     ) -> Self {
         let validator = PipelineValidator::new(registry.clone());
         let mut stage_breakers = HashMap::new();
         
         if config.stage_breaker_enabled {
-            for stage_name in registry.keys() {
+            for stage_name in registry.list_stages() {
                 let breaker_config = BreakerConfig::builder()
                     .failure_rate_threshold(config.stage_breaker_failure_rate)
                     .slow_call_rate_threshold(config.stage_breaker_slow_call_rate)
@@ -64,7 +64,7 @@ impl PipelineExecutor {
                     .minimum_calls(config.stage_breaker_minimum_calls)
                     .recovery_timeout(config.stage_breaker_recovery_timeout)
                     .half_open_max_calls(config.stage_breaker_half_open_calls)
-                    .call_timeout(Self::timeout_for_stage(stage_name, &config))
+                    .call_timeout(Self::timeout_for_stage(&stage_name, &config))
                     .build();
 
                 if let Ok(bc) = breaker_config {
@@ -77,7 +77,7 @@ impl PipelineExecutor {
         }
 
         Self {
-            stage_registry: registry,
+            registry,
             stage_breakers,
             validator,
             config,
@@ -177,7 +177,7 @@ impl PipelineExecutor {
             }
 
             // Handle Standard Stages
-            let implementation = self.stage_registry.get(&stage_config.r#type).cloned()
+            let implementation = self.registry.get(&stage_config.r#type)
                 .with_context(|| format!("Stage '{}' not found", stage_config.r#type))?;
             
             let breaker = self.stage_breakers.get(&stage_config.r#type).cloned();
