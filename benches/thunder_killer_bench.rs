@@ -55,8 +55,10 @@ fn bench_fast_path_vs_slow_path(c: &mut Criterion) {
     ));
 
     let items = create_test_items(100);
-    let mut registry: HashMap<String, Arc<dyn PipelineStage>> = HashMap::new();
-    registry.insert("fetch".to_string(), Arc::new(MockFetchStage { items: items.clone(), parallelizable: false }));
+    use bongas_ai::pipeline::PipelineRegistry;
+    let mut stages: HashMap<String, Arc<dyn PipelineStage>> = HashMap::new();
+    stages.insert("fetch".to_string(), Arc::new(MockFetchStage { items: items.clone(), parallelizable: false }));
+    let registry = PipelineRegistry::with_stages(stages);
 
     let executor = PipelineExecutor::with_registry(
         bongas_ai::config::PipelineConfig::default(),
@@ -104,9 +106,11 @@ fn bench_parallel_fetch_gains(c: &mut Criterion) {
     ));
 
     let items = create_test_items(100);
-    let mut registry: HashMap<String, Arc<dyn PipelineStage>> = HashMap::new();
-    registry.insert("fetch_parallel".to_string(), Arc::new(MockFetchStage { items: items.clone(), parallelizable: true }));
-    registry.insert("fetch_serial".to_string(), Arc::new(MockFetchStage { items: items.clone(), parallelizable: false }));
+    use bongas_ai::pipeline::PipelineRegistry;
+    let mut stages: HashMap<String, Arc<dyn PipelineStage>> = HashMap::new();
+    stages.insert("fetch_parallel".to_string(), Arc::new(MockFetchStage { items: items.clone(), parallelizable: true }));
+    stages.insert("fetch_serial".to_string(), Arc::new(MockFetchStage { items: items.clone(), parallelizable: false }));
+    let registry = PipelineRegistry::with_stages(stages);
 
     let executor = PipelineExecutor::with_registry(
         bongas_ai::config::PipelineConfig::default(),

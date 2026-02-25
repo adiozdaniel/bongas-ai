@@ -1,5 +1,5 @@
-//! Executor pipeline component.
+mod service;
+mod linking;
+mod execution;
 
-pub mod service;
-
-pub use service::*;
+pub use service::PipelineExecutor;

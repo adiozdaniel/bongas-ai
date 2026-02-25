@@ -84,6 +84,11 @@ impl PipelineRegistry {
         }
     }
 
+    /// Create a new registry with custom stages (primarily for testing/benchmarking).
+    pub fn with_stages(stages: HashMap<String, Arc<dyn PipelineStage>>) -> Self {
+        Self { stages }
+    }
+
     /// Get a stage implementation by its unique type identifier.
     pub fn get(&self, stage_type: &str) -> Option<Arc<dyn PipelineStage>> {
         self.stages.get(stage_type).cloned()

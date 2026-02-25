@@ -50,12 +50,14 @@ fn bench_pipeline_executor(c: &mut Criterion) {
     for size in [100, 500, 1000] {
         let items = create_test_items(size);
         
-        // Setup custom registry for this size
-        let mut registry: HashMap<String, Arc<dyn PipelineStage>> = HashMap::new();
-        registry.insert("mock_fetch".to_string(), Arc::new(MockFetchStage { items: items.clone() }));
-        registry.insert("deduplicate".to_string(), Arc::new(DeduplicateStage));
-        registry.insert("sort_by_score".to_string(), Arc::new(SortByScoreStage));
-        registry.insert("limit".to_string(), Arc::new(LimitStage));
+        use bongas_ai::pipeline::PipelineRegistry;
+        let mut stages: HashMap<String, Arc<dyn PipelineStage>> = HashMap::new();
+        stages.insert("mock_fetch".to_string(), Arc::new(MockFetchStage { items: items.clone() }));
+        stages.insert("deduplicate".to_string(), Arc::new(DeduplicateStage));
+        stages.insert("sort_by_score".to_string(), Arc::new(SortByScoreStage));
+        stages.insert("limit".to_string(), Arc::new(LimitStage));
+        
+        let registry = PipelineRegistry::with_stages(stages);
 
         let executor = PipelineExecutor::with_registry(
             bongas_ai::config::PipelineConfig::default(),
