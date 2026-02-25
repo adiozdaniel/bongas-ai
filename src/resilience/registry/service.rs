@@ -16,9 +16,9 @@ use dashmap::DashMap;
 use crate::circuit_breaker::CircuitState;
 use crate::error::ErrorClassification;
 
-use super::config::ResilienceConfig;
-use super::histogram::HdrHistogram;
-use super::types::{
+use crate::resilience::config::ResilienceConfig;
+use crate::resilience::histogram::HdrHistogram;
+use crate::resilience::types::{
     BreakerSnapshot, ClassificationCounters, ClassificationSnapshot,
     Counter, Gauge, Rate, RegistrySnapshot,
 };

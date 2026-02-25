@@ -7,7 +7,7 @@
 //! - **Error Classification Export**: Breakdown by classification type
 //! - **Degraded/Slow Call Metrics**: Exported separately for alerting
 
-use super::registry::MetricsRegistry;
+use crate::resilience::registry::MetricsRegistry;
 
 /// Trait for exporting metrics to various formats.
 ///

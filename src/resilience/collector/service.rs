@@ -11,7 +11,7 @@ use std::sync::Arc;
 use crate::circuit_breaker::{CircuitBreakerEvent, ResilienceObserver};
 use crate::error::ErrorClassification;
 
-use super::registry::MetricsRegistry;
+use crate::resilience::registry::MetricsRegistry;
 
 /// Collects circuit breaker events and records them in the registry.
 ///
