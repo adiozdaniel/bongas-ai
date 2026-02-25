@@ -10,10 +10,11 @@ Sort stages ensure the final list is correctly ordered, deduplicated, and sized 
 
 | Stage | Description |
 | :--- | :--- |
-| **Sort By Score** | The standard descending order sort based on calculated weights. |
-| **Deduplicate** | Removes duplicate item IDs across different fetch branches. |
-| **Limit** | Caps the result set at a specific size (e.g., top 20). |
-| **Paginate** | Handles offset and limit for multi-page requests. |
+| [**🔝 Sort By Score**](./sort_by_score/README.md) | The standard descending order sort based on calculated weights. |
+| [**✂️ Deduplicate**](./deduplicate/README.md) | Removes duplicate item IDs across different fetch branches. |
+| [**🛑 Limit**](./limit/README.md) | Caps the result set at a specific size (e.g., top 20). |
+| [**📄 Paginate**](./paginate_results/README.md) | Handles offset and limit for multi-page requests. |
+| [**🎯 Relevance**](./sort_by_relevance/README.md) | Secondary sort based on metadata-driven relevance scores. |
 
 ---
 [⬅️ Back to Stages Main](../README.md)
