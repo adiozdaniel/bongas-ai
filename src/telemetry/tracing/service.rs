@@ -13,7 +13,7 @@ use tracing_subscriber::{
     EnvFilter, Layer, Registry,
 };
 
-use super::config::{ExporterType, OutputFormat, TelemetryConfig};
+use crate::telemetry::config::{ExporterType, OutputFormat, TelemetryConfig};
 
 // ─── Initialization ─────────────────────────────────────────────────────────
 

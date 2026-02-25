@@ -12,7 +12,7 @@
   use std::time::Instant;
   use tracing::{info, warn, error, Span};
 
-  use super::context::{headers, RequestId, TraceContext};
+  use crate::telemetry::context::{headers, RequestId, TraceContext};
 
   // ─── Tracing Middleware ─────────────────────────────────────────────────────
 
