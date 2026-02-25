@@ -51,7 +51,7 @@ async fn create_scenario(
 ) -> Result<Json<StandardResponse<ScenarioWithStrategy>>, AppError> {
     authorize_admin(&headers, &engine)?;
     let slug = req.slug.clone();
-    let config = engine.scenario_factory.repo().create(req).await?;
+    let config = engine.scenario_factory().repo().create(req).await?;
     
     // Hot-reload the new scenario
     engine.reload_scenario(&slug).await
@@ -67,7 +67,7 @@ async fn list_scenarios(
     Extension(engine): Extension<Arc<BongasEngine>>,
 ) -> Result<Json<StandardResponse<Vec<ScenarioWithStrategy>>>, AppError> {
     authorize_admin(&headers, &engine)?;
-    let configs = engine.scenario_factory.repo().find_all_active().await?;
+    let configs = engine.scenario_factory().repo().find_all_active().await?;
     Ok(Json(StandardResponse::success(configs)))
 }
 
@@ -78,7 +78,7 @@ async fn get_scenario(
     Extension(engine): Extension<Arc<BongasEngine>>,
 ) -> Result<Json<StandardResponse<ScenarioWithStrategy>>, AppError> {
     authorize_admin(&headers, &engine)?;
-    let config = engine.scenario_factory.repo().find_by_slug(&slug).await?
+    let config = engine.scenario_factory().repo().find_by_slug(&slug).await?
         .ok_or_else(|| AppError::NotFound(format!("Scenario {} not found", slug)))?;
     Ok(Json(StandardResponse::success(config)))
 }
@@ -91,7 +91,7 @@ async fn update_scenario(
     Json(req): Json<UpdateScenarioRequest>,
 ) -> Result<Json<StandardResponse<ScenarioWithStrategy>>, AppError> {
     authorize_admin(&headers, &engine)?;
-    let config = engine.scenario_factory.repo().update(&slug, req).await?;
+    let config = engine.scenario_factory().repo().update(&slug, req).await?;
     
     // Hot-reload the updated scenario
     engine.reload_scenario(&slug).await
@@ -108,7 +108,7 @@ async fn delete_scenario(
     Extension(engine): Extension<Arc<BongasEngine>>,
 ) -> Result<Json<StandardResponse<()>>, AppError> {
     authorize_admin(&headers, &engine)?;
-    engine.scenario_factory.repo().delete(&slug).await?;
+    engine.scenario_factory().repo().delete(&slug).await?;
     
     // Remove from engine's active scenarios
     engine.remove_scenario(&slug).await;

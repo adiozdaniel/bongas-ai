@@ -1,7 +1,7 @@
 //! BONGAS-AI service entrypoint.
 
 use anyhow::Result;
-use bongas_ai::engine::runtime::BongasRuntime;
+use bongas_ai::engine::BongasRuntime;
 
 #[tokio::main]
 async fn main() -> Result<()> {

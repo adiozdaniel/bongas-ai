@@ -32,7 +32,7 @@ async fn readiness_check(
     Extension(start_time): Extension<Arc<Instant>>,
 ) -> Json<HealthResponse> {
     // Check if Postgres is reachable
-    let is_db_ready = engine.item_feature_service.pool().check_health().await;
+    let is_db_ready = engine.execution.item_feature_service.pool().check_health().await;
     
     let status = if is_db_ready { "ready" } else { "not_ready" };
 

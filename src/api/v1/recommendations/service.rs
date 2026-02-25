@@ -26,7 +26,7 @@ pub async fn execute_and_map(
     
     // 1. Get Scenario display limit
     let display_limit = {
-        let scenarios = engine_ref.scenarios.read().await;
+        let scenarios = engine_ref.scenarios.scenarios.read().await;
         scenarios.get(scenario_slug)
             .map(|s| s.initial_display_limit as usize)
             .unwrap_or(5)

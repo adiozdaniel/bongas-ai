@@ -115,7 +115,7 @@ async fn get_cache_stats(
         l1_misses: stats.l1_misses,
         l2_hits: stats.l2_hits,
         l2_misses: stats.l2_misses,
-        hit_rate: engine.get_cache_hit_rate(),
+        hit_rate: engine.get_hit_rate(),
     })))
 }
 

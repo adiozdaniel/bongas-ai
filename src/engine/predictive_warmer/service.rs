@@ -70,7 +70,7 @@ impl PredictiveWarmer {
         ));
 
         let interaction_repo = crate::db::repositories::interaction_repository::InteractionRepository::new(
-            self.engine.item_feature_service.pool().clone(),
+            self.engine.execution.item_feature_service.pool().clone(),
             resilience_metrics,
         );
 
