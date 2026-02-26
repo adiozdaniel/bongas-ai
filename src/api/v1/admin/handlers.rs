@@ -3,6 +3,7 @@ use axum::{
     routing::{get, post},
     Json, Router,
     http::HeaderMap,
+    response::IntoResponse,
 };
 use std::sync::Arc;
 
@@ -13,9 +14,12 @@ use crate::api::models::{
 };
 use crate::error::AppError;
 
+use crate::resilience::exporter::{MetricsExporter, PrometheusExporter};
+
 /// Mount all admin routes.
 pub fn routes() -> Router {
     Router::new()
+        .route("/metrics", get(get_resilience_metrics))
         .route("/cache/stats", get(get_cache_stats))
         .route("/ingestion/metrics", get(get_ingestion_metrics))
         .route("/ingestion/health", get(get_ingestion_health))
@@ -102,6 +106,20 @@ async fn reject_suggestion(
     authorize_admin(&headers, &engine)?;
     engine.reject_suggestion(id).await?;
     Ok(Json(StandardResponse::success(serde_json::json!({ "message": "Suggestion rejected" }))))
+}
+
+pub async fn get_resilience_metrics(
+    Extension(engine): Extension<Arc<BongasEngine>>,
+) -> impl IntoResponse {
+    let registry = engine.resilience_metrics.registry();
+    let exporter = PrometheusExporter::new("bongas");
+    let output = exporter.export(&registry);
+    
+    (
+        axum::http::StatusCode::OK,
+        [(axum::http::header::CONTENT_TYPE, exporter.content_type())],
+        output,
+    )
 }
 
 async fn get_cache_stats(

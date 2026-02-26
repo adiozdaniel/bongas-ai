@@ -15,6 +15,7 @@ use crate::engine::hive_mind::HiveMindConnector;
 use crate::security::SecurityManager;
 use crate::cache::CacheManager;
 use crate::ingestion::IngestionManager;
+use crate::resilience::ResilienceMetricsCollector;
 
 #[derive(Debug, Clone)]
 pub struct ScenarioDefinition {
@@ -55,6 +56,7 @@ pub struct SecurityStatus {
 /// The Grand Coordinator for BONGAS-AI.
 pub struct BongasEngine {
     pub config: Arc<AppConfig>,
+    pub resilience_metrics: Arc<ResilienceMetricsCollector>,
     
     // Domain Managers
     pub scenarios: Arc<ScenariosManager>,

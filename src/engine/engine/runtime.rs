@@ -171,6 +171,7 @@ impl BongasEngine {
 
         let engine = Arc::new(Self {
             config: config.clone(),
+            resilience_metrics: resilience_metrics.clone(),
             scenarios: scenarios_manager,
             execution: execution_manager,
             staging_manager,

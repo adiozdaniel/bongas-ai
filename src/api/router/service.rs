@@ -12,6 +12,8 @@ use crate::circuit_breaker::CircuitBreakerRegistry;
 use crate::api::v1;
 use crate::api::middleware;
 
+use axum::routing::get;
+
 /// Build the complete API router with routes, shared state, and middleware.
 pub fn create_router(
     engine: Arc<BongasEngine>,
@@ -30,6 +32,7 @@ pub fn create_router(
     );
 
     let routes = Router::new()
+        .route("/metrics", get(v1::admin::get_resilience_metrics))
         .nest("/api/v1", v1::routes(config.clone()))
         .nest("/health", v1::health::routes());
 
