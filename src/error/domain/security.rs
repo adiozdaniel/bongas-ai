@@ -31,6 +31,8 @@ pub enum SecurityError {
     CircuitOpen,
     #[error("validation overloaded (queue depth {queue_depth})")]
     ValidationOverloaded { queue_depth: usize },
+    #[error("internal security error: {0}")]
+    Internal(String),
     #[error("degraded security check: {layer} - {reason}")]
     Degraded { layer: String, reason: String },
     #[error("fallback used for security layer: {layer} - {reason}")]
@@ -45,7 +47,8 @@ impl ErrorClassifier for SecurityError {
             | SecurityError::HardwareMismatch(_)
             | SecurityError::BinaryTampered(_)
             | SecurityError::DebuggerDetected
-            | SecurityError::AnalysisToolDetected(_) => ErrorClassification::Permanent,
+            | SecurityError::AnalysisToolDetected(_)
+            | SecurityError::Internal(_) => ErrorClassification::Permanent,
             SecurityError::ServerValidationFailed { .. }
             | SecurityError::RevocationCheckFailed { .. }
             | SecurityError::HardwareFingerprintFailed { .. } => ErrorClassification::Transient,
@@ -65,7 +68,8 @@ impl ErrorClassifier for SecurityError {
             | SecurityError::HardwareMismatch(_)
             | SecurityError::BinaryTampered(_)
             | SecurityError::DebuggerDetected
-            | SecurityError::AnalysisToolDetected(_) => RetryHint::no_retry(),
+            | SecurityError::AnalysisToolDetected(_)
+            | SecurityError::Internal(_) => RetryHint::no_retry(),
             SecurityError::ServerValidationFailed { .. }
             | SecurityError::RevocationCheckFailed { .. }
             | SecurityError::HardwareFingerprintFailed { .. } => {

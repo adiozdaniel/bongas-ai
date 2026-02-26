@@ -1,6 +1,6 @@
 //! Engine runtime orchestration: bootstrap and initialization.
 
-use anyhow::Result;
+use anyhow::{Result, Context};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{info, error};
@@ -41,22 +41,17 @@ impl BongasEngine {
         let db_pool = deps.db_pool.clone();
         let engine = Self::new(deps).await?;
         
-        let engine_for_bg = engine.clone();
-        tokio::spawn(async move {
-            info!("Hard resetting database for a fresh start...");
-            let _ = sqlx::query("DROP SCHEMA IF EXISTS bongas CASCADE").execute(&db_pool).await;
-            let _ = sqlx::query("DROP TABLE IF EXISTS _sqlx_migrations CASCADE").execute(&db_pool).await;
+        // Ensure migrations run before we start accepting requests
+        info!("Ensuring database schema is up to date...");
+        sqlx::migrate!("./migrations")
+            .run(&db_pool)
+            .await
+            .context("Failed to run database migrations during bootstrap")?;
 
-            info!("Running database migrations...");
-            if let Err(e) = sqlx::migrate!("./migrations").run(&db_pool).await {
-                error!(error = %e, "Failed to run database migrations");
-                return;
-            }
-
-            if let Err(e) = engine_for_bg.reload_scenarios().await {
-                error!(error = %e, "Failed to load initial scenarios");
-            }
-        });
+        info!("Loading initial scenarios from database...");
+        if let Err(e) = engine.reload_scenarios().await {
+            error!(error = %e, "Failed to load initial scenarios");
+        }
 
         Ok(engine)
     }
@@ -78,7 +73,7 @@ impl BongasEngine {
             circuit_breaker_registry.clone(),
         )?);
 
-        let security_manager = Arc::new(SecurityManager::new(config.security.clone(), circuit_breaker_registry.clone(), resilience_metrics.clone(), None)?);
+        let security_manager = Arc::new(SecurityManager::new(config.security.clone(), &config.server.environment, circuit_breaker_registry.clone(), resilience_metrics.clone(), None).await?);
         let cache_manager = Arc::new(CacheManager::new(&config.redis.url, CacheConfig::default()).await?);
         let hot_registry = Arc::new(HotRegistry::new());
         let performance_stats = Arc::new(PerformanceStats::new());

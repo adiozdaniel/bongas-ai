@@ -12,7 +12,7 @@ SET search_path TO bongas, public;
 -- ============================================================================
 -- 1. pipelines (The Strategy Logic)
 -- ============================================================================
-CREATE TABLE pipelines (
+CREATE TABLE IF NOT EXISTS pipelines (
     id SERIAL PRIMARY KEY,
     slug VARCHAR(64) UNIQUE NOT NULL,
     name VARCHAR(128) NOT NULL,
@@ -26,7 +26,7 @@ CREATE TABLE pipelines (
 -- ============================================================================
 -- 2. scenarios (The Product/Endpoints)
 -- ============================================================================
-CREATE TABLE scenarios (
+CREATE TABLE IF NOT EXISTS scenarios (
     id SERIAL PRIMARY KEY,
     slug VARCHAR(64) UNIQUE NOT NULL,
     name VARCHAR(128) NOT NULL,
@@ -46,7 +46,7 @@ CREATE TABLE scenarios (
 -- ============================================================================
 -- 3. scenario_rules (The Routing Brain)
 -- ============================================================================
-CREATE TABLE scenario_rules (
+CREATE TABLE IF NOT EXISTS scenario_rules (
     id SERIAL PRIMARY KEY,
     scenario_id INTEGER REFERENCES scenarios(id) ON DELETE CASCADE,
     pipeline_id INTEGER REFERENCES pipelines(id) ON DELETE RESTRICT,
@@ -58,12 +58,12 @@ CREATE TABLE scenario_rules (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_scenario_rules_lookup ON scenario_rules(scenario_id, is_active, priority DESC);
+CREATE INDEX IF NOT EXISTS idx_scenario_rules_lookup ON scenario_rules(scenario_id, is_active, priority DESC);
 
 -- ============================================================================
 -- 4. rule_suggestions (The Suggestion Box)
 -- ============================================================================
-CREATE TABLE rule_suggestions (
+CREATE TABLE IF NOT EXISTS rule_suggestions (
     id SERIAL PRIMARY KEY,
     scenario_id INTEGER REFERENCES scenarios(id) ON DELETE CASCADE,
     suggested_pipeline_id INTEGER REFERENCES pipelines(id) ON DELETE CASCADE,
@@ -76,13 +76,12 @@ CREATE TABLE rule_suggestions (
     applied_at TIMESTAMPTZ
 );
 
-CREATE INDEX idx_rule_suggestions_status ON rule_suggestions(status, confidence_score DESC);
-CREATE UNIQUE INDEX idx_rule_suggestions_dedup ON rule_suggestions(scenario_id, suggested_pipeline_id, md5(suggested_condition::text)) WHERE status = 'pending';
+CREATE INDEX IF NOT EXISTS idx_rule_suggestions_status ON rule_suggestions(status, confidence_score DESC);
 
 -- ============================================================================
 -- 5. user_features (Feature Store)
 -- ============================================================================
-CREATE TABLE user_features (
+CREATE TABLE IF NOT EXISTS user_features (
     user_id INTEGER PRIMARY KEY,
     genre_affinity JSONB,
     disliked_genres JSONB,
@@ -102,7 +101,7 @@ CREATE TABLE user_features (
 -- ============================================================================
 -- 6. item_features (Content Features)
 -- ============================================================================
-CREATE TABLE item_features (
+CREATE TABLE IF NOT EXISTS item_features (
     item_id INTEGER PRIMARY KEY,
     title VARCHAR(500),
     description TEXT,
@@ -172,13 +171,13 @@ CREATE TABLE item_features (
     created_at TIMESTAMP DEFAULT NOW()
 );
 
-CREATE INDEX idx_item_genres ON item_features USING GIN(genres);
-CREATE INDEX idx_item_trending ON item_features(trending_score DESC);
+CREATE INDEX IF NOT EXISTS idx_item_genres ON item_features USING GIN(genres);
+CREATE INDEX IF NOT EXISTS idx_item_trending ON item_features(trending_score DESC);
 
 -- ============================================================================
 -- 7. user_interactions (Event Log)
 -- ============================================================================
-CREATE TABLE user_interactions (
+CREATE TABLE IF NOT EXISTS user_interactions (
     id BIGSERIAL PRIMARY KEY,
     user_id INTEGER NOT NULL,
     item_id INTEGER NOT NULL,
@@ -197,14 +196,14 @@ CREATE TABLE user_interactions (
     )
 );
 
-CREATE INDEX idx_interactions_user ON user_interactions(user_id, created_at DESC);
-CREATE INDEX idx_interactions_item ON user_interactions(item_id, created_at DESC);
-CREATE INDEX idx_interactions_profile ON user_interactions(profile_id);
+CREATE INDEX IF NOT EXISTS idx_interactions_user ON user_interactions(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_interactions_item ON user_interactions(item_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_interactions_profile ON user_interactions(profile_id);
 
 -- ============================================================================
 -- 7a. user_arrival_patterns (Predictive Warmer)
 -- ============================================================================
-CREATE TABLE user_arrival_patterns (
+CREATE TABLE IF NOT EXISTS user_arrival_patterns (
     user_id INTEGER PRIMARY KEY,
     hour_mask BIGINT DEFAULT 0,
     last_active_at TIMESTAMP DEFAULT NOW()
@@ -213,7 +212,7 @@ CREATE TABLE user_arrival_patterns (
 -- ============================================================================
 -- 8. recommendation_cache_l2 (Staging Manager)
 -- ============================================================================
-CREATE TABLE recommendation_cache_l2 (
+CREATE TABLE IF NOT EXISTS recommendation_cache_l2 (
     id BIGSERIAL PRIMARY KEY,
     cache_key VARCHAR(500) UNIQUE NOT NULL,
     scenario_slug VARCHAR(100) NOT NULL,
@@ -231,7 +230,7 @@ CREATE TABLE recommendation_cache_l2 (
 -- ============================================================================
 -- 9. model_registry (ML Model Versioning)
 -- ============================================================================
-CREATE TABLE model_registry (
+CREATE TABLE IF NOT EXISTS model_registry (
     id SERIAL PRIMARY KEY,
     model_name VARCHAR(100) NOT NULL,
     version VARCHAR(50) NOT NULL,
@@ -254,12 +253,13 @@ CREATE TABLE model_registry (
 -- ============================================================================
 -- 10. system_settings
 -- ============================================================================
-CREATE TABLE system_settings (
+CREATE TABLE IF NOT EXISTS system_settings (
     key VARCHAR(100) PRIMARY KEY,
     value JSONB NOT NULL,
     description TEXT,
     updated_at TIMESTAMP DEFAULT NOW()
 );
 
-INSERT INTO system_settings (key, value, description) VALUES
-('max_active_scenarios', '20'::jsonb, 'Maximum allowed scenarios with enabled=true');
+INSERT INTO system_settings (key, value, description) 
+VALUES ('max_active_scenarios', '20'::jsonb, 'Maximum allowed scenarios with enabled=true')
+ON CONFLICT (key) DO NOTHING;

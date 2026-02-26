@@ -1,10 +1,8 @@
 //! Binary integrity checking with typed SecurityError returns.
-//!
-//! Computes a SHA-256 hash at startup and verifies it hasn't changed at runtime.
-//! Returns `SecurityError` on failure for proper resilience classification.
 
 use sha2::{Sha256, Digest};
 use std::fs;
+use tracing::info;
 
 use crate::error::SecurityError;
 
@@ -15,18 +13,25 @@ pub struct BinaryIntegrityChecker {
 
 impl BinaryIntegrityChecker {
     /// Create a new checker, computing the baseline hash of the current binary.
-    pub fn new() -> Result<Self, SecurityError> {
-        let binary_path = std::env::current_exe().map_err(|e| {
-            SecurityError::BinaryTampered(format!("Failed to get executable path: {}", e))
-        })?;
+    /// Uses blocking I/O wrapped in spawn_blocking to prevent engine hang.
+    pub async fn new() -> Result<Self, SecurityError> {
+        info!("Computing binary integrity baseline...");
+        
+        let hash = tokio::task::spawn_blocking(|| -> Result<String, SecurityError> {
+            let binary_path = std::env::current_exe().map_err(|e| {
+                SecurityError::BinaryTampered(format!("Failed to get executable path: {}", e))
+            })?;
 
-        let binary_data = fs::read(&binary_path).map_err(|e| {
-            SecurityError::BinaryTampered(format!("Failed to read binary: {}", e))
-        })?;
+            let binary_data = fs::read(&binary_path).map_err(|e| {
+                SecurityError::BinaryTampered(format!("Failed to read binary: {}", e))
+            })?;
 
-        let mut hasher = Sha256::new();
-        hasher.update(&binary_data);
-        let hash = format!("{:x}", hasher.finalize());
+            let mut hasher = Sha256::new();
+            hasher.update(&binary_data);
+            Ok(format!("{:x}", hasher.finalize()))
+        })
+        .await
+        .map_err(|_| SecurityError::Internal("Thread panic during binary hashing".into()))??;
 
         Ok(Self {
             expected_hash: hash,
@@ -34,25 +39,31 @@ impl BinaryIntegrityChecker {
     }
 
     /// Verify binary hasn't been modified since startup.
-    pub fn verify_self(&self) -> Result<(), SecurityError> {
-        let binary_path = std::env::current_exe().map_err(|e| {
-            SecurityError::BinaryTampered(format!("Failed to get executable path: {}", e))
-        })?;
+    pub async fn verify_self(&self) -> Result<(), SecurityError> {
+        let expected = self.expected_hash.clone();
+        
+        tokio::task::spawn_blocking(move || -> Result<(), SecurityError> {
+            let binary_path = std::env::current_exe().map_err(|e| {
+                SecurityError::BinaryTampered(format!("Failed to get executable path: {}", e))
+            })?;
 
-        let binary_data = fs::read(&binary_path).map_err(|e| {
-            SecurityError::BinaryTampered(format!("Failed to read binary: {}", e))
-        })?;
+            let binary_data = fs::read(&binary_path).map_err(|e| {
+                SecurityError::BinaryTampered(format!("Failed to read binary: {}", e))
+            })?;
 
-        let mut hasher = Sha256::new();
-        hasher.update(&binary_data);
-        let current_hash = format!("{:x}", hasher.finalize());
+            let mut hasher = Sha256::new();
+            hasher.update(&binary_data);
+            let current_hash = format!("{:x}", hasher.finalize());
 
-        if current_hash != self.expected_hash {
-            return Err(SecurityError::BinaryTampered(
-                "Binary integrity check failed: hash mismatch".into(),
-            ));
-        }
+            if current_hash != expected {
+                return Err(SecurityError::BinaryTampered(
+                    "Binary integrity check failed: hash mismatch".into(),
+                ));
+            }
 
-        Ok(())
+            Ok(())
+        })
+        .await
+        .map_err(|_| SecurityError::Internal("Thread panic during binary hashing".into()))?
     }
 }

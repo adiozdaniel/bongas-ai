@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 use tokio::sync::{RwLock, Semaphore};
-use tracing::{info, error};
+use tracing::{info, warn, error};
 
 use crate::circuit_breaker::{
     CircuitBreaker, CircuitBreakerConfig, CircuitBreakerRegistry,
@@ -24,7 +24,7 @@ pub struct SecurityManager {
     pub(super) license_validator: Arc<LicenseValidator>,
     pub(super) hardware_fingerprinter: Arc<HardwareFingerprinter>,
     pub(super) anti_debug: Arc<AntiDebugDetector>,
-    pub(super) integrity_checker: Arc<BinaryIntegrityChecker>,
+    pub(super) integrity_checker: Option<Arc<BinaryIntegrityChecker>>,
 
     // Per-concern circuit breakers
     pub(super) license_server_cb: Arc<CircuitBreaker>,
@@ -44,8 +44,9 @@ pub struct SecurityManager {
 
 impl SecurityManager {
     /// Create a new SecurityManager with Netflix-grade resilience.
-    pub fn new(
+    pub async fn new(
         config: SecurityConfig,
+        environment: &str,
         circuit_breakers: Arc<CircuitBreakerRegistry>,
         observer: Arc<dyn ResilienceObserver>,
         analytics: Option<Arc<PerformanceStats>>,
@@ -96,7 +97,14 @@ impl SecurityManager {
         let license_validator = Arc::new(LicenseValidator::new(&config));
         let hardware_fingerprinter = Arc::new(HardwareFingerprinter::new(&config.hardware_id_salt));
         let anti_debug = Arc::new(AntiDebugDetector::new());
-        let integrity_checker = Arc::new(BinaryIntegrityChecker::new()?);
+        
+        // Skip heavy hashing in development mode to prevent bootstrap hangs
+        let integrity_checker = if environment.to_lowercase() == "development" || environment.to_lowercase() == "dev" {
+            info!("Development environment detected: skipping binary integrity baseline (speed optimization)");
+            None
+        } else {
+            Some(Arc::new(BinaryIntegrityChecker::new().await?))
+        };
 
         let bulkhead = Arc::new(Semaphore::new(config.max_concurrent_validations));
 
@@ -138,9 +146,13 @@ impl SecurityManager {
 
         // Layer 3: Binary Integrity Check (local)
         if self.config.binary_protection_enabled {
-            info!("Layer 3/8: Verifying binary integrity...");
-            self.integrity_checker.verify_self()?;
-            info!("Layer 3 passed");
+            if let Some(ref checker) = self.integrity_checker {
+                info!("Layer 3/8: Verifying binary integrity...");
+                checker.verify_self().await?;
+                info!("Layer 3 passed");
+            } else {
+                warn!("Layer 3/8: Binary integrity check requested but checker not initialized (dev mode bypass)");
+            }
         } else {
             info!("Layer 3 skipped (disabled)");
         }
