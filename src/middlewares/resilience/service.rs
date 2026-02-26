@@ -31,19 +31,19 @@
   #[derive(Clone)]
   pub struct ResilienceMiddleware {
       registry: Arc<CircuitBreakerRegistry>,
-      config: ResilienceConfig,
+      config: ResilienceMiddlewareConfig,
   }
 
   /// Configuration for resilience middleware.
   #[derive(Clone)]
-  pub struct ResilienceConfig {
+  pub struct ResilienceMiddlewareConfig {
       /// Whether to enable circuit breakers for all endpoints
       pub enabled: bool,
       /// Default circuit breaker config for endpoints
       pub default_breaker_config: CircuitBreakerConfig,
   }
 
-  impl Default for ResilienceConfig {
+  impl Default for ResilienceMiddlewareConfig {
       fn default() -> Self {
           Self {
               enabled: true,
@@ -59,14 +59,14 @@
       pub fn new(registry: Arc<CircuitBreakerRegistry>) -> Self {
           Self {
               registry,
-              config: ResilienceConfig::default(),
+              config: ResilienceMiddlewareConfig::default(),
           }
       }
 
       /// Create with custom configuration.
       pub fn with_config(
           registry: Arc<CircuitBreakerRegistry>,
-          config: ResilienceConfig,
+          config: ResilienceMiddlewareConfig,
       ) -> Self {
           Self {
               registry,

@@ -4,7 +4,7 @@ use bongas_ai::pipeline::context::ExecutionContext;
 use bongas_ai::pipeline::{ScoredItem, PipelineStage, StageDataKind};
 use bongas_ai::db::models::{PipelineDefinition, PipelineStageConfig};
 use bongas_ai::circuit_breaker::CircuitBreakerRegistry;
-use bongas_ai::resilience::{ResilienceMetricsCollector, MetricsRegistry, ResilienceConfig};
+use bongas_ai::resilience::{ResilienceMetricsCollector, MetricsRegistry, ResilienceMetricsConfig};
 use bongas_ai::pipeline::stages::sort::{SortByScoreStage, DeduplicateStage, LimitStage};
 use serde_json::json;
 use std::sync::Arc;
@@ -42,7 +42,7 @@ fn bench_pipeline_executor(c: &mut Criterion) {
     
     let breaker_registry = Arc::new(CircuitBreakerRegistry::default());
     let resilience_metrics = Arc::new(ResilienceMetricsCollector::new(
-        Arc::new(MetricsRegistry::new(ResilienceConfig::default())),
+        Arc::new(MetricsRegistry::new(ResilienceMetricsConfig::default())),
     ));
 
     let mut group = c.benchmark_group("engine_executor");
@@ -59,8 +59,11 @@ fn bench_pipeline_executor(c: &mut Criterion) {
         
         let registry = PipelineRegistry::with_stages(stages);
 
+        let mut pipeline_config = bongas_ai::config::PipelineConfig::default();
+        pipeline_config.stage_breaker_enabled = false;
+
         let executor = PipelineExecutor::with_registry(
-            bongas_ai::config::PipelineConfig::default(),
+            pipeline_config,
             breaker_registry.clone(),
             resilience_metrics.clone(),
             None,
@@ -83,7 +86,7 @@ fn bench_pipeline_executor(c: &mut Criterion) {
                 },
                 PipelineStageConfig {
                     r#type: "limit".to_string(),
-                    params: json!({ "limit": 100 }),
+                    params: json!({ "count": 100 }),
                 },
             ],
             fallback_stages: None,

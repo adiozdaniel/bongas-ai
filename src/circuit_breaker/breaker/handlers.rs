@@ -155,7 +155,7 @@ impl CircuitBreaker {
     pub(super) fn maybe_trip(&self, consecutive_failures: u32) {
         // Check consecutive failure threshold first (faster)
         if let Some(threshold) = self.config.consecutive_failure_threshold() {
-            if consecutive_failures >= threshold {
+            if u64::from(consecutive_failures) >= threshold {
                 self.trip_circuit();
                 return;
             }

@@ -103,7 +103,7 @@ impl ExecutionContext {
 
     /// Create a test context with minimal valid dependencies for benchmarks.
     pub async fn test_context() -> Self {
-        use crate::resilience::{ResilienceMetricsCollector, MetricsRegistry, ResilienceConfig};
+        use crate::resilience::{ResilienceMetricsCollector, MetricsRegistry, ResilienceMetricsConfig};
         use crate::db::{ResilientPool, ResilientPoolConfig};
         use crate::cache::{CacheManager, CacheConfig};
         use crate::ml::model_loader::ModelLoader;
@@ -111,7 +111,7 @@ impl ExecutionContext {
         use crate::circuit_breaker::CircuitBreakerRegistry;
         
         let resilience_metrics = Arc::new(ResilienceMetricsCollector::new(
-            Arc::new(MetricsRegistry::new(ResilienceConfig::default())),
+            Arc::new(MetricsRegistry::new(ResilienceMetricsConfig::default())),
         ));
         
         // Use a dummy pool that won't connect unless used

@@ -62,11 +62,11 @@ impl PredictiveWarmer {
     }
 
     async fn warm_next_arrivals(&self, target_hour: u32) -> Result<()> {
-        use crate::resilience::{ResilienceMetricsCollector, MetricsRegistry, ResilienceConfig};
+        use crate::resilience::{ResilienceMetricsCollector, MetricsRegistry, ResilienceMetricsConfig};
         
         // 1. Get users likely to arrive in the target hour
         let resilience_metrics = Arc::new(ResilienceMetricsCollector::new(
-            Arc::new(MetricsRegistry::new(ResilienceConfig::default())),
+            Arc::new(MetricsRegistry::new(ResilienceMetricsConfig::default())),
         ));
 
         let interaction_repo = crate::db::repositories::interaction_repository::InteractionRepository::new(

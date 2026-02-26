@@ -16,7 +16,7 @@ use dashmap::DashMap;
 use crate::circuit_breaker::CircuitState;
 use crate::error::ErrorClassification;
 
-use crate::resilience::config::ResilienceConfig;
+use crate::resilience::config::ResilienceMetricsConfig;
 use crate::resilience::histogram::HdrHistogram;
 use crate::resilience::types::{
     BreakerSnapshot, ClassificationCounters, ClassificationSnapshot,
@@ -171,13 +171,13 @@ impl Default for BreakerMetrics {
 
 /// Central registry for all circuit breaker metrics.
 pub struct MetricsRegistry {
-    config: ResilienceConfig,
+    config: ResilienceMetricsConfig,
     breakers: DashMap<String, BreakerMetrics>,
     last_rate_update: RwLock<Instant>,
 }
 
 impl MetricsRegistry {
-    pub fn new(config: ResilienceConfig) -> Self {
+    pub fn new(config: ResilienceMetricsConfig) -> Self {
         Self {
             config,
             breakers: DashMap::new(),
@@ -186,7 +186,7 @@ impl MetricsRegistry {
     }
 
     pub fn with_defaults() -> Self {
-        Self::new(ResilienceConfig::default())
+        Self::new(ResilienceMetricsConfig::default())
     }
 
     /// Get or create metrics for a breaker.
@@ -200,7 +200,7 @@ impl MetricsRegistry {
         }
 
         // Check max breakers limit
-        if self.config.max_breakers() > 0 && self.breakers.len() >= self.config.max_breakers() {
+        if self.config.max_breakers > 0 && self.breakers.len() >= self.config.max_breakers {
             // Return first breaker as fallback (avoid panic)
             if let Some(entry) = self.breakers.iter().next() {
                 if let Some(metrics) = self.breakers.get(entry.key()) {
@@ -229,7 +229,7 @@ impl MetricsRegistry {
             guard.elapsed()
         };
 
-        if elapsed < self.config.rate_interval() {
+        if elapsed < self.config.rate_interval {
             return;
         }
 

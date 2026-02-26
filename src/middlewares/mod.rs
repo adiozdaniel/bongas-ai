@@ -9,7 +9,7 @@ pub mod resilience;
 pub mod bulkhead;
 
 // Re-export key types for public API stability
-pub use resilience::*;
+pub use resilience::{ResilienceMiddleware, ResilienceMiddlewareConfig};
 pub use bulkhead::*;
 pub use unified_error::*;
 pub use metrics::*;

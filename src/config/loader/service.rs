@@ -7,6 +7,7 @@ use crate::config::types::{
     HiveMindConfig, SlidingWindowType, BackoffStrategy, ExportFormat,
     experiments::ExperimentsConfig, resilience::{ResilienceDefaults, RetryConfig},
 };
+use crate::resilience::ResilienceMetricsConfig;
 use crate::config::validation::validate_app_config as validate_config_fn;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -199,9 +200,9 @@ impl ConfigLoader {
             slow_call_rate_threshold: parse_f64("resilience.circuit_breaker.slow_call_rate_threshold", 0.5)?,
             slow_call_duration: Duration::from_secs(parse_u64("resilience.circuit_breaker.slow_call_duration_secs", 2)?),
             minimum_calls: parse_u64("resilience.circuit_breaker.minimum_calls", 10)?,
-            wait_duration_in_open_state: Duration::from_secs(parse_u64("resilience.circuit_breaker.wait_duration_in_open_state_secs", 30)?),
-            permitted_calls_in_half_open_state: parse_u64("resilience.circuit_breaker.permitted_calls_in_half_open_state", 3)?,
-            sliding_window_size: parse_u64("resilience.circuit_breaker.sliding_window_size", 100)?,
+            wait_duration_in_open_state: Some(Duration::from_secs(parse_u64("resilience.circuit_breaker.wait_duration_in_open_state_secs", 30)?)),
+            permitted_calls_in_half_open_state: Some(parse_u64("resilience.circuit_breaker.permitted_calls_in_half_open_state", 3)?),
+            sliding_window_size: parse_u64("resilience.circuit_breaker.sliding_window_size", 100)? as usize,
             sliding_window_type: match parse_val("resilience.circuit_breaker.sliding_window_type", "count").as_str() {
                 "time" => SlidingWindowType::TimeBased,
                 _ => SlidingWindowType::CountBased,
@@ -209,6 +210,11 @@ impl ConfigLoader {
             writable_stack_trace_enabled: parse_bool("resilience.circuit_breaker.writable_stack_trace_enabled", true)?,
             record_exceptions: vec![],
             ignore_exceptions: vec![],
+            recovery_timeout: Duration::from_secs(60),
+            half_open_max_calls: 10,
+            call_timeout: Duration::from_secs(30),
+            max_concurrent_calls: 0,
+            consecutive_failure_threshold: None,
         };
 
         let error = ErrorConfig {
@@ -292,7 +298,7 @@ impl ConfigLoader {
         Ok(AppConfig::new(
             server, database, redis, clickhouse, ingestion, security, ml, pipeline,
             circuit_breaker, error, analytics, ObservabilityConfig::default(),
-            resilience, experiments, hive_mind,
+            resilience, ResilienceMetricsConfig::default(), experiments, hive_mind,
         ))
     }
 

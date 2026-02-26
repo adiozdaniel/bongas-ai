@@ -5,7 +5,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{info, error};
 
-use crate::resilience::{ResilienceMetricsCollector, MetricsRegistry, ResilienceConfig};
+use crate::resilience::{ResilienceMetricsCollector, MetricsRegistry};
 use crate::db::{ResilientPool, ResilientPoolConfig};
 use crate::pipeline::executor::PipelineExecutor;
 use crate::cache::{CacheManager, CacheConfig, HotRegistry};
@@ -70,7 +70,7 @@ impl BongasEngine {
         } = deps;
 
         let resilience_metrics = Arc::new(ResilienceMetricsCollector::new(
-            Arc::new(MetricsRegistry::new(ResilienceConfig::default())),
+            Arc::new(MetricsRegistry::new(config.resilience_metrics.clone())),
         ));
         let resilient_pool = Arc::new(ResilientPool::from_pool(
             db_pool.clone(),
@@ -156,8 +156,14 @@ impl BongasEngine {
             scenarios_manager.linked_scenarios.clone(),
         ));
 
+        let ch_client = clickhouse::Client::default()
+            .with_url(&config.clickhouse.url)
+            .with_user(&config.clickhouse.user)
+            .with_password(&config.clickhouse.password)
+            .with_database(&config.clickhouse.database);
+
         let analytics_sidecar = Arc::new(AnalyticsSidecar::new(
-            clickhouse::Client::default(),
+            ch_client,
             resilient_pool.clone(),
             shutdown_tx.subscribe(),
         ));

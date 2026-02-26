@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::time::Duration;
 use serde::Deserialize;
-use crate::config::types::circuit_breaker::CircuitBreakerConfig;
+use crate::circuit_breaker::CircuitBreakerConfig;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct RetryConfig {
@@ -28,4 +28,21 @@ pub struct ResilienceDefaults {
     pub circuit_breaker: CircuitBreakerConfig,
     pub retry: RetryConfig,
     pub timeout: Duration,
+}
+
+impl Default for ResilienceConfig {
+    fn default() -> Self {
+        Self {
+            defaults: ResilienceDefaults {
+                circuit_breaker: CircuitBreakerConfig::default(),
+                retry: RetryConfig {
+                    max_retries: 3,
+                    base_delay: Duration::from_millis(100),
+                    max_delay: Duration::from_secs(1),
+                },
+                timeout: Duration::from_secs(30),
+            },
+            overrides: HashMap::new(),
+        }
+    }
 }

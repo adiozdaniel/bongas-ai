@@ -10,129 +10,67 @@ use crate::config::types::{
     IngestionConfig, SecurityConfig, MlConfig, PipelineConfig,
     ObservabilityConfig, ResilienceConfig, ExperimentsConfig, HiveMindConfig,
 };
-
-
+use crate::resilience::ResilienceMetricsConfig;
 
 /// Root application configuration.
-
-///
-
-/// Immutable configuration structure that contains all configuration
-
-/// for the three main modules: circuit breaker, error handling, and analytics.
-
-/// Follows Netflix's Composite Configuration Pattern with namespace isolation.
-
 #[derive(Debug, Clone)]
-
 pub struct AppConfig {
-
     pub server: ServerConfig,
-
     pub database: DatabaseConfig,
-
     pub redis: RedisConfig,
-
     pub clickhouse: ClickHouseConfig,
-
     pub ingestion: IngestionConfig,
-
     pub security: SecurityConfig,
-
     pub ml: MlConfig,
-
     pub pipeline: PipelineConfig,
-
     pub circuit_breaker: CircuitBreakerConfig,
-
     pub error: ErrorConfig,
-
     pub analytics: AnalyticsConfig,
-
     pub observability: ObservabilityConfig,
-
     pub resilience: ResilienceConfig,
-
+    pub resilience_metrics: ResilienceMetricsConfig,
     pub experiments: ExperimentsConfig,
-
     pub hive_mind: HiveMindConfig,
-
 }
 
-
-
 impl AppConfig {
-
     /// Create a new application configuration.
-
     pub fn new(
-
         server: ServerConfig,
-
         database: DatabaseConfig,
-
         redis: RedisConfig,
-
         clickhouse: ClickHouseConfig,
-
         ingestion: IngestionConfig,
-
         security: SecurityConfig,
-
         ml: MlConfig,
-
         pipeline: PipelineConfig,
-
         circuit_breaker: CircuitBreakerConfig,
-
         error: ErrorConfig,
-
         analytics: AnalyticsConfig,
-
         observability: ObservabilityConfig,
-
         resilience: ResilienceConfig,
-
+        resilience_metrics: ResilienceMetricsConfig,
         experiments: ExperimentsConfig,
-
         hive_mind: HiveMindConfig,
-
     ) -> Self {
-
         Self {
-
             server,
-
             database,
-
             redis,
-
             clickhouse,
-
             ingestion,
-
             security,
-
             ml,
-
             pipeline,
-
             circuit_breaker,
-
             error,
-
             analytics,
-
             observability,
-
             resilience,
-
+            resilience_metrics,
             experiments,
-
             hive_mind,
-
         }
-
     }
 
 

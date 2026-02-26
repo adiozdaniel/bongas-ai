@@ -5,7 +5,7 @@ use bongas_ai::pipeline::{ScoredItem, PipelineStage, StageDataKind};
 use bongas_ai::db::models::{PipelineDefinition, PipelineStageConfig};
 use bongas_ai::cache::{HotRegistry, HotItem};
 use bongas_ai::circuit_breaker::CircuitBreakerRegistry;
-use bongas_ai::resilience::{ResilienceMetricsCollector, MetricsRegistry, ResilienceConfig};
+use bongas_ai::resilience::{ResilienceMetricsCollector, MetricsRegistry, ResilienceMetricsConfig};
 use serde_json::json;
 use std::sync::Arc;
 use std::collections::HashMap;
@@ -51,7 +51,7 @@ fn bench_fast_path_vs_slow_path(c: &mut Criterion) {
     
     let breaker_registry = Arc::new(CircuitBreakerRegistry::default());
     let resilience_metrics = Arc::new(ResilienceMetricsCollector::new(
-        Arc::new(MetricsRegistry::new(ResilienceConfig::default())),
+        Arc::new(MetricsRegistry::new(ResilienceMetricsConfig::default())),
     ));
 
     let items = create_test_items(100);
@@ -60,8 +60,11 @@ fn bench_fast_path_vs_slow_path(c: &mut Criterion) {
     stages.insert("fetch".to_string(), Arc::new(MockFetchStage { items: items.clone(), parallelizable: false }));
     let registry = PipelineRegistry::with_stages(stages);
 
+    let mut pipeline_config = bongas_ai::config::PipelineConfig::default();
+    pipeline_config.stage_breaker_enabled = false;
+
     let executor = PipelineExecutor::with_registry(
-        bongas_ai::config::PipelineConfig::default(),
+        pipeline_config,
         breaker_registry.clone(),
         resilience_metrics.clone(),
         None,
@@ -102,7 +105,7 @@ fn bench_parallel_fetch_gains(c: &mut Criterion) {
     
     let breaker_registry = Arc::new(CircuitBreakerRegistry::default());
     let resilience_metrics = Arc::new(ResilienceMetricsCollector::new(
-        Arc::new(MetricsRegistry::new(ResilienceConfig::default())),
+        Arc::new(MetricsRegistry::new(ResilienceMetricsConfig::default())),
     ));
 
     let items = create_test_items(100);
@@ -112,8 +115,11 @@ fn bench_parallel_fetch_gains(c: &mut Criterion) {
     stages.insert("fetch_serial".to_string(), Arc::new(MockFetchStage { items: items.clone(), parallelizable: false }));
     let registry = PipelineRegistry::with_stages(stages);
 
+    let mut pipeline_config = bongas_ai::config::PipelineConfig::default();
+    pipeline_config.stage_breaker_enabled = false;
+
     let executor = PipelineExecutor::with_registry(
-        bongas_ai::config::PipelineConfig::default(),
+        pipeline_config,
         breaker_registry.clone(),
         resilience_metrics.clone(),
         None,
