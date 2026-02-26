@@ -4,27 +4,35 @@
 //! and security settings with Netflix-style resilience patterns.
 
 use std::time::Duration;
+use serde::Deserialize;
 
 /// Security configuration with Netflix-style resilience patterns.
-///
-/// Configuration for license validation, hardware binding, and
-/// security settings including license key, server URL, and
-/// per-layer circuit breaker, timeout, bulkhead, and fallback settings.
-#[derive(Clone)]
+#[derive(Clone, Deserialize)]
 pub struct SecurityConfig {
     // Basic security settings
+    #[serde(default)]
     pub license_key: String,
+    #[serde(default)]
     pub license_server_url: String,
+    #[serde(default)]
     pub hardware_id_salt: String,
+    #[serde(default = "default_true")]
     pub anti_debug_enabled: bool,
+    #[serde(default = "default_true")]
     pub binary_protection_enabled: bool,
+    #[serde(default = "default_interval")]
     pub license_validation_interval: u64,
 
     // Platform Keys (Phase 11)
+    #[serde(default)]
     pub mobile_api_key: String,
+    #[serde(default)]
     pub web_api_key: String,
+    #[serde(default)]
     pub tv_api_key: String,
+    #[serde(default)]
     pub system_api_key: String,
+    #[serde(default)]
     pub jwt_secret_key: String,
 
     // Per-layer circuit breaker configuration
@@ -56,6 +64,9 @@ pub struct SecurityConfig {
     pub analytics_enabled: bool,
     pub analytics_per_layer: bool,
 }
+
+fn default_true() -> bool { true }
+fn default_interval() -> u64 { 3600 }
 
 impl std::fmt::Debug for SecurityConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

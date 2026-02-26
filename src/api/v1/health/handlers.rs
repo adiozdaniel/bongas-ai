@@ -16,12 +16,14 @@ pub fn routes() -> Router {
 
 /// Liveness probe - determines if the process is alive.
 /// Restarts container on failure. Should be very lightweight.
-async fn liveness_check() -> Json<HealthResponse> {
+async fn liveness_check(
+    Extension(start_time): Extension<Arc<Instant>>,
+) -> Json<HealthResponse> {
     Json(HealthResponse {
         status: "up".to_string(),
         version: env!("CARGO_PKG_VERSION").to_string(),
         timestamp: chrono::Utc::now(),
-        uptime_seconds: 0, // Not needed for liveness
+        uptime_seconds: start_time.elapsed().as_secs(),
     })
 }
 

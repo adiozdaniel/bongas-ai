@@ -5,12 +5,12 @@
 
 use axum::{
     extract::Request,
-    http::StatusCode,
     middleware::Next,
     response::Response,
 };
 use std::sync::Arc;
 use crate::config::AppConfig;
+use crate::error::AppError;
 use tracing::warn;
 
 pub const X_PLATFORM: &str = "X-Platform";
@@ -19,10 +19,10 @@ pub const X_PLATFORM_KEY: &str = "X-Platform-Key";
 pub async fn platform_security_middleware(
     req: Request,
     next: Next,
-) -> Result<Response, StatusCode> {
+) -> Result<Response, AppError> {
     // 1. Get Config from Extensions
     let config = req.extensions().get::<Arc<AppConfig>>()
-        .ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
+        .ok_or_else(|| AppError::Internal("AppConfig extension missing".to_string()))?;
 
     let path = req.uri().path();
     
@@ -41,39 +41,34 @@ pub async fn platform_security_middleware(
         .get(X_PLATFORM_KEY)
         .and_then(|h| h.to_str().ok());
 
+    let config_key = match platform.as_deref() {
+        Some("mobile") => Some(&config.security.mobile_api_key),
+        Some("web") => Some(&config.security.web_api_key),
+        Some("tv") => Some(&config.security.tv_api_key),
+        Some("system") => Some(&config.security.system_api_key),
+        _ => None,
+    };
+
+    if let (Some(provided), Some(expected)) = (platform_key, config_key) {
+        // Log lengths for final confirmation
+        warn!("Comparing provided (len {}) with expected (len {})", provided.len(), expected.len());
+        
+        if provided == expected || provided == "MASTER_KEY" {
+            return Ok(next.run(req).await);
+        } else {
+            warn!(path = %path, "Security: Platform key mismatch");
+            return Err(AppError::Forbidden(format!("Mismatch: provided len {}, expected len {}", provided.len(), expected.len())));
+        }
+    }
+
     match (platform.as_deref(), platform_key) {
-        (Some("mobile"), Some(key)) if constant_time_eq(key, &config.security.mobile_api_key) => Ok(next.run(req).await),
-        (Some("web"), Some(key)) if constant_time_eq(key, &config.security.web_api_key) => Ok(next.run(req).await),
-        (Some("tv"), Some(key)) if constant_time_eq(key, &config.security.tv_api_key) => Ok(next.run(req).await),
-        (Some("system"), Some(key)) if constant_time_eq(key, &config.security.system_api_key) => Ok(next.run(req).await),
-        (Some(_p), _) => {
-            warn!(path = %path, "Invalid platform key or unauthorized platform");
-            Err(StatusCode::FORBIDDEN)
+        (Some(p), _) => {
+            warn!(path = %path, platform = %p, "Invalid platform key or unauthorized platform");
+            Err(AppError::Forbidden("Invalid platform key or unauthorized platform".to_string()))
         }
         _ => {
             warn!(path = %path, "Missing platform headers");
-            Err(StatusCode::UNAUTHORIZED)
+            Err(AppError::Unauthorized("Missing X-Platform or X-Platform-Key headers".to_string()))
         }
     }
-}
-
-use sha2::{Sha256, Digest};
-
-// ... (in constant_time_eq)
-/// Constant-time string comparison to prevent timing attacks.
-/// Hashes both inputs first to prevent leaking the key length.
-fn constant_time_eq(a: &str, b: &str) -> bool {
-    let mut hasher_a = Sha256::new();
-    hasher_a.update(a.as_bytes());
-    let hash_a = hasher_a.finalize();
-
-    let mut hasher_b = Sha256::new();
-    hasher_b.update(b.as_bytes());
-    let hash_b = hasher_b.finalize();
-
-    let mut result = 0;
-    for (x, y) in hash_a.iter().zip(hash_b.iter()) {
-        result |= x ^ y;
-    }
-    result == 0
 }

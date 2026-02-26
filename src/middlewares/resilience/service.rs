@@ -126,12 +126,21 @@
                   classification,
                   latency,
               }) => {
-                  error!(
-                      breaker_id = %breaker_id.label(),
-                      classification = ?classification,
-                      latency_ms = latency.as_millis(),
-                      "Request execution failed through circuit breaker"
-                  );
+                  if classification == ErrorClassification::Permanent {
+                      warn!(
+                          breaker_id = %breaker_id.label(),
+                          classification = ?classification,
+                          latency_ms = latency.as_millis(),
+                          "Request returned permanent error (expected behavior)"
+                      );
+                  } else {
+                      error!(
+                          breaker_id = %breaker_id.label(),
+                          classification = ?classification,
+                          latency_ms = latency.as_millis(),
+                          "Request execution failed through circuit breaker"
+                      );
+                  }
 
                   // Failure automatically recorded via observer with classification
                   // Return the original response

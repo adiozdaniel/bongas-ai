@@ -51,10 +51,9 @@ impl EnvSource {
                 key[prefix.len()..].trim_start_matches('_').to_lowercase()
             };
 
-            // Convert double underscore-separated to dot-separated
-            // Fix: Only double underscores represent nesting levels. 
-            // Single underscores are part of the key name itself.
-            let dot_key = clean_key.replace("__", ".");
+            // Convert to dot-separated
+            // Pattern: APP__SECURITY__WEB_API_KEY -> security.web_api_key
+            let dot_key = clean_key.replace("_", ".");
             
             result.insert(dot_key, value);
         }

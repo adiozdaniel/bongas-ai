@@ -169,15 +169,32 @@ impl ConfigLoader {
             processing_timeout_secs: parse_u64("ingestion.processing_timeout_secs", 30)?,
         };
 
+        // Create a normalized map for case-insensitive lookup
+        let normalized_map: HashMap<String, String> = config_map.iter()
+            .map(|(k, v)| (k.to_lowercase(), v.clone()))
+            .collect();
+
+        let get_val = |key: &str, default: &str| {
+            normalized_map.get(&key.to_lowercase())
+                .cloned()
+                .unwrap_or_else(|| default.to_string())
+        };
+
         // Security
-        let mut security = SecurityConfig::default();
-        if let Some(v) = config_map.get("security.license_key") { security.license_key = v.clone(); }
-        if let Some(v) = config_map.get("security.license_server_url") { security.license_server_url = v.clone(); }
-        if let Some(v) = config_map.get("security.mobile_api_key") { security.mobile_api_key = v.clone(); }
-        if let Some(v) = config_map.get("security.web_api_key") { security.web_api_key = v.clone(); }
-        if let Some(v) = config_map.get("security.tv_api_key") { security.tv_api_key = v.clone(); }
-        if let Some(v) = config_map.get("security.system_api_key") { security.system_api_key = v.clone(); }
-        if let Some(v) = config_map.get("security.jwt_secret_key") { security.jwt_secret_key = v.clone(); }
+        let security = SecurityConfig {
+            license_key: get_val("security.license_key", ""),
+            license_server_url: get_val("security.license_server_url", ""),
+            hardware_id_salt: get_val("security.hardware_id_salt", ""),
+            anti_debug_enabled: parse_bool("security.anti_debug_enabled", true)?,
+            binary_protection_enabled: parse_bool("security.binary_protection_enabled", true)?,
+            license_validation_interval: parse_u64("security.license_validation_interval", 3600)?,
+            mobile_api_key: get_val("security.mobile_api_key", ""),
+            web_api_key: get_val("security.web_api_key", ""),
+            tv_api_key: get_val("security.tv_api_key", ""),
+            system_api_key: get_val("security.system_api_key", ""),
+            jwt_secret_key: get_val("security.jwt_secret_key", ""),
+            ..SecurityConfig::default()
+        };
 
         // ML
         let mut ml = MlConfig::default();
