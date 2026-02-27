@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use anyhow::Result;
+use crate::error::{AppResult, AppError, ScenarioError};
 use crate::engine::engine::types::*;
 use crate::ingestion::metrics::IngestionHealth;
 use crate::db::repositories::feature_repository::FeatureRepository;
@@ -16,7 +16,7 @@ impl BongasEngine {
         scenario_slug: &str,
         user_id: Option<i32>,
         context_params: serde_json::Value,
-    ) -> Result<Vec<RecommendationItem>> {
+    ) -> AppResult<Vec<RecommendationItem>> {
         let (items, _) = self.execution.execute_scenario_with_stats_contextual(
             scenario_slug, user_id, None, None, None, context_params, None
         ).await?;
@@ -33,7 +33,7 @@ impl BongasEngine {
         device_type: Option<String>,
         context_params: serde_json::Value,
         limit: Option<usize>,
-    ) -> Result<(Vec<RecommendationItem>, ScenarioExecutionStats)> {
+    ) -> AppResult<(Vec<RecommendationItem>, ScenarioExecutionStats)> {
         self.execution.execute_scenario_with_stats_contextual(
             scenario_slug, user_id, profile_id, maturity_rating, device_type, context_params, limit
         ).await
@@ -46,20 +46,22 @@ impl BongasEngine {
         user_id: Option<i32>,
         context_params: serde_json::Value,
         limit: Option<usize>,
-    ) -> Result<(Vec<RecommendationItem>, ScenarioExecutionStats)> {
+    ) -> AppResult<(Vec<RecommendationItem>, ScenarioExecutionStats)> {
         self.execution.execute_scenario_with_stats_contextual(
             scenario_slug, user_id, None, None, None, context_params, limit
         ).await
     }
 
     /// Proxy: Reload all scenarios
-    pub async fn reload_scenarios(&self) -> Result<usize> {
+    pub async fn reload_scenarios(&self) -> AppResult<usize> {
         self.scenarios.reload_scenarios().await
+            .map_err(|e| AppError::Scenario(ScenarioError::ExecutionFailed(format!("Reload failed: {}", e))))
     }
 
     /// Proxy: Reload a single scenario
-    pub async fn reload_scenario(&self, slug: &str) -> Result<bool> {
+    pub async fn reload_scenario(&self, slug: &str) -> AppResult<bool> {
         self.scenarios.reload_scenario(slug).await
+            .map_err(|e| AppError::Scenario(ScenarioError::ExecutionFailed(format!("Reload failed for {}: {}", slug, e))))
     }
 
     /// Proxy: Remove a scenario
@@ -86,8 +88,9 @@ impl BongasEngine {
         self.cache_manager.metrics()
     }
 
-    pub async fn reload_models(&self) -> Result<usize> {
+    pub async fn reload_models(&self) -> AppResult<usize> {
         self.execution.model_loader.reload_all().await
+            .map_err(|e| AppError::Model(crate::error::ModelError::LoadFailed(format!("Reload failed: {}", e))))
     }
 
     pub async fn model_count(&self) -> usize {

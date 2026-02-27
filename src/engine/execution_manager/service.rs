@@ -1,6 +1,6 @@
 //! High-performance recommendation execution loop.
 
-use anyhow::Result;
+use crate::error::{AppResult, AppError, ScenarioError};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tracing::warn;
@@ -100,7 +100,7 @@ impl ExecutionManager {
         device_type: Option<String>,
         context_params: serde_json::Value,
         limit: Option<usize>,
-    ) -> Result<(Vec<RecommendationItem>, ScenarioExecutionStats)> {
+    ) -> AppResult<(Vec<RecommendationItem>, ScenarioExecutionStats)> {
         let start_time = std::time::Instant::now();
 
         let mut experiment_overrides = HashMap::new();
@@ -150,7 +150,7 @@ impl ExecutionManager {
             let scenarios = self.scenarios.read().await;
             scenarios.get(scenario_slug)
                 .cloned()
-                .ok_or_else(|| anyhow::anyhow!("Scenario '{}' not found", scenario_slug))?
+                .ok_or_else(|| AppError::Scenario(ScenarioError::NotFound(scenario_slug.to_string())))?
         };
 
         if let Some(scope_obj) = scenario.scope.as_object() {
@@ -158,7 +158,7 @@ impl ExecutionManager {
                 let user_region = context_params.get("region").and_then(|v| v.as_str()).unwrap_or("UNKNOWN");
                 if !allowed_regions.iter().any(|r| r.as_str() == Some(user_region)) {
                     warn!(scenario = %scenario_slug, user_region, "Scenario scope mismatch: Region not allowed");
-                    return Err(anyhow::anyhow!("Scenario not available in your region"));
+                    return Err(AppError::Scenario(ScenarioError::InvalidConfig(format!("Scenario not available in region: {}", user_region))));
                 }
             }
         }

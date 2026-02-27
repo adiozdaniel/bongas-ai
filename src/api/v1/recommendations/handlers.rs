@@ -214,3 +214,24 @@ pub async fn get_live_tv(
     info!(request_id = %request_id, user_id, scenario = "live_tv", result_count = items.len(), "Live TV recommendations served");
     Ok(Json(StandardResponse::success(items).with_request_id(request_id)))
 }
+
+pub async fn get_recommendations(
+    Path((scenario_slug, user_id)): Path<(String, i32)>,
+    Query(context_params): Query<ContextParams>,
+    Extension(engine): Extension<Arc<BongasEngine>>,
+    Extension(request_id): Extension<RequestId>,
+) -> Result<Json<StandardResponse<Vec<RecommendationItem>>>, AppError> {
+    let request_id = request_id.header_value().to_str().unwrap_or("unknown").to_string();
+    let items = execute_and_map(
+        engine.clone(), 
+        &scenario_slug, 
+        Some(user_id), 
+        Some(context_params),
+        serde_json::json!({}), 
+        0, 
+        usize::MAX
+    ).await?;
+
+    info!(request_id = %request_id, user_id, scenario = scenario_slug, result_count = items.len(), "Recommendations served via generic endpoint");
+    Ok(Json(StandardResponse::success(items).with_request_id(request_id)))
+}

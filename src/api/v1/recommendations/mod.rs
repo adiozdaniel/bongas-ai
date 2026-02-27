@@ -19,4 +19,5 @@ pub fn routes() -> Router {
         .route("/genre/{genre}/{user_id}", get(get_genre_recommendations))
         .route("/new-releases/{user_id}", get(get_new_releases))
         .route("/live-tv/{user_id}", get(get_live_tv))
+        .route("/{scenario_slug}/{user_id}", get(get_recommendations))
 }
