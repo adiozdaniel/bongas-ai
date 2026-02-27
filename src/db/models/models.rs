@@ -229,3 +229,17 @@ pub struct RuleSuggestion {
     pub created_at: DateTime<Utc>,
     pub applied_at: Option<DateTime<Utc>>,
 }
+
+// ============================================================================
+// 8. PageLayout (Dynamic UI Layouts)
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct PageLayout {
+    pub id: i32,
+    pub page_slug: String,
+    pub scenario_slugs: JsonValue, // Array of scenario slugs
+    pub is_active: bool,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}

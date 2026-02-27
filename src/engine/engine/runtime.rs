@@ -16,6 +16,7 @@ use crate::ml::FeatureStore;
 use crate::db::repositories::model_repository::ModelRepository;
 use crate::db::repositories::feature_repository::FeatureRepository;
 use crate::db::repositories::cache_repository::CacheRepository;
+use crate::db::repositories::page_layout_repository::PageLayoutRepository;
 use crate::db::repositories::item_feature_service::ItemFeatureService;
 use crate::security::SecurityManager;
 use crate::analytics::types::PerformanceStats;
@@ -119,6 +120,7 @@ impl BongasEngine {
 
         let feature_repo = Arc::new(FeatureRepository::new(resilient_pool.clone(), resilience_metrics.clone()));
         let cache_repo = Arc::new(CacheRepository::new(resilient_pool.clone(), resilience_metrics.clone()));
+        let page_layout_repo = Arc::new(PageLayoutRepository::new(resilient_pool.clone(), resilience_metrics.clone()));
 
         let ingestion_metrics = Arc::new(IngestionMetrics::new(Vec::new()));
         let ingestion_manager = IngestionManager::new(
@@ -181,6 +183,7 @@ impl BongasEngine {
             ingestion_manager: Arc::new(RwLock::new(ingestion_manager)),
             analytics_sidecar: analytics_sidecar.clone(),
             hive_mind_connector: hive_mind_connector.clone(),
+            page_layout_repo,
             shutdown_tx,
         });
 

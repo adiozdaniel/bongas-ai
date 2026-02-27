@@ -263,3 +263,17 @@ CREATE TABLE IF NOT EXISTS system_settings (
 INSERT INTO system_settings (key, value, description) 
 VALUES ('max_active_scenarios', '20'::jsonb, 'Maximum allowed scenarios with enabled=true')
 ON CONFLICT (key) DO NOTHING;
+
+-- ============================================================================
+-- 11. page_layouts (Dynamic UI Layouts)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS page_layouts (
+    id SERIAL PRIMARY KEY,
+    page_slug VARCHAR(64) UNIQUE NOT NULL,
+    scenario_slugs JSONB NOT NULL, -- Array of scenario slugs
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_page_layouts_slug ON page_layouts(page_slug) WHERE is_active = true;

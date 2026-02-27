@@ -102,3 +102,8 @@ SELECT
 FROM scenarios s
 WHERE s.slug = 'home_feed'
 ON CONFLICT DO NOTHING;
+
+-- 5. Seed Page Layouts
+INSERT INTO page_layouts (page_slug, scenario_slugs)
+VALUES ('home', '["trending_now", "personalized_picks", "home_feed"]'::jsonb)
+ON CONFLICT (page_slug) DO NOTHING;

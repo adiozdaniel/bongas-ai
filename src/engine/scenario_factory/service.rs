@@ -124,6 +124,7 @@ impl ScenarioFactory {
     fn parse_scenario(&self, config: &ScenarioWithStrategy) -> Result<ScenarioDefinition> {
         Ok(ScenarioDefinition {
             slug: config.scenario.slug.clone(),
+            name: config.scenario.name.clone(),
             pipeline: config.pipeline.clone(),
             cache_ttl_seconds: config.scenario.cache_ttl_seconds,
             use_l2_cache: config.scenario.use_l2_cache,

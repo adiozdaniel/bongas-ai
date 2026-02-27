@@ -2,33 +2,48 @@ use axum::{
     extract::{Path, Extension, Query},
     Json,
     response::sse::{Event, Sse},
+    body::Body,
+    http::Request,
 };
 use futures::stream::{self, Stream};
 use std::convert::Infallible;
 use std::sync::Arc;
-use tracing::info;
+use tracing::{info, warn};
 
 use crate::engine::BongasEngine;
 use crate::api::models::{StandardResponse, RecommendationItem, ContextParams};
 use crate::api::models::recommendation::FeedRow;
 use crate::error::AppError;
+use crate::api::middleware::service::extract_request_id;
 use super::service::execute_and_map;
-use tower_http::request_id::RequestId;
 
 pub async fn get_home_recommendations(
     Path(user_id): Path<i32>,
     Query(context_params): Query<ContextParams>,
     Extension(engine): Extension<Arc<BongasEngine>>,
-    Extension(request_id): Extension<RequestId>,
+    req: Request<Body>,
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
-    let request_id = request_id.header_value().to_str().unwrap_or("unknown").to_string();
+    let request_id = extract_request_id(&req);
     let engine_clone = engine.clone();
     let profile_id = context_params.profile_id.clone();
     let maturity_rating = context_params.maturity_rating.clone();
     let device_type = context_params.device_type.clone();
 
+    // 1. Fetch dynamic layout from database
+    let layout_res = engine.page_layout_repo.find_by_slug("home").await;
+    let scenario_slugs = match layout_res {
+        Ok(Some(layout)) => {
+            serde_json::from_value::<Vec<String>>(layout.scenario_slugs)
+                .unwrap_or_else(|_| vec!["trending_now".to_string(), "personalized_picks".to_string(), "home_feed".to_string()])
+        }
+        _ => {
+            warn!(request_id = %request_id, "Home layout not found in DB or error occurred, using defaults");
+            vec!["trending_now".to_string(), "personalized_picks".to_string(), "home_feed".to_string()]
+        }
+    };
+
     let stream = stream::unfold(
-        vec!["continue_watching", "supreme_ranker", "trending_now"],
+        scenario_slugs,
         move |mut slugs| {
             let engine = engine_clone.clone();
             let profile_id = profile_id.clone();
@@ -50,8 +65,8 @@ pub async fn get_home_recommendations(
 
                 // Execute scenario
                 let items_res = execute_and_map(
-                    engine,
-                    slug,
+                    engine.clone(),
+                    &slug,
                     Some(user_id),
                     Some(cp),
                     serde_json::json!({}),
@@ -60,19 +75,21 @@ pub async fn get_home_recommendations(
                 ).await;
 
                 if let Ok(items) = items_res {
+                    // Try to get scenario name for the title
+                    let title = {
+                        let scenarios = engine.scenarios.scenarios.read().await;
+                        scenarios.get(&slug)
+                            .map(|s| s.name.clone())
+                            .unwrap_or_else(|| slug.replace('_', " "))
+                    };
+
                     let row = FeedRow {
-                        title: match slug {
-                            "continue_watching" => "Continue Watching".to_string(),
-                            "supreme_ranker" => "Picked For You".to_string(),
-                            _ => "Trending Now".to_string(),
-                        },
+                        title,
                         row_type: "horizontal_list".to_string(),
                         scenario: slug.to_string(),
                         items,
                     };
 
-                    // Note: SSE events don't naturally fit the StandardResponse envelope per item,
-                    // but we ensure the metadata is available if we were to wrap the entire row.
                     let event = Event::default()
                         .json_data(&row)
                         .unwrap_or_else(|_| Event::default().comment("error"));
@@ -92,9 +109,9 @@ pub async fn get_continue_watching(
     Path(user_id): Path<i32>,
     Query(context_params): Query<ContextParams>,
     Extension(engine): Extension<Arc<BongasEngine>>,
-    Extension(request_id): Extension<RequestId>,
+    req: Request<Body>,
 ) -> Result<Json<StandardResponse<Vec<RecommendationItem>>>, AppError> {
-    let request_id = request_id.header_value().to_str().unwrap_or("unknown").to_string();
+    let request_id = extract_request_id(&req);
     let items = execute_and_map(
         engine.clone(), 
         "continue_watching", 
@@ -112,9 +129,9 @@ pub async fn get_continue_watching(
 pub async fn get_trending(
     Query(context_params): Query<ContextParams>,
     Extension(engine): Extension<Arc<BongasEngine>>,
-    Extension(request_id): Extension<RequestId>,
+    req: Request<Body>,
 ) -> Result<Json<StandardResponse<Vec<RecommendationItem>>>, AppError> {
-    let request_id = request_id.header_value().to_str().unwrap_or("unknown").to_string();
+    let request_id = extract_request_id(&req);
     let items = execute_and_map(
         engine.clone(), 
         "trending_now", 
@@ -133,9 +150,9 @@ pub async fn get_because_you_watched(
     Path((user_id, item_id)): Path<(i32, i32)>,
     Query(context_params): Query<ContextParams>,
     Extension(engine): Extension<Arc<BongasEngine>>,
-    Extension(request_id): Extension<RequestId>,
+    req: Request<Body>,
 ) -> Result<Json<StandardResponse<Vec<RecommendationItem>>>, AppError> {
-    let request_id = request_id.header_value().to_str().unwrap_or("unknown").to_string();
+    let request_id = extract_request_id(&req);
     let context = serde_json::json!({ "item_id": item_id });
     let items = execute_and_map(
         engine.clone(), 
@@ -155,9 +172,9 @@ pub async fn get_genre_recommendations(
     Path((genre, user_id)): Path<(String, i32)>,
     Query(context_params): Query<ContextParams>,
     Extension(engine): Extension<Arc<BongasEngine>>,
-    Extension(request_id): Extension<RequestId>,
+    req: Request<Body>,
 ) -> Result<Json<StandardResponse<Vec<RecommendationItem>>>, AppError> {
-    let request_id = request_id.header_value().to_str().unwrap_or("unknown").to_string();
+    let request_id = extract_request_id(&req);
     let scenario_slug = format!("genre_{}", genre.to_lowercase());
     let items = execute_and_map(
         engine.clone(), 
@@ -177,9 +194,9 @@ pub async fn get_new_releases(
     Path(user_id): Path<i32>,
     Query(context_params): Query<ContextParams>,
     Extension(engine): Extension<Arc<BongasEngine>>,
-    Extension(request_id): Extension<RequestId>,
+    req: Request<Body>,
 ) -> Result<Json<StandardResponse<Vec<RecommendationItem>>>, AppError> {
-    let request_id = request_id.header_value().to_str().unwrap_or("unknown").to_string();
+    let request_id = extract_request_id(&req);
     let items = execute_and_map(
         engine.clone(), 
         "new_releases", 
@@ -198,9 +215,9 @@ pub async fn get_live_tv(
     Path(user_id): Path<i32>,
     Query(context_params): Query<ContextParams>,
     Extension(engine): Extension<Arc<BongasEngine>>,
-    Extension(request_id): Extension<RequestId>,
+    req: Request<Body>,
 ) -> Result<Json<StandardResponse<Vec<RecommendationItem>>>, AppError> {
-    let request_id = request_id.header_value().to_str().unwrap_or("unknown").to_string();
+    let request_id = extract_request_id(&req);
     let items = execute_and_map(
         engine.clone(), 
         "live_tv", 
@@ -219,9 +236,9 @@ pub async fn get_recommendations(
     Path((scenario_slug, user_id)): Path<(String, i32)>,
     Query(context_params): Query<ContextParams>,
     Extension(engine): Extension<Arc<BongasEngine>>,
-    Extension(request_id): Extension<RequestId>,
+    req: Request<Body>,
 ) -> Result<Json<StandardResponse<Vec<RecommendationItem>>>, AppError> {
-    let request_id = request_id.header_value().to_str().unwrap_or("unknown").to_string();
+    let request_id = extract_request_id(&req);
     let items = execute_and_map(
         engine.clone(), 
         &scenario_slug, 
