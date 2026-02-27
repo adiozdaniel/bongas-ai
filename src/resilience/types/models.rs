@@ -268,7 +268,7 @@ impl Default for ClassificationCounters {
 }
 
 /// Snapshot of error classification counters.
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, serde::Serialize)]
 pub struct ClassificationSnapshot {
     pub transient: u64,
     pub permanent: u64,
@@ -306,7 +306,7 @@ impl ClassificationSnapshot {
 // ─── Breaker Snapshot ───────────────────────────────────────────────────────
 
 /// Point-in-time snapshot of a single circuit breaker's metrics.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct BreakerSnapshot {
     pub breaker_id: String,
     pub state: String,
@@ -333,7 +333,7 @@ pub struct BreakerSnapshot {
 // ─── Registry Snapshot ──────────────────────────────────────────────────────
 
 /// Point-in-time snapshot of all circuit breaker metrics.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct RegistrySnapshot {
     pub breakers: Vec<BreakerSnapshot>,
     pub total_calls: u64,

@@ -150,19 +150,16 @@ async fn rate_limit_layer(req: Request<Body>, next: Next) -> Response {
         RateLimitResult::Allowed => next.run(req).await,
         RateLimitResult::ShadowBan => {
             // Shadow Ban: Return 200 OK with a generic/empty feed to mislead bots
-            // Removed X-Bongas-Status header as it defeats the purpose of shadow banning
             Response::builder()
                 .status(StatusCode::OK)
                 .header("Content-Type", "application/json")
                 .body(Body::from(json!({
                     "success": true,
                     "data": [],
-                    "message": "Recommendations refreshed",
-                    "metadata": {
-                        "count": 0,
-                        "source": "cache",
+                    "meta": {
                         "request_id": uuid::Uuid::new_v4().to_string(),
-                        "timestamp": chrono::Utc::now().to_rfc3339()
+                        "timestamp": chrono::Utc::now().to_rfc3339(),
+                        "version": env!("CARGO_PKG_VERSION"),
                     }
                 }).to_string()))
                 .unwrap()
@@ -177,15 +174,21 @@ async fn rate_limit_layer(req: Request<Body>, next: Next) -> Response {
                 .header("Content-Type", "application/json")
                 .body(Body::from(json!({
                     "success": false,
-                    "error": "Rate limit exceeded",
-                    "message": format!(
-                        "Too many requests. Limit: {} requests per {} seconds",
-                        status.limit, status.window_seconds
-                    ),
-                    "limit": status.limit,
-                    "remaining": 0,
-                    "reset_time": status.reset_in_seconds,
-                    "timestamp": chrono::Utc::now().to_rfc3339(),
+                    "error": {
+                        "message": format!(
+                            "Too many requests. Limit: {} requests per {} seconds",
+                            status.limit, status.window_seconds
+                        ),
+                        "code": "RATE_LIMIT_EXCEEDED",
+                        "classification": "Overload",
+                        "retriable": true,
+                        "retry_after": status.reset_in_seconds * 1000,
+                    },
+                    "meta": {
+                        "request_id": "unknown",
+                        "timestamp": chrono::Utc::now().to_rfc3339(),
+                        "version": env!("CARGO_PKG_VERSION"),
+                    }
                 }).to_string()))
                 .unwrap()
         }

@@ -18,12 +18,12 @@
       middleware::Next,
       response::{Response, IntoResponse},
       body::Body,
+      Json,
   };
   use serde_json::json;
   use tracing::error;
   use chrono::Utc;
 
-  use crate::error::ErrorClassification;
   use crate::middlewares::error_handling::classify_http_error;
 
   /// Unified error handling middleware that provides consistent error responses
@@ -65,13 +65,13 @@
                   "code": error_code,
                   "classification": format!("{:?}", classification),
                   "retriable": classification.is_retriable(),
-                  "should_trip_breaker": classification.should_trip(),
               },
-              "status_code": status.as_u16(),
-              "method": method.to_string(),
-              "path": uri.path(),
-              "timestamp": Utc::now().to_rfc3339(),
-              "duration_ms": start_time.elapsed().as_millis(),
+              "meta": {
+                  "request_id": "unknown",
+                  "timestamp": Utc::now().to_rfc3339(),
+                  "duration_ms": start_time.elapsed().as_millis(),
+                  "version": env!("CARGO_PKG_VERSION"),
+              }
           });
 
           return (
@@ -86,65 +86,26 @@
 
   /// Handle validation errors with specific error details
   fn handle_validation_error(
-      method: axum::http::Method,
-      uri: axum::http::Uri,
+      _method: axum::http::Method,
+      _uri: axum::http::Uri,
       duration: std::time::Duration,
-  ) -> ErrorResponse {
-      ErrorResponse {
-          success: false,
-          error: ErrorBody {
-              message: "Validation failed".to_string(),
-              code: "VALIDATION_ERROR".to_string(),
-              classification: ErrorClassification::Permanent,
-              retriable: false,
-              retry_after: None,
+  ) -> impl IntoResponse {
+      let body = json!({
+          "success": false,
+          "error": {
+              "message": "Validation failed",
+              "code": "VALIDATION_ERROR",
+              "classification": "Permanent",
+              "retriable": false,
           },
-          status_code: StatusCode::UNPROCESSABLE_ENTITY.as_u16(),
-          method: method.to_string(),
-          path: uri.path().to_string(),
-          timestamp: Utc::now().to_rfc3339(),
-          duration_ms: duration.as_millis() as u64,
-      }
+          "meta": {
+              "request_id": "unknown",
+              "timestamp": Utc::now().to_rfc3339(),
+              "duration_ms": duration.as_millis(),
+              "version": env!("CARGO_PKG_VERSION"),
+          }
+      });
+
+      (StatusCode::UNPROCESSABLE_ENTITY, Json(body))
   }
 
-  /// Error response structure for enhanced error details
-  #[derive(serde::Serialize)]
-  struct ErrorResponse {
-      success: bool,
-      error: ErrorBody,
-      status_code: u16,
-      method: String,
-      path: String,
-      timestamp: String,
-      duration_ms: u64,
-  }
-
-  /// Error body structure
-  #[derive(serde::Serialize)]
-  struct ErrorBody {
-      message: String,
-      code: String,
-      classification: ErrorClassification,
-      retriable: bool,
-      retry_after: Option<u64>,
-  }
-
-  impl IntoResponse for ErrorResponse {
-      fn into_response(self) -> Response<Body> {
-          let body = Body::from(serde_json::to_string(&self).unwrap_or_else(|_| {
-              json!({
-                  "success": false,
-                  "error": {
-                      "message": "Internal error serialization failed",
-                      "code": "SERIALIZATION_ERROR",
-                      "classification": "Transient",
-                      "retriable": true,
-                  },
-                  "status_code": 500,
-                  "timestamp": Utc::now().to_rfc3339(),
-              }).to_string()
-          }));
-
-          (StatusCode::from_u16(self.status_code).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR), body).into_response()
-      }
-  }

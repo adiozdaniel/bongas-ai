@@ -109,7 +109,7 @@ impl IntoResponse for AppError {
         );
 
         let retry_hint = self.retry_hint();
-        let retry_after = retry_hint.retry_after.map(|d| d.as_secs());
+        let retry_after = retry_hint.retry_after.map(|d| d.as_millis() as u64);
 
         let body = Json(json!({
             "success": false,
@@ -120,8 +120,11 @@ impl IntoResponse for AppError {
                 "retriable": classification.is_retriable(),
                 "retry_after": retry_after,
             },
-            "status_code": status.as_u16(),
-            "timestamp": Utc::now().to_rfc3339(),
+            "meta": {
+                "request_id": "unknown", // Tracing middleware should inject this
+                "timestamp": Utc::now().to_rfc3339(),
+                "version": env!("CARGO_PKG_VERSION"),
+            }
         }));
 
         (status, body).into_response()
