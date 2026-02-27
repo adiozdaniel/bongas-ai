@@ -1,7 +1,8 @@
 use axum::{
-    extract::{Path, Extension, Query},
+    extract::{Path, Extension, Query, Request},
     Json,
     response::sse::{Event, Sse},
+    body::Body,
 };
 use futures::stream::{self, Stream};
 use std::convert::Infallible;
@@ -12,13 +13,16 @@ use crate::engine::BongasEngine;
 use crate::api::models::{StandardResponse, RecommendationItem, ContextParams};
 use crate::api::models::recommendation::FeedRow;
 use crate::error::AppError;
+use crate::api::middleware::service::extract_request_id;
 use super::service::execute_and_map;
 
 pub async fn get_home_recommendations(
     Path(user_id): Path<i32>,
     Query(context_params): Query<ContextParams>,
     Extension(engine): Extension<Arc<BongasEngine>>,
+    req: Request<Body>,
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
+    let request_id = extract_request_id(&req);
     let engine_clone = engine.clone();
     let profile_id = context_params.profile_id.clone();
     let maturity_rating = context_params.maturity_rating.clone();
@@ -31,6 +35,7 @@ pub async fn get_home_recommendations(
             let profile_id = profile_id.clone();
             let maturity_rating = maturity_rating.clone();
             let device_type = device_type.clone();
+            let _request_id = request_id.clone();
             
             async move {
                 if slugs.is_empty() {
@@ -67,6 +72,8 @@ pub async fn get_home_recommendations(
                         items,
                     };
 
+                    // Note: SSE events don't naturally fit the StandardResponse envelope per item,
+                    // but we ensure the metadata is available if we were to wrap the entire row.
                     let event = Event::default()
                         .json_data(&row)
                         .unwrap_or_else(|_| Event::default().comment("error"));
@@ -86,7 +93,9 @@ pub async fn get_continue_watching(
     Path(user_id): Path<i32>,
     Query(context_params): Query<ContextParams>,
     Extension(engine): Extension<Arc<BongasEngine>>,
+    req: Request<Body>,
 ) -> Result<Json<StandardResponse<Vec<RecommendationItem>>>, AppError> {
+    let request_id = extract_request_id(&req);
     let items = execute_and_map(
         engine.clone(), 
         "continue_watching", 
@@ -97,14 +106,16 @@ pub async fn get_continue_watching(
         usize::MAX
     ).await?;
 
-    info!(user_id, scenario = "continue_watching", result_count = items.len(), "Continue watching recommendations served");
-    Ok(Json(StandardResponse::success(items)))
+    info!(request_id = %request_id, user_id, scenario = "continue_watching", result_count = items.len(), "Continue watching recommendations served");
+    Ok(Json(StandardResponse::success(items).with_request_id(request_id)))
 }
 
 pub async fn get_trending(
     Query(context_params): Query<ContextParams>,
     Extension(engine): Extension<Arc<BongasEngine>>,
+    req: Request<Body>,
 ) -> Result<Json<StandardResponse<Vec<RecommendationItem>>>, AppError> {
+    let request_id = extract_request_id(&req);
     let items = execute_and_map(
         engine.clone(), 
         "trending_now", 
@@ -115,15 +126,17 @@ pub async fn get_trending(
         usize::MAX
     ).await?;
 
-    info!(scenario = "trending_now", result_count = items.len(), "Trending recommendations served");
-    Ok(Json(StandardResponse::success(items)))
+    info!(request_id = %request_id, scenario = "trending_now", result_count = items.len(), "Trending recommendations served");
+    Ok(Json(StandardResponse::success(items).with_request_id(request_id)))
 }
 
 pub async fn get_because_you_watched(
     Path((user_id, item_id)): Path<(i32, i32)>,
     Query(context_params): Query<ContextParams>,
     Extension(engine): Extension<Arc<BongasEngine>>,
+    req: Request<Body>,
 ) -> Result<Json<StandardResponse<Vec<RecommendationItem>>>, AppError> {
+    let request_id = extract_request_id(&req);
     let context = serde_json::json!({ "item_id": item_id });
     let items = execute_and_map(
         engine.clone(), 
@@ -135,15 +148,17 @@ pub async fn get_because_you_watched(
         usize::MAX
     ).await?;
 
-    info!(user_id, item_id, scenario = "because_you_watched", result_count = items.len(), "Because you watched recommendations served");
-    Ok(Json(StandardResponse::success(items)))
+    info!(request_id = %request_id, user_id, item_id, scenario = "because_you_watched", result_count = items.len(), "Because you watched recommendations served");
+    Ok(Json(StandardResponse::success(items).with_request_id(request_id)))
 }
 
 pub async fn get_genre_recommendations(
     Path((genre, user_id)): Path<(String, i32)>,
     Query(context_params): Query<ContextParams>,
     Extension(engine): Extension<Arc<BongasEngine>>,
+    req: Request<Body>,
 ) -> Result<Json<StandardResponse<Vec<RecommendationItem>>>, AppError> {
+    let request_id = extract_request_id(&req);
     let scenario_slug = format!("genre_{}", genre.to_lowercase());
     let items = execute_and_map(
         engine.clone(), 
@@ -155,15 +170,17 @@ pub async fn get_genre_recommendations(
         usize::MAX
     ).await?;
 
-    info!(user_id, genre = genre, scenario = scenario_slug, result_count = items.len(), "Genre recommendations served");
-    Ok(Json(StandardResponse::success(items)))
+    info!(request_id = %request_id, user_id, genre = genre, scenario = scenario_slug, result_count = items.len(), "Genre recommendations served");
+    Ok(Json(StandardResponse::success(items).with_request_id(request_id)))
 }
 
 pub async fn get_new_releases(
     Path(user_id): Path<i32>,
     Query(context_params): Query<ContextParams>,
     Extension(engine): Extension<Arc<BongasEngine>>,
+    req: Request<Body>,
 ) -> Result<Json<StandardResponse<Vec<RecommendationItem>>>, AppError> {
+    let request_id = extract_request_id(&req);
     let items = execute_and_map(
         engine.clone(), 
         "new_releases", 
@@ -174,15 +191,17 @@ pub async fn get_new_releases(
         usize::MAX
     ).await?;
 
-    info!(user_id, scenario = "new_releases", result_count = items.len(), "New releases recommendations served");
-    Ok(Json(StandardResponse::success(items)))
+    info!(request_id = %request_id, user_id, scenario = "new_releases", result_count = items.len(), "New releases recommendations served");
+    Ok(Json(StandardResponse::success(items).with_request_id(request_id)))
 }
 
 pub async fn get_live_tv(
     Path(user_id): Path<i32>,
     Query(context_params): Query<ContextParams>,
     Extension(engine): Extension<Arc<BongasEngine>>,
+    req: Request<Body>,
 ) -> Result<Json<StandardResponse<Vec<RecommendationItem>>>, AppError> {
+    let request_id = extract_request_id(&req);
     let items = execute_and_map(
         engine.clone(), 
         "live_tv", 
@@ -193,6 +212,6 @@ pub async fn get_live_tv(
         usize::MAX
     ).await?;
 
-    info!(user_id, scenario = "live_tv", result_count = items.len(), "Live TV recommendations served");
-    Ok(Json(StandardResponse::success(items)))
+    info!(request_id = %request_id, user_id, scenario = "live_tv", result_count = items.len(), "Live TV recommendations served");
+    Ok(Json(StandardResponse::success(items).with_request_id(request_id)))
 }

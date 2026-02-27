@@ -1,10 +1,11 @@
 //! Health check endpoint.
 
-use axum::{routing::get, Json, Router, extract::Extension};
+use axum::{routing::get, Json, Router, extract::Extension, body::Body, extract::Request};
 use std::sync::Arc;
 use std::time::Instant;
 
 use crate::api::models::{HealthResponse, StandardResponse};
+use crate::api::middleware::service::extract_request_id;
 
 /// Mount health routes.
 pub fn routes() -> Router {
@@ -18,14 +19,16 @@ pub fn routes() -> Router {
 /// Restarts container on failure. Should be very lightweight.
 async fn liveness_check(
     Extension(start_time): Extension<Arc<Instant>>,
+    req: Request<Body>,
 ) -> Json<StandardResponse<HealthResponse>> {
+    let request_id = extract_request_id(&req);
     let data = HealthResponse {
         status: "up".to_string(),
         version: env!("CARGO_PKG_VERSION").to_string(),
         timestamp: chrono::Utc::now(),
         uptime_seconds: start_time.elapsed().as_secs(),
     };
-    Json(StandardResponse::success(data))
+    Json(StandardResponse::success(data).with_request_id(request_id))
 }
 
 /// Readiness probe - determines if the app is ready for traffic.
@@ -33,7 +36,9 @@ async fn liveness_check(
 async fn readiness_check(
     Extension(engine): Extension<Arc<crate::engine::BongasEngine>>,
     Extension(start_time): Extension<Arc<Instant>>,
+    req: Request<Body>,
 ) -> Json<StandardResponse<HealthResponse>> {
+    let request_id = extract_request_id(&req);
     // Check if Postgres is reachable
     let is_db_ready = engine.execution.item_feature_service.pool().check_health().await;
     
@@ -45,18 +50,20 @@ async fn readiness_check(
         timestamp: chrono::Utc::now(),
         uptime_seconds: start_time.elapsed().as_secs(),
     };
-    Json(StandardResponse::success(data))
+    Json(StandardResponse::success(data).with_request_id(request_id))
 }
 
 /// Generic health check for monitoring.
 async fn health_check(
     Extension(start_time): Extension<Arc<Instant>>,
+    req: Request<Body>,
 ) -> Json<StandardResponse<HealthResponse>> {
+    let request_id = extract_request_id(&req);
     let data = HealthResponse {
         status: "healthy".to_string(),
         version: env!("CARGO_PKG_VERSION").to_string(),
         timestamp: chrono::Utc::now(),
         uptime_seconds: start_time.elapsed().as_secs(),
     };
-    Json(StandardResponse::success(data))
+    Json(StandardResponse::success(data).with_request_id(request_id))
 }

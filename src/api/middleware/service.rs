@@ -13,9 +13,13 @@ use axum::{
     http::StatusCode,
 };
 use std::sync::Arc;
-use tower_http::trace::TraceLayer;
+use tower_http::{
+    trace::TraceLayer,
+    request_id::{SetRequestIdLayer, MakeRequestUuid, RequestId},
+};
 use serde_json::json;
-use tracing::error;
+use tracing::{error, info_span};
+use uuid::Uuid;
 
 use crate::middlewares::{
     unified_error::unified_error_middleware,
@@ -36,15 +40,17 @@ use std::time::Instant;
 /// Apply the full middleware stack to a router.
 ///
 /// Middleware is applied in reverse order (outermost layer listed first):
+/// 0. Request ID Generation (Outermost - used for everything else)
 /// 1. Unified error handling
-/// 2. Resilience (circuit breaker)
-/// 3. Bulkhead (concurrency limiting)
-/// 4. Rate limiting
-/// 5. Compression
-/// 6. CORS
-/// 7. Duration tracking
-/// 8. Endpoint metrics
-/// 9. Request tracing
+/// 2. Platform Security
+/// 3. Resilience (circuit breaker)
+/// 4. Bulkhead (concurrency limiting)
+/// 5. Rate limiting
+/// 6. Compression
+/// 7. CORS
+/// 8. Duration tracking
+/// 9. Endpoint metrics
+/// 10. Request tracing
 #[allow(clippy::too_many_arguments)]
 pub fn apply_middleware(
     router: Router,
@@ -61,6 +67,9 @@ pub fn apply_middleware(
     let bulkhead_middleware = Arc::new(BulkheadMiddleware::with_defaults());
 
     router
+        // 0. Set Request ID (Outermost)
+        .layer(SetRequestIdLayer::x_request_id(MakeRequestUuid))
+
         // 1. Unified error handling (outermost — catches all errors)
         .layer(from_fn(unified_error_middleware))
 
@@ -107,8 +116,22 @@ pub fn apply_middleware(
             endpoint_metrics.clone().layer(req, next)
         }))
 
-        // 9. Request tracing
-        .layer(TraceLayer::new_for_http())
+        // 9. Request tracing with span correlation
+        .layer(TraceLayer::new_for_http()
+            .make_span_with(|request: &Request<Body>| {
+                let request_id = request.headers()
+                    .get("x-request-id")
+                    .and_then(|v| v.to_str().ok())
+                    .unwrap_or("unknown");
+                
+                info_span!(
+                    "http_request",
+                    request_id = %request_id,
+                    method = %request.method(),
+                    uri = %request.uri(),
+                )
+            })
+        )
 
         // 10. Extension injection (Available to all of the above)
         .layer(axum::Extension(engine))
@@ -120,15 +143,43 @@ pub fn apply_middleware(
         .layer(axum::Extension(start_time))
 }
 
+/// Helper to extract RequestId from request extensions
+pub fn extract_request_id(req: &Request<Body>) -> String {
+    req.extensions()
+        .get::<RequestId>()
+        .map(|id| id.header_value().to_str().unwrap_or("unknown").to_string())
+        .or_else(|| {
+            req.headers()
+                .get("x-request-id")
+                .and_then(|v| v.to_str().ok())
+                .map(|s| s.to_string())
+        })
+        .unwrap_or_else(|| Uuid::new_v4().to_string())
+}
+
 /// Rate-limit middleware extracted as a named function for readability.
 async fn rate_limit_layer(req: Request<Body>, next: Next) -> Response {
+    let request_id = extract_request_id(&req);
     let rate_limiter = match req.extensions().get::<Arc<RateLimiter>>() {
         Some(rl) => rl.clone(),
         None => {
-            error!("RateLimiter extension missing in request extensions");
+            error!(request_id = %request_id, "RateLimiter extension missing in request extensions");
             return Response::builder()
                 .status(StatusCode::INTERNAL_SERVER_ERROR)
-                .body(Body::from(json!({"error": "Internal server configuration error (RateLimiter missing)"}).to_string()))
+                .body(Body::from(json!({
+                    "success": false,
+                    "error": {
+                        "message": "Internal server configuration error (RateLimiter missing)",
+                        "code": "CONFIG_ERROR",
+                        "classification": "Internal",
+                        "retriable": false,
+                    },
+                    "meta": {
+                        "request_id": request_id,
+                        "timestamp": chrono::Utc::now().to_rfc3339(),
+                        "version": env!("CARGO_PKG_VERSION"),
+                    }
+                }).to_string()))
                 .unwrap();
         }
     };
@@ -157,7 +208,7 @@ async fn rate_limit_layer(req: Request<Body>, next: Next) -> Response {
                     "success": true,
                     "data": [],
                     "meta": {
-                        "request_id": uuid::Uuid::new_v4().to_string(),
+                        "request_id": request_id,
                         "timestamp": chrono::Utc::now().to_rfc3339(),
                         "version": env!("CARGO_PKG_VERSION"),
                     }
@@ -185,7 +236,7 @@ async fn rate_limit_layer(req: Request<Body>, next: Next) -> Response {
                         "retry_after": status.reset_in_seconds * 1000,
                     },
                     "meta": {
-                        "request_id": "unknown",
+                        "request_id": request_id,
                         "timestamp": chrono::Utc::now().to_rfc3339(),
                         "version": env!("CARGO_PKG_VERSION"),
                     }

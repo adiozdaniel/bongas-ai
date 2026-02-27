@@ -34,6 +34,7 @@
       let method = req.method().clone();
       let uri = req.uri().clone();
       let start_time = std::time::Instant::now();
+      let request_id = crate::api::middleware::service::extract_request_id(&req);
 
       let response = next.run(req).await;
       let status = response.status();
@@ -42,13 +43,14 @@
       if status.is_client_error() || status.is_server_error() {
           // Check if this is a validation error (422 Unprocessable Entity)
           if status == StatusCode::UNPROCESSABLE_ENTITY {
-              return handle_validation_error(method, uri, start_time.elapsed()).into_response();
+              return handle_validation_error(method, uri, start_time.elapsed(), request_id).into_response();
           }
 
           // For other error responses, enhance with classification
           let (message, error_code, classification) = classify_http_error(status);
 
           error!(
+              request_id = %request_id,
               status_code = %status,
               method = %method,
               uri = %uri,
@@ -67,7 +69,7 @@
                   "retriable": classification.is_retriable(),
               },
               "meta": {
-                  "request_id": "unknown",
+                  "request_id": request_id,
                   "timestamp": Utc::now().to_rfc3339(),
                   "duration_ms": start_time.elapsed().as_millis(),
                   "version": env!("CARGO_PKG_VERSION"),
@@ -89,6 +91,7 @@
       _method: axum::http::Method,
       _uri: axum::http::Uri,
       duration: std::time::Duration,
+      request_id: String,
   ) -> impl IntoResponse {
       let body = json!({
           "success": false,
@@ -99,7 +102,7 @@
               "retriable": false,
           },
           "meta": {
-              "request_id": "unknown",
+              "request_id": request_id,
               "timestamp": Utc::now().to_rfc3339(),
               "duration_ms": duration.as_millis(),
               "version": env!("CARGO_PKG_VERSION"),
