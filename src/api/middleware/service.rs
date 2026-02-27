@@ -9,18 +9,19 @@ use axum::{
     extract::Request,
     body::Body,
     middleware::Next,
-    response::Response,
+    response::{Response, IntoResponse},
     http::StatusCode,
+    Json,
 };
 use std::sync::Arc;
 use tower_http::{
     trace::TraceLayer,
     request_id::{SetRequestIdLayer, MakeRequestUuid, RequestId},
 };
-use serde_json::json;
 use tracing::{error, info_span};
 use uuid::Uuid;
 
+use crate::api::models::RecommendationItem;
 use crate::middlewares::{
     unified_error::unified_error_middleware,
     metrics::{DurationTracker, EndpointMetrics},
@@ -157,23 +158,14 @@ async fn rate_limit_layer(req: Request<Body>, next: Next) -> Response {
         Some(rl) => rl.clone(),
         None => {
             error!(request_id = %request_id, "RateLimiter extension missing");
-            return Response::builder()
-                .status(StatusCode::INTERNAL_SERVER_ERROR)
-                .body(Body::from(json!({
-                    "success": false,
-                    "error": {
-                        "message": "Internal configuration error",
-                        "code": "INTERNAL_ERROR",
-                        "classification": "Internal",
-                        "retriable": false,
-                    },
-                    "meta": {
-                        "request_id": request_id,
-                        "timestamp": chrono::Utc::now().to_rfc3339(),
-                        "version": env!("CARGO_PKG_VERSION"),
-                    }
-                }).to_string()))
-                .unwrap();
+            let response = crate::api::models::StandardResponse::<()>::error(
+                "Internal configuration error",
+                "INTERNAL_ERROR",
+                "Internal",
+                false,
+            ).with_request_id(request_id);
+            
+            return (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response();
         }
     };
 
@@ -185,43 +177,30 @@ async fn rate_limit_layer(req: Request<Body>, next: Next) -> Response {
     match rate_limiter.check(&ip).await {
         RateLimitResult::Allowed => next.run(req).await,
         RateLimitResult::ShadowBan => {
-            Response::builder()
-                .status(StatusCode::OK)
-                .header("Content-Type", "application/json")
-                .body(Body::from(json!({
-                    "success": true,
-                    "data": [],
-                    "meta": {
-                        "request_id": request_id,
-                        "timestamp": chrono::Utc::now().to_rfc3339(),
-                        "version": env!("CARGO_PKG_VERSION"),
-                    }
-                }).to_string()))
-                .unwrap()
+            let response = crate::api::models::StandardResponse::success(Vec::<RecommendationItem>::new())
+                .with_request_id(request_id);
+            (StatusCode::OK, Json(response)).into_response()
         }
         RateLimitResult::RateLimited(status) => {
-            Response::builder()
-                .status(StatusCode::TOO_MANY_REQUESTS)
-                .header("X-RateLimit-Limit", status.limit.to_string())
-                .header("X-RateLimit-Remaining", "0")
-                .header("X-RateLimit-Reset", status.window_seconds.to_string())
-                .header("Retry-After", status.reset_in_seconds.to_string())
-                .header("Content-Type", "application/json")
-                .body(Body::from(json!({
-                    "success": false,
-                    "error": {
-                        "message": "Too many requests",
-                        "code": "RATE_LIMIT_EXCEEDED",
-                        "classification": "Overload",
-                        "retriable": true,
-                    },
-                    "meta": {
-                        "request_id": request_id,
-                        "timestamp": chrono::Utc::now().to_rfc3339(),
-                        "version": env!("CARGO_PKG_VERSION"),
-                    }
-                }).to_string()))
-                .unwrap()
+            let response = crate::api::models::StandardResponse::<()>::error(
+                "Too many requests",
+                "RATE_LIMIT_EXCEEDED",
+                "Overload",
+                true,
+            )
+            .with_request_id(request_id)
+            .with_retry_after(status.reset_in_seconds * 1000);
+
+            (
+                StatusCode::TOO_MANY_REQUESTS,
+                [
+                    ("X-RateLimit-Limit", status.limit.to_string()),
+                    ("X-RateLimit-Remaining", "0".to_string()),
+                    ("X-RateLimit-Reset", status.window_seconds.to_string()),
+                    ("Retry-After", status.reset_in_seconds.to_string()),
+                ],
+                Json(response),
+            ).into_response()
         }
     }
 }

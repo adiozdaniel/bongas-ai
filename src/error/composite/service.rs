@@ -4,9 +4,7 @@ use axum::{
     response::{IntoResponse, Response},
     Json,
 };
-use serde_json::json;
 use tracing::error;
-use chrono::Utc;
 use crate::error::classification::{ErrorClassification, ErrorClassifier};
 use crate::error::domain::*;
 
@@ -111,22 +109,18 @@ impl IntoResponse for AppError {
         let retry_hint = self.retry_hint();
         let retry_after = retry_hint.retry_after.map(|d| d.as_millis() as u64);
 
-        let body = Json(json!({
-            "success": false,
-            "error": {
-                "message": message,
-                "code": error_code,
-                "classification": format!("{:?}", classification),
-                "retriable": classification.is_retriable(),
-                "retry_after": retry_after,
-            },
-            "meta": {
-                "request_id": "unknown", // Tracing middleware should inject this
-                "timestamp": Utc::now().to_rfc3339(),
-                "version": env!("CARGO_PKG_VERSION"),
-            }
-        }));
+        // Use StandardResponse for consistent serialization
+        let mut response = crate::api::models::StandardResponse::<()>::error(
+            message,
+            error_code,
+            format!("{:?}", classification),
+            classification.is_retriable(),
+        );
 
-        (status, body).into_response()
+        if let Some(ms) = retry_after {
+            response = response.with_retry_after(ms);
+        }
+
+        (status, Json(response)).into_response()
     }
 }

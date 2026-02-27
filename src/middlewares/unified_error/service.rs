@@ -20,9 +20,7 @@
       body::Body,
       Json,
   };
-  use serde_json::json;
   use tracing::error;
-  use chrono::Utc;
 
   use crate::middlewares::error_handling::classify_http_error;
 
@@ -59,25 +57,18 @@
               "Error response enhanced"
           );
 
-          let error_response = json!({
-              "success": false,
-              "error": {
-                  "message": message,
-                  "code": error_code,
-                  "classification": format!("{:?}", classification),
-                  "retriable": classification.is_retriable(),
-              },
-              "meta": {
-                  "request_id": request_id,
-                  "timestamp": Utc::now().to_rfc3339(),
-                  "duration_ms": start_time.elapsed().as_millis(),
-                  "version": env!("CARGO_PKG_VERSION"),
-              }
-          });
+          let error_response = crate::api::models::StandardResponse::<()>::error(
+              message,
+              error_code,
+              format!("{:?}", classification),
+              classification.is_retriable(),
+          )
+          .with_request_id(request_id)
+          .with_duration(start_time.elapsed().as_millis() as u64);
 
           return (
               status,
-              Body::from(error_response.to_string()),
+              Json(error_response),
           )
           .into_response();
       }
@@ -92,22 +83,15 @@
       duration: std::time::Duration,
       request_id: String,
   ) -> impl IntoResponse {
-      let body = json!({
-          "success": false,
-          "error": {
-              "message": "Validation failed",
-              "code": "VALIDATION_ERROR",
-              "classification": "Permanent",
-              "retriable": false,
-          },
-          "meta": {
-              "request_id": request_id,
-              "timestamp": Utc::now().to_rfc3339(),
-              "duration_ms": duration.as_millis(),
-              "version": env!("CARGO_PKG_VERSION"),
-          }
-      });
+      let response = crate::api::models::StandardResponse::<()>::error(
+          "Validation failed",
+          "VALIDATION_ERROR",
+          "Permanent",
+          false,
+      )
+      .with_request_id(request_id)
+      .with_duration(duration.as_millis() as u64);
 
-      (StatusCode::UNPROCESSABLE_ENTITY, Json(body))
+      (StatusCode::UNPROCESSABLE_ENTITY, Json(response))
   }
 
