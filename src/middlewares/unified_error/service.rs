@@ -31,13 +31,12 @@
       req: Request<Body>,
       next: Next,
   ) -> Response<Body> {
-      let method = req.method().clone();
-      let uri = req.uri().clone();
-      let start_time = std::time::Instant::now();
-      let request_id = crate::api::middleware::service::extract_request_id(&req);
-
-      let response = next.run(req).await;
-      let status = response.status();
+        let method = req.method().clone();
+        let uri = req.uri().clone();
+        let start_time = std::time::Instant::now();
+        let request_id = crate::api::middleware::service::extract_request_id(&req);
+  
+        let response = next.run(req).await;      let status = response.status();
 
       // If this is already an error response, enhance it with additional context
       if status.is_client_error() || status.is_server_error() {

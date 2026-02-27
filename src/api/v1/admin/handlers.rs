@@ -1,10 +1,8 @@
 use axum::{
-    extract::{Extension, Path, Request},
+    extract::{Extension, Path},
     routing::{get, post},
     Json, Router,
-    http::{HeaderMap, header},
-    response::IntoResponse,
-    body::Body,
+    http::HeaderMap,
 };
 use std::sync::Arc;
 
@@ -14,9 +12,6 @@ use crate::api::models::{
     ModelReloadResponse, ModelStatsResponse, SecurityStatusResponse,
 };
 use crate::error::AppError;
-use crate::api::middleware::service::extract_request_id;
-
-use crate::resilience::exporter::{MetricsExporter, PrometheusExporter};
 
 /// Mount all admin routes.
 pub fn routes() -> Router {
@@ -61,9 +56,10 @@ pub struct ChatbotQuery {
 async fn chatbot_ask(
     headers: HeaderMap,
     Extension(engine): Extension<Arc<BongasEngine>>,
+    Extension(request_id): Extension<RequestId>,
     Json(payload): Json<ChatbotQuery>,
 ) -> Result<Json<StandardResponse<serde_json::Value>>, AppError> {
-    let request_id = headers.get("x-request-id").and_then(|v| v.to_str().ok()).unwrap_or("unknown").to_string();
+    let request_id = request_id.header_value().to_str().unwrap_or("unknown").to_string();
     authorize_admin(&headers, &engine)?;
     let suggestion_id = engine.chatbot_process_query(&payload.message).await?;
     Ok(Json(StandardResponse::success(serde_json::json!({ 
@@ -76,8 +72,9 @@ async fn simulate_suggestion(
     headers: HeaderMap,
     Path(id): Path<i32>,
     Extension(engine): Extension<Arc<BongasEngine>>,
+    Extension(request_id): Extension<RequestId>,
 ) -> Result<Json<StandardResponse<serde_json::Value>>, AppError> {
-    let request_id = headers.get("x-request-id").and_then(|v| v.to_str().ok()).unwrap_or("unknown").to_string();
+    let request_id = request_id.header_value().to_str().unwrap_or("unknown").to_string();
     authorize_admin(&headers, &engine)?;
     let impact = engine.simulate_suggestion(id).await?;
     Ok(Json(StandardResponse::success(impact).with_request_id(request_id)))
@@ -86,8 +83,9 @@ async fn simulate_suggestion(
 async fn list_suggestions(
     headers: HeaderMap,
     Extension(engine): Extension<Arc<BongasEngine>>,
+    Extension(request_id): Extension<RequestId>,
 ) -> Result<Json<StandardResponse<Vec<serde_json::Value>>>, AppError> {
-    let request_id = headers.get("x-request-id").and_then(|v| v.to_str().ok()).unwrap_or("unknown").to_string();
+    let request_id = request_id.header_value().to_str().unwrap_or("unknown").to_string();
     authorize_admin(&headers, &engine)?;
     let suggestions = engine.list_suggestions().await?;
     Ok(Json(StandardResponse::success(suggestions).with_request_id(request_id)))
@@ -97,8 +95,9 @@ async fn approve_suggestion(
     headers: HeaderMap,
     Path(id): Path<i32>,
     Extension(engine): Extension<Arc<BongasEngine>>,
+    Extension(request_id): Extension<RequestId>,
 ) -> Result<Json<StandardResponse<serde_json::Value>>, AppError> {
-    let request_id = headers.get("x-request-id").and_then(|v| v.to_str().ok()).unwrap_or("unknown").to_string();
+    let request_id = request_id.header_value().to_str().unwrap_or("unknown").to_string();
     authorize_admin(&headers, &engine)?;
     engine.approve_suggestion(id).await?;
     Ok(Json(StandardResponse::success(serde_json::json!({ "message": "Suggestion approved and rule activated" })).with_request_id(request_id)))
@@ -108,51 +107,33 @@ async fn reject_suggestion(
     headers: HeaderMap,
     Path(id): Path<i32>,
     Extension(engine): Extension<Arc<BongasEngine>>,
+    Extension(request_id): Extension<RequestId>,
 ) -> Result<Json<StandardResponse<serde_json::Value>>, AppError> {
-    let request_id = headers.get("x-request-id").and_then(|v| v.to_str().ok()).unwrap_or("unknown").to_string();
+    let request_id = request_id.header_value().to_str().unwrap_or("unknown").to_string();
     authorize_admin(&headers, &engine)?;
     engine.reject_suggestion(id).await?;
     Ok(Json(StandardResponse::success(serde_json::json!({ "message": "Suggestion rejected" })).with_request_id(request_id)))
 }
 
+use tower_http::request_id::RequestId;
+
 pub async fn get_resilience_metrics(
     Extension(engine): Extension<Arc<BongasEngine>>,
-    req: Request<Body>,
-) -> impl IntoResponse {
+    Extension(request_id): Extension<RequestId>,
+) -> Json<StandardResponse<crate::resilience::types::RegistrySnapshot>> {
     let registry = engine.resilience_metrics.registry();
-    let request_id = extract_request_id(&req);
+    let request_id = request_id.header_value().to_str().unwrap_or("unknown").to_string();
     
-    // Check Accept header for JSON preference
-    let accept_json = req.headers()
-        .get(header::ACCEPT)
-        .and_then(|v| v.to_str().ok())
-        .map(|s| s.contains("application/json"))
-        .unwrap_or(false);
-
-    if accept_json {
-        let snapshot = registry.snapshot();
-        let response = StandardResponse::success(snapshot).with_request_id(request_id);
-        (
-            axum::http::StatusCode::OK,
-            [(header::CONTENT_TYPE, "application/json")],
-            serde_json::to_string(&response).unwrap_or_default(),
-        ).into_response()
-    } else {
-        let exporter = PrometheusExporter::new("bongas");
-        let output = exporter.export(&registry);
-        (
-            axum::http::StatusCode::OK,
-            [(header::CONTENT_TYPE, exporter.content_type())],
-            output,
-        ).into_response()
-    }
+    let snapshot = registry.snapshot();
+    Json(StandardResponse::success(snapshot).with_request_id(request_id))
 }
 
 async fn get_cache_stats(
     headers: HeaderMap,
     Extension(engine): Extension<Arc<BongasEngine>>,
+    Extension(request_id): Extension<RequestId>,
 ) -> Result<Json<StandardResponse<CacheStatsResponse>>, AppError> {
-    let request_id = headers.get("x-request-id").and_then(|v| v.to_str().ok()).unwrap_or("unknown").to_string();
+    let request_id = request_id.header_value().to_str().unwrap_or("unknown").to_string();
     authorize_admin(&headers, &engine)?;
     let stats = engine.get_cache_stats();
     Ok(Json(StandardResponse::success(CacheStatsResponse {
@@ -167,8 +148,9 @@ async fn get_cache_stats(
 async fn get_ingestion_metrics(
     headers: HeaderMap,
     Extension(engine): Extension<Arc<BongasEngine>>,
+    Extension(request_id): Extension<RequestId>,
 ) -> Result<Json<StandardResponse<KafkaMetricsResponse>>, AppError> {
-    let request_id = headers.get("x-request-id").and_then(|v| v.to_str().ok()).unwrap_or("unknown").to_string();
+    let request_id = request_id.header_value().to_str().unwrap_or("unknown").to_string();
     authorize_admin(&headers, &engine)?;
     let health = engine.ingestion_health().await;
     Ok(Json(StandardResponse::success(KafkaMetricsResponse {
@@ -179,8 +161,9 @@ async fn get_ingestion_metrics(
 async fn get_ingestion_health(
     headers: HeaderMap,
     Extension(engine): Extension<Arc<BongasEngine>>,
+    Extension(request_id): Extension<RequestId>,
 ) -> Result<Json<StandardResponse<KafkaHealthResponse>>, AppError> {
-    let request_id = headers.get("x-request-id").and_then(|v| v.to_str().ok()).unwrap_or("unknown").to_string();
+    let request_id = request_id.header_value().to_str().unwrap_or("unknown").to_string();
     authorize_admin(&headers, &engine)?;
     let health = engine.ingestion_health().await;
     Ok(Json(StandardResponse::success(KafkaHealthResponse {
@@ -199,8 +182,9 @@ async fn get_ingestion_health(
 async fn reload_models(
     headers: HeaderMap,
     Extension(engine): Extension<Arc<BongasEngine>>,
+    Extension(request_id): Extension<RequestId>,
 ) -> Result<Json<StandardResponse<ModelReloadResponse>>, AppError> {
-    let request_id = headers.get("x-request-id").and_then(|v| v.to_str().ok()).unwrap_or("unknown").to_string();
+    let request_id = request_id.header_value().to_str().unwrap_or("unknown").to_string();
     authorize_admin(&headers, &engine)?;
     let count = engine.reload_models().await?;
     Ok(Json(StandardResponse::success(ModelReloadResponse {
@@ -212,8 +196,9 @@ async fn reload_models(
 async fn get_model_stats(
     headers: HeaderMap,
     Extension(engine): Extension<Arc<BongasEngine>>,
+    Extension(request_id): Extension<RequestId>,
 ) -> Result<Json<StandardResponse<ModelStatsResponse>>, AppError> {
-    let request_id = headers.get("x-request-id").and_then(|v| v.to_str().ok()).unwrap_or("unknown").to_string();
+    let request_id = request_id.header_value().to_str().unwrap_or("unknown").to_string();
     authorize_admin(&headers, &engine)?;
     let count = engine.model_count().await;
     Ok(Json(StandardResponse::success(ModelStatsResponse {
@@ -224,8 +209,9 @@ async fn get_model_stats(
 async fn get_security_status(
     headers: HeaderMap,
     Extension(engine): Extension<Arc<BongasEngine>>,
+    Extension(request_id): Extension<RequestId>,
 ) -> Result<Json<StandardResponse<SecurityStatusResponse>>, AppError> {
-    let request_id = headers.get("x-request-id").and_then(|v| v.to_str().ok()).unwrap_or("unknown").to_string();
+    let request_id = request_id.header_value().to_str().unwrap_or("unknown").to_string();
     authorize_admin(&headers, &engine)?;
     let status = engine.get_security_status().await;
     Ok(Json(StandardResponse::success(SecurityStatusResponse {

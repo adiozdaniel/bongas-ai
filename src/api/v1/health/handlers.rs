@@ -1,11 +1,10 @@
 //! Health check endpoint.
 
-use axum::{routing::get, Json, Router, extract::Extension, body::Body, extract::Request};
+use axum::{routing::get, Json, Router, extract::Extension};
 use std::sync::Arc;
 use std::time::Instant;
 
 use crate::api::models::{HealthResponse, StandardResponse};
-use crate::api::middleware::service::extract_request_id;
 
 /// Mount health routes.
 pub fn routes() -> Router {
@@ -15,13 +14,15 @@ pub fn routes() -> Router {
         .route("/ready", get(readiness_check))
 }
 
+use tower_http::request_id::RequestId;
+
 /// Liveness probe - determines if the process is alive.
 /// Restarts container on failure. Should be very lightweight.
 async fn liveness_check(
     Extension(start_time): Extension<Arc<Instant>>,
-    req: Request<Body>,
+    Extension(request_id): Extension<RequestId>,
 ) -> Json<StandardResponse<HealthResponse>> {
-    let request_id = extract_request_id(&req);
+    let request_id = request_id.header_value().to_str().unwrap_or("unknown").to_string();
     let data = HealthResponse {
         status: "up".to_string(),
         version: env!("CARGO_PKG_VERSION").to_string(),
@@ -36,9 +37,9 @@ async fn liveness_check(
 async fn readiness_check(
     Extension(engine): Extension<Arc<crate::engine::BongasEngine>>,
     Extension(start_time): Extension<Arc<Instant>>,
-    req: Request<Body>,
+    Extension(request_id): Extension<RequestId>,
 ) -> Json<StandardResponse<HealthResponse>> {
-    let request_id = extract_request_id(&req);
+    let request_id = request_id.header_value().to_str().unwrap_or("unknown").to_string();
     // Check if Postgres is reachable
     let is_db_ready = engine.execution.item_feature_service.pool().check_health().await;
     
@@ -56,9 +57,9 @@ async fn readiness_check(
 /// Generic health check for monitoring.
 async fn health_check(
     Extension(start_time): Extension<Arc<Instant>>,
-    req: Request<Body>,
+    Extension(request_id): Extension<RequestId>,
 ) -> Json<StandardResponse<HealthResponse>> {
-    let request_id = extract_request_id(&req);
+    let request_id = request_id.header_value().to_str().unwrap_or("unknown").to_string();
     let data = HealthResponse {
         status: "healthy".to_string(),
         version: env!("CARGO_PKG_VERSION").to_string(),

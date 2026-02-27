@@ -39,18 +39,17 @@ use std::time::Instant;
 
 /// Apply the full middleware stack to a router.
 ///
-/// Middleware is applied in reverse order (outermost layer listed first):
-/// 0. Request ID Generation (Outermost - used for everything else)
-/// 1. Unified error handling
-/// 2. Platform Security
-/// 3. Resilience (circuit breaker)
-/// 4. Bulkhead (concurrency limiting)
-/// 5. Rate limiting
-/// 6. Compression
-/// 7. CORS
-/// 8. Duration tracking
-/// 9. Endpoint metrics
-/// 10. Request tracing
+/// Middleware is applied in reverse order (bottom to top):
+/// 10. Set Request ID (Outermost wrapper)
+/// 9. Unified Error Handling (Catches everything below, uses Request ID)
+/// 8. Platform Security
+/// 7. Request Tracing (Creates Span with Request ID)
+/// 6. Resilience (Circuit Breakers)
+/// 5. Bulkhead
+/// 4. Rate Limiting
+/// 3. Compression / CORS
+/// 2. Metrics / Duration
+/// 1. Extension injection (Innermost - available to all above)
 #[allow(clippy::too_many_arguments)]
 pub fn apply_middleware(
     router: Router,
@@ -67,25 +66,23 @@ pub fn apply_middleware(
     let bulkhead_middleware = Arc::new(BulkheadMiddleware::with_defaults());
 
     router
-        // 0. Set Request ID (Outermost)
-        .layer(SetRequestIdLayer::x_request_id(MakeRequestUuid))
-
-        // 1. Unified error handling (outermost — catches all errors)
-        .layer(from_fn(unified_error_middleware))
-
-        // 1.1 Platform Security (Checks X-Platform headers)
-        .layer(from_fn(platform_security_middleware))
-
-        // 2. Resilience middleware (circuit breaker)
+        // 1. Metrics & Duration Tracking (Innermost - closest to handler)
         .layer(from_fn(move |req: Request<Body>, next: Next| {
-            let mw = Arc::clone(&resilience_middleware);
-            async move {
-                let state = axum::extract::Extension(mw);
-                ResilienceMiddleware::layer(state, req, next).await
-            }
+            endpoint_metrics.clone().layer(req, next)
         }))
+        .layer(from_fn(DurationTracker::layer))
 
-        // 3. Bulkhead middleware (concurrency limiting)
+        // 2. Infra (Compression, CORS)
+        .layer(CorsConfig::dev())
+        .layer(CompressionConfig::new()
+            .min_size(1024)
+            .enable_gzip(true)
+            .build())
+
+        // 3. Rate Limiting (Needs RateLimiter extension)
+        .layer(from_fn(rate_limit_layer))
+
+        // 4. Bulkhead (Needs BulkheadMiddleware extension)
         .layer(from_fn(move |req: Request<Body>, next: Next| {
             let mw = Arc::clone(&bulkhead_middleware);
             async move {
@@ -94,34 +91,27 @@ pub fn apply_middleware(
             }
         }))
 
-        // 4. Rate limiting
-        .layer(from_fn(rate_limit_layer))
-
-        // 5. Response compression
-        .layer(CompressionConfig::new()
-            .min_size(1024)
-            .enable_gzip(true)
-            .enable_brotli(true)
-            .enable_deflate(false)
-            .build())
-
-        // 6. CORS
-        .layer(CorsConfig::dev())
-
-        // 7. Duration tracking
-        .layer(from_fn(DurationTracker::layer))
-
-        // 8. Endpoint metrics
+        // 5. Resilience (Needs ResilienceMiddleware extension)
         .layer(from_fn(move |req: Request<Body>, next: Next| {
-            endpoint_metrics.clone().layer(req, next)
+            let mw = Arc::clone(&resilience_middleware);
+            async move {
+                let state = axum::extract::Extension(mw);
+                ResilienceMiddleware::layer(state, req, next).await
+            }
         }))
 
-        // 9. Request tracing with span correlation
+        // 6. Platform Security (Needs AppConfig extension)
+        .layer(from_fn(platform_security_middleware))
+
+        // 7. Unified Error Handling (Catches errors from all inner layers)
+        .layer(from_fn(unified_error_middleware))
+
+        // 8. Request Tracing (Correlated via Request ID)
         .layer(TraceLayer::new_for_http()
             .make_span_with(|request: &Request<Body>| {
-                let request_id = request.headers()
-                    .get("x-request-id")
-                    .and_then(|v| v.to_str().ok())
+                let request_id = request.extensions()
+                    .get::<RequestId>()
+                    .map(|id| id.header_value().to_str().unwrap_or("unknown"))
                     .unwrap_or("unknown");
                 
                 info_span!(
@@ -133,7 +123,7 @@ pub fn apply_middleware(
             })
         )
 
-        // 10. Extension injection (Available to all of the above)
+        // 9. Extension Injection (Available to all of the above)
         .layer(axum::Extension(engine))
         .layer(axum::Extension(config))
         .layer(axum::Extension(redis))
@@ -141,6 +131,9 @@ pub fn apply_middleware(
         .layer(axum::Extension(circuit_breaker_registry))
         .layer(axum::Extension(metrics_collector))
         .layer(axum::Extension(start_time))
+
+        // 10. Set Request ID (Outermost - runs FIRST)
+        .layer(SetRequestIdLayer::x_request_id(MakeRequestUuid))
 }
 
 /// Helper to extract RequestId from request extensions
@@ -163,14 +156,14 @@ async fn rate_limit_layer(req: Request<Body>, next: Next) -> Response {
     let rate_limiter = match req.extensions().get::<Arc<RateLimiter>>() {
         Some(rl) => rl.clone(),
         None => {
-            error!(request_id = %request_id, "RateLimiter extension missing in request extensions");
+            error!(request_id = %request_id, "RateLimiter extension missing");
             return Response::builder()
                 .status(StatusCode::INTERNAL_SERVER_ERROR)
                 .body(Body::from(json!({
                     "success": false,
                     "error": {
-                        "message": "Internal server configuration error (RateLimiter missing)",
-                        "code": "CONFIG_ERROR",
+                        "message": "Internal configuration error",
+                        "code": "INTERNAL_ERROR",
                         "classification": "Internal",
                         "retriable": false,
                     },
@@ -184,23 +177,14 @@ async fn rate_limit_layer(req: Request<Body>, next: Next) -> Response {
         }
     };
 
-    // Use peer addr as primary IP source to prevent spoofing via X-Forwarded-For
-    // In production, this should only trust X-Forwarded-For if it comes from a known proxy CIDR.
     let ip = req.extensions()
         .get::<axum::extract::ConnectInfo<std::net::SocketAddr>>()
         .map(|axum::extract::ConnectInfo(addr)| addr.ip().to_string())
-        .or_else(|| {
-            req.headers()
-                .get("X-Forwarded-For")
-                .and_then(|h| h.to_str().ok())
-                .map(|s| s.to_string())
-        })
         .unwrap_or_else(|| "127.0.0.1".to_string());
 
     match rate_limiter.check(&ip).await {
         RateLimitResult::Allowed => next.run(req).await,
         RateLimitResult::ShadowBan => {
-            // Shadow Ban: Return 200 OK with a generic/empty feed to mislead bots
             Response::builder()
                 .status(StatusCode::OK)
                 .header("Content-Type", "application/json")
@@ -226,14 +210,10 @@ async fn rate_limit_layer(req: Request<Body>, next: Next) -> Response {
                 .body(Body::from(json!({
                     "success": false,
                     "error": {
-                        "message": format!(
-                            "Too many requests. Limit: {} requests per {} seconds",
-                            status.limit, status.window_seconds
-                        ),
+                        "message": "Too many requests",
                         "code": "RATE_LIMIT_EXCEEDED",
                         "classification": "Overload",
                         "retriable": true,
-                        "retry_after": status.reset_in_seconds * 1000,
                     },
                     "meta": {
                         "request_id": request_id,

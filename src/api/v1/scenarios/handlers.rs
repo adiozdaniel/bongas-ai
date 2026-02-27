@@ -15,6 +15,7 @@ use crate::error::AppError;
 
 use crate::db::models::ScenarioWithStrategy;
 use crate::api::models::scenario::{CreateScenarioRequest, UpdateScenarioRequest};
+use tower_http::request_id::RequestId;
 
 /// Mount all scenario management routes.
 pub fn routes() -> Router {
@@ -47,28 +48,32 @@ fn authorize_admin(headers: &HeaderMap, engine: &BongasEngine) -> Result<(), App
 async fn create_scenario(
     headers: HeaderMap,
     Extension(engine): Extension<Arc<BongasEngine>>,
-    Json(req): Json<CreateScenarioRequest>,
+    Extension(request_id): Extension<RequestId>,
+    Json(payload): Json<CreateScenarioRequest>,
 ) -> Result<Json<StandardResponse<ScenarioWithStrategy>>, AppError> {
+    let request_id = request_id.header_value().to_str().unwrap_or("unknown").to_string();
     authorize_admin(&headers, &engine)?;
-    let slug = req.slug.clone();
-    let config = engine.scenario_factory().repo().create(req).await?;
+    let slug = payload.slug.clone();
+    let config = engine.scenario_factory().repo().create(payload).await?;
     
     // Hot-reload the new scenario
     engine.reload_scenario(&slug).await
         .map_err(|e| AppError::Internal(format!("Failed to reload created scenario: {}", e)))?;
 
-    info!(slug = %slug, "Scenario created and reloaded");
-    Ok(Json(StandardResponse::success(config)))
+    info!(request_id = %request_id, slug = %slug, "Scenario created and reloaded");
+    Ok(Json(StandardResponse::success(config).with_request_id(request_id)))
 }
 
 /// GET /api/v1/scenarios
 async fn list_scenarios(
     headers: HeaderMap,
     Extension(engine): Extension<Arc<BongasEngine>>,
+    Extension(request_id): Extension<RequestId>,
 ) -> Result<Json<StandardResponse<Vec<ScenarioWithStrategy>>>, AppError> {
+    let request_id = request_id.header_value().to_str().unwrap_or("unknown").to_string();
     authorize_admin(&headers, &engine)?;
     let configs = engine.scenario_factory().repo().find_all_active().await?;
-    Ok(Json(StandardResponse::success(configs)))
+    Ok(Json(StandardResponse::success(configs).with_request_id(request_id)))
 }
 
 /// GET /api/v1/scenarios/:slug
@@ -76,11 +81,13 @@ async fn get_scenario(
     headers: HeaderMap,
     Path(slug): Path<String>,
     Extension(engine): Extension<Arc<BongasEngine>>,
+    Extension(request_id): Extension<RequestId>,
 ) -> Result<Json<StandardResponse<ScenarioWithStrategy>>, AppError> {
+    let request_id = request_id.header_value().to_str().unwrap_or("unknown").to_string();
     authorize_admin(&headers, &engine)?;
     let config = engine.scenario_factory().repo().find_by_slug(&slug).await?
         .ok_or_else(|| AppError::NotFound(format!("Scenario {} not found", slug)))?;
-    Ok(Json(StandardResponse::success(config)))
+    Ok(Json(StandardResponse::success(config).with_request_id(request_id)))
 }
 
 /// PUT /api/v1/scenarios/:slug
@@ -88,17 +95,19 @@ async fn update_scenario(
     headers: HeaderMap,
     Path(slug): Path<String>,
     Extension(engine): Extension<Arc<BongasEngine>>,
-    Json(req): Json<UpdateScenarioRequest>,
+    Extension(request_id): Extension<RequestId>,
+    Json(payload): Json<UpdateScenarioRequest>,
 ) -> Result<Json<StandardResponse<ScenarioWithStrategy>>, AppError> {
+    let request_id = request_id.header_value().to_str().unwrap_or("unknown").to_string();
     authorize_admin(&headers, &engine)?;
-    let config = engine.scenario_factory().repo().update(&slug, req).await?;
+    let config = engine.scenario_factory().repo().update(&slug, payload).await?;
     
     // Hot-reload the updated scenario
     engine.reload_scenario(&slug).await
         .map_err(|e| AppError::Internal(format!("Failed to reload updated scenario: {}", e)))?;
 
-    info!(slug = %slug, "Scenario updated and reloaded");
-    Ok(Json(StandardResponse::success(config)))
+    info!(request_id = %request_id, slug = %slug, "Scenario updated and reloaded");
+    Ok(Json(StandardResponse::success(config).with_request_id(request_id)))
 }
 
 /// DELETE /api/v1/scenarios/:slug
@@ -106,15 +115,17 @@ async fn delete_scenario(
     headers: HeaderMap,
     Path(slug): Path<String>,
     Extension(engine): Extension<Arc<BongasEngine>>,
+    Extension(request_id): Extension<RequestId>,
 ) -> Result<Json<StandardResponse<()>>, AppError> {
+    let request_id = request_id.header_value().to_str().unwrap_or("unknown").to_string();
     authorize_admin(&headers, &engine)?;
     engine.scenario_factory().repo().delete(&slug).await?;
     
     // Remove from engine's active scenarios
     engine.remove_scenario(&slug).await;
 
-    info!(slug = %slug, "Scenario deleted");
-    Ok(Json(StandardResponse::success(())))
+    info!(request_id = %request_id, slug = %slug, "Scenario deleted");
+    Ok(Json(StandardResponse::success(()).with_request_id(request_id)))
 }
 
 /// POST /api/v1/scenarios/:slug/reload
@@ -122,19 +133,23 @@ async fn reload_scenario(
     headers: HeaderMap,
     Path(slug): Path<String>,
     Extension(engine): Extension<Arc<BongasEngine>>,
+    Extension(request_id): Extension<RequestId>,
 ) -> Result<Json<StandardResponse<bool>>, AppError> {
+    let request_id = request_id.header_value().to_str().unwrap_or("unknown").to_string();
     authorize_admin(&headers, &engine)?;
     let success = engine.reload_scenario(&slug).await?;
-    Ok(Json(StandardResponse::success(success)))
+    Ok(Json(StandardResponse::success(success).with_request_id(request_id)))
 }
 
 /// POST /api/v1/scenarios/reload-all
 async fn reload_all_scenarios(
     headers: HeaderMap,
     Extension(engine): Extension<Arc<BongasEngine>>,
+    Extension(request_id): Extension<RequestId>,
 ) -> Result<Json<StandardResponse<usize>>, AppError> {
+    let request_id = request_id.header_value().to_str().unwrap_or("unknown").to_string();
     authorize_admin(&headers, &engine)?;
     let count = engine.reload_scenarios().await?;
-    info!(scenario_count = count, "All scenarios reloaded successfully");
-    Ok(Json(StandardResponse::success(count)))
+    info!(request_id = %request_id, scenario_count = count, "All scenarios reloaded successfully");
+    Ok(Json(StandardResponse::success(count).with_request_id(request_id)))
 }

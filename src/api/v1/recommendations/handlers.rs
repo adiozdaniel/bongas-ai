@@ -1,8 +1,7 @@
 use axum::{
-    extract::{Path, Extension, Query, Request},
+    extract::{Path, Extension, Query},
     Json,
     response::sse::{Event, Sse},
-    body::Body,
 };
 use futures::stream::{self, Stream};
 use std::convert::Infallible;
@@ -13,16 +12,16 @@ use crate::engine::BongasEngine;
 use crate::api::models::{StandardResponse, RecommendationItem, ContextParams};
 use crate::api::models::recommendation::FeedRow;
 use crate::error::AppError;
-use crate::api::middleware::service::extract_request_id;
 use super::service::execute_and_map;
+use tower_http::request_id::RequestId;
 
 pub async fn get_home_recommendations(
     Path(user_id): Path<i32>,
     Query(context_params): Query<ContextParams>,
     Extension(engine): Extension<Arc<BongasEngine>>,
-    req: Request<Body>,
+    Extension(request_id): Extension<RequestId>,
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
-    let request_id = extract_request_id(&req);
+    let request_id = request_id.header_value().to_str().unwrap_or("unknown").to_string();
     let engine_clone = engine.clone();
     let profile_id = context_params.profile_id.clone();
     let maturity_rating = context_params.maturity_rating.clone();
@@ -93,9 +92,9 @@ pub async fn get_continue_watching(
     Path(user_id): Path<i32>,
     Query(context_params): Query<ContextParams>,
     Extension(engine): Extension<Arc<BongasEngine>>,
-    req: Request<Body>,
+    Extension(request_id): Extension<RequestId>,
 ) -> Result<Json<StandardResponse<Vec<RecommendationItem>>>, AppError> {
-    let request_id = extract_request_id(&req);
+    let request_id = request_id.header_value().to_str().unwrap_or("unknown").to_string();
     let items = execute_and_map(
         engine.clone(), 
         "continue_watching", 
@@ -113,9 +112,9 @@ pub async fn get_continue_watching(
 pub async fn get_trending(
     Query(context_params): Query<ContextParams>,
     Extension(engine): Extension<Arc<BongasEngine>>,
-    req: Request<Body>,
+    Extension(request_id): Extension<RequestId>,
 ) -> Result<Json<StandardResponse<Vec<RecommendationItem>>>, AppError> {
-    let request_id = extract_request_id(&req);
+    let request_id = request_id.header_value().to_str().unwrap_or("unknown").to_string();
     let items = execute_and_map(
         engine.clone(), 
         "trending_now", 
@@ -134,9 +133,9 @@ pub async fn get_because_you_watched(
     Path((user_id, item_id)): Path<(i32, i32)>,
     Query(context_params): Query<ContextParams>,
     Extension(engine): Extension<Arc<BongasEngine>>,
-    req: Request<Body>,
+    Extension(request_id): Extension<RequestId>,
 ) -> Result<Json<StandardResponse<Vec<RecommendationItem>>>, AppError> {
-    let request_id = extract_request_id(&req);
+    let request_id = request_id.header_value().to_str().unwrap_or("unknown").to_string();
     let context = serde_json::json!({ "item_id": item_id });
     let items = execute_and_map(
         engine.clone(), 
@@ -156,9 +155,9 @@ pub async fn get_genre_recommendations(
     Path((genre, user_id)): Path<(String, i32)>,
     Query(context_params): Query<ContextParams>,
     Extension(engine): Extension<Arc<BongasEngine>>,
-    req: Request<Body>,
+    Extension(request_id): Extension<RequestId>,
 ) -> Result<Json<StandardResponse<Vec<RecommendationItem>>>, AppError> {
-    let request_id = extract_request_id(&req);
+    let request_id = request_id.header_value().to_str().unwrap_or("unknown").to_string();
     let scenario_slug = format!("genre_{}", genre.to_lowercase());
     let items = execute_and_map(
         engine.clone(), 
@@ -178,9 +177,9 @@ pub async fn get_new_releases(
     Path(user_id): Path<i32>,
     Query(context_params): Query<ContextParams>,
     Extension(engine): Extension<Arc<BongasEngine>>,
-    req: Request<Body>,
+    Extension(request_id): Extension<RequestId>,
 ) -> Result<Json<StandardResponse<Vec<RecommendationItem>>>, AppError> {
-    let request_id = extract_request_id(&req);
+    let request_id = request_id.header_value().to_str().unwrap_or("unknown").to_string();
     let items = execute_and_map(
         engine.clone(), 
         "new_releases", 
@@ -199,9 +198,9 @@ pub async fn get_live_tv(
     Path(user_id): Path<i32>,
     Query(context_params): Query<ContextParams>,
     Extension(engine): Extension<Arc<BongasEngine>>,
-    req: Request<Body>,
+    Extension(request_id): Extension<RequestId>,
 ) -> Result<Json<StandardResponse<Vec<RecommendationItem>>>, AppError> {
-    let request_id = extract_request_id(&req);
+    let request_id = request_id.header_value().to_str().unwrap_or("unknown").to_string();
     let items = execute_and_map(
         engine.clone(), 
         "live_tv", 
