@@ -12,9 +12,9 @@ url = "redis://localhost:6379"
 pool_size = 10
 
 [clickhouse]
-url = "http://54.217.162.34:8123/?socket_timeout=60000&connection_timeout=30000&max_execution_time=60&retry_on_failure=2&failover=3"
+url = "localhost:8123/baze_reports?socket_timeout=60000&connection_timeout=30000&max_execution_time=60&retry_on_failure=2&failover=3"
 user = "default"
-password = "Zr4G3g6sjglvbrj9YkO3w1Q"
+password = "default"
 database = "baze_reports"
 
 [kafka]

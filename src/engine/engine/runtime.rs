@@ -18,6 +18,7 @@ use crate::db::repositories::feature_repository::FeatureRepository;
 use crate::db::repositories::cache_repository::CacheRepository;
 use crate::db::repositories::page_layout_repository::PageLayoutRepository;
 use crate::db::repositories::item_feature_service::ItemFeatureService;
+use crate::pages::PagesManager;
 use crate::security::SecurityManager;
 use crate::analytics::types::PerformanceStats;
 use crate::experiments::ExperimentCoordinator;
@@ -52,6 +53,11 @@ impl BongasEngine {
         info!("Loading initial scenarios from database...");
         if let Err(e) = engine.reload_scenarios().await {
             error!(error = %e, "Failed to load initial scenarios");
+        }
+
+        info!("Loading initial page layouts from database...");
+        if let Err(e) = engine.pages.load_all_active().await {
+            error!(error = %e, "Failed to load initial page layouts");
         }
 
         Ok(engine)
@@ -121,6 +127,7 @@ impl BongasEngine {
         let feature_repo = Arc::new(FeatureRepository::new(resilient_pool.clone(), resilience_metrics.clone()));
         let cache_repo = Arc::new(CacheRepository::new(resilient_pool.clone(), resilience_metrics.clone()));
         let page_layout_repo = Arc::new(PageLayoutRepository::new(resilient_pool.clone(), resilience_metrics.clone()));
+        let pages_manager = Arc::new(PagesManager::new(page_layout_repo));
 
         let ingestion_metrics = Arc::new(IngestionMetrics::new(Vec::new()));
         let ingestion_manager = IngestionManager::new(
@@ -183,7 +190,7 @@ impl BongasEngine {
             ingestion_manager: Arc::new(RwLock::new(ingestion_manager)),
             analytics_sidecar: analytics_sidecar.clone(),
             hive_mind_connector: hive_mind_connector.clone(),
-            page_layout_repo,
+            pages: pages_manager,
             shutdown_tx,
         });
 

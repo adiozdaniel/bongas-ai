@@ -16,7 +16,7 @@ use crate::security::SecurityManager;
 use crate::cache::CacheManager;
 use crate::ingestion::IngestionManager;
 use crate::resilience::ResilienceMetricsCollector;
-use crate::db::repositories::page_layout_repository::PageLayoutRepository;
+use crate::pages::PagesManager;
 
 #[derive(Debug, Clone)]
 pub struct ScenarioDefinition {
@@ -72,7 +72,7 @@ pub struct BongasEngine {
     pub ingestion_manager: Arc<RwLock<IngestionManager>>,
     pub analytics_sidecar: Arc<AnalyticsSidecar>,
     pub hive_mind_connector: Arc<HiveMindConnector>,
-    pub page_layout_repo: Arc<PageLayoutRepository>,
+    pub pages: Arc<PagesManager>,
 
     // Lifecycle
     pub shutdown_tx: broadcast::Sender<()>,

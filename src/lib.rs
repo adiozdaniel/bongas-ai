@@ -37,6 +37,7 @@ pub mod ml;
 // Business logic modules
 pub mod engine;
 pub mod scenarios;
+pub mod pages;
 pub mod pipeline;
 pub mod experiments;
 

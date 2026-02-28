@@ -1,10 +1,11 @@
 use axum::{
     extract::{Path, Extension, Query},
     Json,
-    response::sse::{Event, Sse},
+    response::sse::{Event, Sse, KeepAlive},
     body::Body,
     http::Request,
 };
+use std::time::Duration;
 use futures::stream::{self, Stream};
 use std::convert::Infallible;
 use std::sync::Arc;
@@ -16,6 +17,108 @@ use crate::api::models::recommendation::FeedRow;
 use crate::error::AppError;
 use crate::api::middleware::service::extract_request_id;
 use super::service::execute_and_map;
+
+pub async fn get_page_recommendations(
+    Path((page_slug, user_id)): Path<(String, i32)>,
+    Query(context_params): Query<ContextParams>,
+    Extension(engine): Extension<Arc<BongasEngine>>,
+    req: Request<Body>,
+) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
+    let request_id = extract_request_id(&req);
+    let engine_clone = engine.clone();
+    let profile_id = context_params.profile_id.clone();
+    let maturity_rating = context_params.maturity_rating.clone();
+    let device_type = context_params.device_type.clone();
+
+    // 1. Fetch active pages for the navigation context
+    let active_pages = engine.pages.list_active_pages().await.unwrap_or_default();
+    
+    // 2. Fetch layout for the requested page
+    let layout_res = engine.pages.get_layout(&page_slug).await;
+    let scenario_slugs = match layout_res {
+        Ok(Some(layout)) => layout.scenario_slugs,
+        _ => {
+            warn!(request_id = %request_id, page = %page_slug, "Page layout not found, stream will only contain navigation");
+            vec![]
+        }
+    };
+
+    let stream = stream::unfold(
+        (true, active_pages, scenario_slugs), // State: (should_send_nav, navigation, remaining_slugs)
+        move |(send_nav, nav, mut slugs)| {
+            let engine = engine_clone.clone();
+            let profile_id = profile_id.clone();
+            let maturity_rating = maturity_rating.clone();
+            let device_type = device_type.clone();
+            let request_id_inner = request_id.clone();
+            
+            async move {
+                // First event: Send navigation metadata
+                if send_nav {
+                    let event = Event::default()
+                        .event("navigation")
+                        .json_data(serde_json::json!({ "active_pages": nav }))
+                        .unwrap_or_else(|_| Event::default().comment("nav_serialization_error"));
+                    return Some((Ok(event), (false, vec![], slugs)));
+                }
+
+                if slugs.is_empty() {
+                    return None;
+                }
+                let slug = slugs.remove(0);
+                
+                let cp = ContextParams {
+                    profile_id: profile_id.clone(),
+                    maturity_rating: maturity_rating.clone(),
+                    device_type: device_type.clone(),
+                };
+
+                // Execute scenario
+                let items_res = execute_and_map(
+                    engine.clone(),
+                    &slug,
+                    Some(user_id),
+                    Some(cp),
+                    serde_json::json!({}),
+                    0,
+                    20,
+                ).await;
+
+                match items_res {
+                    Ok(items) => {
+                        let title = {
+                            let scenarios = engine.scenarios.scenarios.read().await;
+                            scenarios.get(&slug)
+                                .map(|s| s.name.clone())
+                                .unwrap_or_else(|| slug.replace('_', " "))
+                        };
+
+                        let row = FeedRow {
+                            title,
+                            row_type: "horizontal_list".to_string(),
+                            scenario: slug.to_string(),
+                            items,
+                        };
+
+                        let event = Event::default()
+                            .event("row")
+                            .json_data(&row)
+                            .unwrap_or_else(|_| Event::default().comment("serialization_error"));
+                        
+                        Some((Ok(event), (false, vec![], slugs)))
+                    }
+                    Err(e) => {
+                        warn!(request_id = %request_id_inner, scenario = %slug, error = ?e, "Scenario failed in SSE, skipping");
+                        let error_msg = format!("error: scenario '{}' failed", slug);
+                        Some((Ok(Event::default().comment(error_msg)), (false, vec![], slugs)))
+                    }
+                }
+            }
+        },
+    );
+
+    Sse::new(stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(15)))
+}
 
 pub async fn get_home_recommendations(
     Path(user_id): Path<i32>,
@@ -29,15 +132,12 @@ pub async fn get_home_recommendations(
     let maturity_rating = context_params.maturity_rating.clone();
     let device_type = context_params.device_type.clone();
 
-    // 1. Fetch dynamic layout from database
-    let layout_res = engine.page_layout_repo.find_by_slug("home").await;
+    // 1. Fetch dynamic layout from the Pages Module
+    let layout_res = engine.pages.get_layout("home").await;
     let scenario_slugs = match layout_res {
-        Ok(Some(layout)) => {
-            serde_json::from_value::<Vec<String>>(layout.scenario_slugs)
-                .unwrap_or_else(|_| vec!["trending_now".to_string(), "personalized_picks".to_string(), "home_feed".to_string()])
-        }
+        Ok(Some(layout)) => layout.scenario_slugs,
         _ => {
-            warn!(request_id = %request_id, "Home layout not found in DB or error occurred, using defaults");
+            warn!(request_id = %request_id, "Home layout not found in Pages module, using defaults");
             vec!["trending_now".to_string(), "personalized_picks".to_string(), "home_feed".to_string()]
         }
     };

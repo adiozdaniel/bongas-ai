@@ -2,6 +2,7 @@
 
 pub mod recommendations;
 pub mod scenarios;
+pub mod pages;
 pub mod features;
 pub mod health;
 pub mod admin;
@@ -16,6 +17,7 @@ pub fn routes(config: Arc<AppConfig>) -> Router {
     let mut router = Router::new()
         .nest("/recommendations", recommendations::routes())
         .nest("/scenarios", scenarios::routes())
+        .nest("/pages", pages::routes())
         .nest("/features", features::routes())
         .nest("/admin", admin::routes());
 
