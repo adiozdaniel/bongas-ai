@@ -190,6 +190,11 @@ CREATE TABLE IF NOT EXISTS user_interactions (
     user_id INTEGER NOT NULL,
     item_id INTEGER NOT NULL,
     interaction_type VARCHAR(50) NOT NULL,
+    
+    -- Identity Context
+    visitor_id VARCHAR(128),
+    device_hash VARCHAR(128),
+    
     watch_duration_seconds INTEGER,
     completion_percentage FLOAT,
     implicit_rating FLOAT,
@@ -205,6 +210,7 @@ CREATE TABLE IF NOT EXISTS user_interactions (
 );
 
 CREATE INDEX IF NOT EXISTS idx_interactions_user ON user_interactions(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_interactions_visitor ON user_interactions(visitor_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_interactions_item ON user_interactions(item_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_interactions_profile ON user_interactions(profile_id);
 

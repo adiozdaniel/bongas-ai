@@ -1,4 +1,4 @@
-# 🎨 Smart Pages: The SDUI Canvas
+# 🎨 Smart Pages: The SDUI Canvas & Brain
 
 [🏠 Hub](../HUB.md) | [🏗️ Architecture](./SYMPHONY.md) | [👤 Identity](./IDENTITY.md) | [⚡ Streaming](./ORCHESTRATION.md)
 
@@ -6,7 +6,7 @@
 
 ## 🏛️ The Philosophy: Living Layouts
 
-A "Page" in Bongas-AI is no longer a static list of items. It is a **Dynamic Blueprint** that adapts in real-time. Instead of hardcoding what a user sees, admins define **Rules** and **Pools** of content that the engine resolves based on the user's environment.
+A "Page" in Bongas-AI is no longer a static list of items. It is a **Dynamic Blueprint** that adapts in real-time. Instead of hardcoding what a user sees, admins define **Rules** and **Pools** of content that the engine resolves and optimizes based on user engagement.
 
 ## 📐 The Layout Contract
 
@@ -16,7 +16,7 @@ Every page layout in Bongas-AI is defined by a structured **Composition**.
 
 The engine uses a **Contextual Resolver** to pick the best layout for a request:
 - **`device_type`**: Optimize for `mobile`, `tv`, `web`, or `tablet`.
-- **`maturity_rating`**: Filter content for `G`, `PG`, `13+`, or `18+`.
+- **`maturity_rating`**: Filter content for `GE`, `PG`, `12`, `15`, or `18`.
 - **`priority`**: When multiple layouts match, the one with the highest priority wins.
 
 ### 2. Composition (SDUI)
@@ -26,33 +26,33 @@ Each row in a layout is a `PageCompositionItem` containing:
 - **`row_type`**: The UI component type (e.g., `hero_carousel`, `horizontal_list`).
 - **`row_style`**: Visual hints (e.g., `promotional`, `compact`, `tall_cards`).
 
-## 🧠 The Resolution Logic
+## 🧠 The Brain: Algorithmic Reordering
 
-When a request for `/page/home` arrives, the `PagesManager` performs a hierarchical search:
+Beyond manual admin ordering, Bongas-AI implements **Personalized Layouts**. The engine "learns" from every interaction to promote high-engagement content.
 
-1.  **Exact Match**: `slug` + `device` + `maturity`.
-2.  **Platform Match**: `slug` + `device` (for all ages).
-3.  **Default Layout**: `slug` + `default` device.
+### The Feedback Loop
+
+The **Ingestion Manager** streams processed activities back to the **PagesManager**, which maintains real-time engagement scores:
+
+- **Click**: +1.0 Score
+- **Playback**: +0.0 to +1.0 (based on watch percentage)
+- **Like**: +2.0 Score
+- **Impression (Ignored)**: -0.05 (Slight decay)
+
+### Sorting Logic
+
+When a user requests a page, the engine fetches the base layout and then performs a **stable sort** of the composition based on the user's specific engagement scores. This ensures that "Continue Watching" or "Favorite Genres" automatically bubble to the top if the user interacts with them frequently.
 
 ```mermaid
 graph TD
-    A[Request: /page/home] --> B{Resolver}
-    B -->|Found TV + 18+| C[Adult TV Layout]
-    B -->|Found TV Only| D[Standard TV Layout]
-    B -->|No Match| E[Default 'Home' Layout]
-    C & D & E --> F[Parallel Execution Stream]
+    A[Request: /page/home] --> B[Fetch Base Layout]
+    B --> C[Identify User/Visitor History]
+    C --> D{Layout Ranker}
+    D -->|Click History| E[Promote 'Action' Rows]
+    D -->|Recency| F[Promote 'Continue Watching']
+    D -->|Time of Day| G[Inject 'Morning News']
+    E & F & G --> H[Final Optimized Stream]
 ```
-
-## 📺 Presentation Directives
-
-The backend dictates the **Visual Presentation**. The client receives a `row_type` and maps it to a native UI component.
-
-| Row Type | Client Component | Best For |
-| :--- | :--- | :--- |
-| `hero_carousel` | `HeroSlider` | Big promotional items at the top. |
-| `horizontal_list` | `HorizontalScroll` | Standard browsing rows. |
-| `feature_grid` | `Grid` | Category pages or large collections. |
-| `billboard` | `StaticImage` | Static ads or announcements. |
 
 ---
 
@@ -63,4 +63,4 @@ The backend dictates the **Visual Presentation**. The client receives a `row_typ
 
 ---
 
-[🏠 Hub](../HUB.md) | [🔝 Top](#-smart-pages-the-sdui-canvas)
+[🏠 Hub](../HUB.md) | [🔝 Top](#-smart-pages-the-sdui-canvas--brain)

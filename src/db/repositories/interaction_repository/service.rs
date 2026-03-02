@@ -30,28 +30,31 @@ impl InteractionRepository {
         item_id: i32,
         rating: f32,
         watch_duration_seconds: i32,
+        visitor_id: Option<String>,
+        device_hash: Option<String>,
     ) -> AppResult<()> {
         let start_time = std::time::Instant::now();
         let result = self.pool.execute(|pool| async move {
             sqlx::query(
                 r#"
                 INSERT INTO user_interactions
-                    (user_id, item_id, interaction_type, rating, watch_duration_seconds, created_at)
-                VALUES ($1, $2, 'implicit_rating', $3, $4, NOW())
+                    (user_id, item_id, interaction_type, rating, watch_duration_seconds, visitor_id, device_hash, created_at)
+                VALUES ($1, $2, 'implicit_rating', $3, $4, $5, $6, NOW())
                 "#,
             )
             .bind(user_id)
             .bind(item_id)
             .bind(rating)
             .bind(watch_duration_seconds)
+            .bind(visitor_id)
+            .bind(device_hash)
             .execute(&pool)
             .await
             .map(|_| ())
         }).await;
 
         let duration = start_time.elapsed();
-        let metric_name = "interaction_implicit";
-        let metrics = self.metrics_collector.registry().get_or_create(metric_name);
+        let metrics = self.metrics_collector.registry().get_or_create("interaction_implicit");
         metrics.latency.record_duration(duration);
         if result.is_ok() { metrics.successes.increment(); } else { metrics.failures.increment(); }
 
@@ -61,37 +64,6 @@ impl InteractionRepository {
         }))
     }
 
-    pub async fn create_explicit_rating(&self, user_id: i32, item_id: i32, rating: f32) -> AppResult<()> {
-        self.pool.execute(|pool| async move {
-            sqlx::query(
-                "INSERT INTO user_interactions (user_id, item_id, interaction_type, rating, created_at) VALUES ($1, $2, 'explicit_rating', $3, NOW())"
-            )
-            .bind(user_id).bind(item_id).bind(rating).execute(&pool).await.map(|_| ())
-        }).await.map_err(|e| AppError::Postgres(PostgresError::Query { message: e.to_string(), source: None }))
-    }
-
-    pub async fn record_click(&self, user_id: i32, item_id: i32) -> AppResult<()> {
-        self.pool.execute(|pool| async move {
-            sqlx::query("INSERT INTO user_interactions (user_id, item_id, interaction_type, created_at) VALUES ($1, $2, 'click', NOW())")
-            .bind(user_id).bind(item_id).execute(&pool).await.map(|_| ())
-        }).await.map_err(|e| AppError::Postgres(PostgresError::Query { message: e.to_string(), source: None }))
-    }
-
-    pub async fn record_impression(&self, user_id: i32, item_id: i32) -> AppResult<()> {
-        self.pool.execute(|pool| async move {
-            sqlx::query("INSERT INTO user_interactions (user_id, item_id, interaction_type, created_at) VALUES ($1, $2, 'impression', NOW())")
-            .bind(user_id).bind(item_id).execute(&pool).await.map(|_| ())
-        }).await.map_err(|e| AppError::Postgres(PostgresError::Query { message: e.to_string(), source: None }))
-    }
-
-    pub async fn record_impressions_batch(&self, user_id: i32, item_ids: &[i32]) -> AppResult<u64> {
-        let ids = item_ids.to_vec();
-        self.pool.execute(|pool| async move {
-            sqlx::query("INSERT INTO user_interactions (user_id, item_id, interaction_type, created_at) SELECT $1, unnest($2::int[]), 'impression', NOW()")
-            .bind(user_id).bind(&ids).execute(&pool).await.map(|r| r.rows_affected())
-        }).await.map_err(|e| AppError::Postgres(PostgresError::Query { message: e.to_string(), source: None }))
-    }
-
     pub async fn create_interactions_batch(
         &self,
         user_ids: Vec<i32>,
@@ -99,17 +71,20 @@ impl InteractionRepository {
         types: Vec<String>,
         ratings: Vec<Option<f32>>,
         watch_durations: Vec<Option<i32>>,
+        visitor_ids: Vec<Option<String>>,
+        device_hashes: Vec<Option<String>>,
         timestamps: Vec<chrono::DateTime<chrono::Utc>>,
     ) -> AppResult<u64> {
         if user_ids.is_empty() { return Ok(0); }
         self.pool.execute(|pool| async move {
             sqlx::query(
                 r#"
-                INSERT INTO user_interactions (user_id, item_id, interaction_type, rating, watch_duration_seconds, created_at)
-                SELECT * FROM unnest($1::int[], $2::int[], $3::text[], $4::float4[], $5::int[], $6::timestamptz[])
+                INSERT INTO user_interactions (user_id, item_id, interaction_type, rating, watch_duration_seconds, visitor_id, device_hash, created_at)
+                SELECT * FROM unnest($1::int[], $2::int[], $3::text[], $4::float4[], $5::int[], $6::text[], $7::text[], $8::timestamptz[])
                 "#
             )
             .bind(&user_ids).bind(&item_ids).bind(&types).bind(&ratings).bind(&watch_durations)
+            .bind(&visitor_ids).bind(&device_hashes)
             .bind(&timestamps)
             .execute(&pool).await.map(|r| r.rows_affected())
         }).await.map_err(|e| AppError::Postgres(PostgresError::Query { message: e.to_string(), source: None }))

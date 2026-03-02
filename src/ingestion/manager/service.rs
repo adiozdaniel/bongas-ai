@@ -16,6 +16,7 @@ use crate::ingestion::processor::ActivityProcessor;
 use crate::ingestion::metrics::{IngestionMetrics, IngestionHealth};
 use crate::ingestion::sources::{KafkaSource, ApiSource, ClickHouseSource};
 use crate::ingestion::producer::RecommendationProducer;
+use crate::pages::PagesManager;
 
 /// Channel buffer size for the activity pipeline.
 const ACTIVITY_CHANNEL_BUFFER: usize = 10_000;
@@ -61,8 +62,8 @@ impl IngestionManager {
         }
     }
 
-    /// Start the ingestion pipeline with all configured sources.
-    pub async fn start(&mut self) -> Result<()> {
+    /// Start the ingestion pipeline with all configured sources and the feedback loop.
+    pub async fn start(&mut self, pages_manager: Arc<PagesManager>) -> Result<()> {
         let (sender, receiver) = mpsc::channel::<UserActivity>(ACTIVITY_CHANNEL_BUFFER);
 
         let mut all_sources: Vec<Arc<dyn ActivitySource>> = Vec::new();
@@ -122,6 +123,7 @@ impl IngestionManager {
             self.resilient_pool.clone(),
             self.metrics_collector.clone(),
             self.staleness_engine.clone(),
+            pages_manager,
             self.clickhouse_client.clone(),
         ));
 

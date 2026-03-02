@@ -21,6 +21,8 @@ pub enum UserActivity {
         user_id: i32,
         item_id: i32,
         session_id: String,
+        visitor_id: Option<String>,
+        device_hash: Option<String>,
         watch_duration_seconds: i32,
         total_duration_seconds: i32,
         watch_percentage: f32,
@@ -33,6 +35,8 @@ pub enum UserActivity {
     Reaction {
         user_id: i32,
         item_id: i32,
+        visitor_id: Option<String>,
+        device_hash: Option<String>,
         /// "like", "dislike", or other reaction types.
         reaction_type: String,
         scenario_slug: Option<String>,
@@ -64,6 +68,8 @@ pub enum UserActivity {
     Click {
         user_id: i32,
         item_id: i32,
+        visitor_id: Option<String>,
+        device_hash: Option<String>,
         scenario_slug: Option<String>,
         timestamp: chrono::DateTime<chrono::Utc>,
     },
@@ -72,6 +78,8 @@ pub enum UserActivity {
     Impression {
         user_id: i32,
         item_id: i32,
+        visitor_id: Option<String>,
+        device_hash: Option<String>,
         scenario_slug: Option<String>,
         timestamp: chrono::DateTime<chrono::Utc>,
     },
@@ -87,6 +95,39 @@ impl UserActivity {
             | Self::Notification { user_id, .. }
             | Self::Click { user_id, .. }
             | Self::Impression { user_id, .. } => *user_id,
+        }
+    }
+
+    /// The visitor ID associated with this activity.
+    pub fn visitor_id(&self) -> Option<&str> {
+        match self {
+            Self::Playback { visitor_id, .. }
+            | Self::Reaction { visitor_id, .. }
+            | Self::Click { visitor_id, .. }
+            | Self::Impression { visitor_id, .. } => visitor_id.as_deref(),
+            _ => None,
+        }
+    }
+
+    /// The device hash associated with this activity.
+    pub fn device_hash(&self) -> Option<&str> {
+        match self {
+            Self::Playback { device_hash, .. }
+            | Self::Reaction { device_hash, .. }
+            | Self::Click { device_hash, .. }
+            | Self::Impression { device_hash, .. } => device_hash.as_deref(),
+            _ => None,
+        }
+    }
+
+    /// The scenario slug associated with this activity.
+    pub fn scenario_slug(&self) -> Option<&str> {
+        match self {
+            Self::Playback { scenario_slug, .. }
+            | Self::Reaction { scenario_slug, .. }
+            | Self::Click { scenario_slug, .. }
+            | Self::Impression { scenario_slug, .. } => scenario_slug.as_deref(),
+            _ => None,
         }
     }
 

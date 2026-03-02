@@ -22,6 +22,7 @@ struct FlatScenarioRow {
     pub description: Option<String>,
     pub category: Option<String>,
     pub target_kpi: String,
+    pub maturity_rating: String,
     pub initial_display_limit: i32,
     pub scope: serde_json::Value,
     pub cache_ttl_seconds: i32,
@@ -42,6 +43,7 @@ impl FlatScenarioRow {
                 description: self.description,
                 category: self.category,
                 target_kpi: self.target_kpi,
+                maturity_rating: self.maturity_rating,
                 initial_display_limit: self.initial_display_limit,
                 scope: self.scope,
                 cache_ttl_seconds: self.cache_ttl_seconds,
@@ -89,10 +91,10 @@ impl ScenarioRepository {
                     r#"
                     INSERT INTO scenarios (
                         slug, name, description, category, target_kpi,
-                        initial_display_limit, scope,
+                        maturity_rating, initial_display_limit, scope,
                         cache_ttl_seconds, use_l2_cache
                     )
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
                     RETURNING id
                     "#,
                 )
@@ -101,6 +103,7 @@ impl ScenarioRepository {
                 .bind(&req.description)
                 .bind(&req.category)
                 .bind(req.target_kpi.as_deref().unwrap_or("retention"))
+                .bind(req.maturity_rating.as_deref().unwrap_or("18"))
                 .bind(req.initial_display_limit.unwrap_or(5))
                 .bind(req.scope.clone().unwrap_or_else(|| serde_json::json!({})))
                 .bind(req.cache_ttl_seconds)
@@ -164,10 +167,11 @@ impl ScenarioRepository {
                         description = COALESCE($3, description),
                         category = COALESCE($4, category),
                         target_kpi = COALESCE($5, target_kpi),
-                        initial_display_limit = COALESCE($6, initial_display_limit),
-                        scope = COALESCE($7, scope),
-                        cache_ttl_seconds = COALESCE($8, cache_ttl_seconds),
-                        use_l2_cache = COALESCE($9, use_l2_cache)
+                        maturity_rating = COALESCE($6, maturity_rating),
+                        initial_display_limit = COALESCE($7, initial_display_limit),
+                        scope = COALESCE($8, scope),
+                        cache_ttl_seconds = COALESCE($9, cache_ttl_seconds),
+                        use_l2_cache = COALESCE($10, use_l2_cache)
                     WHERE slug = $1
                     RETURNING id
                     "#,
@@ -177,6 +181,7 @@ impl ScenarioRepository {
                 .bind(&req.description)
                 .bind(&req.category)
                 .bind(&req.target_kpi)
+                .bind(&req.maturity_rating)
                 .bind(req.initial_display_limit)
                 .bind(req.scope)
                 .bind(req.cache_ttl_seconds)
@@ -264,7 +269,7 @@ impl ScenarioRepository {
                 let rows: Vec<FlatScenarioRow> = sqlx::query_as(
                     r#"
                     SELECT 
-                        s.id, s.slug, s.name, s.description, s.category, s.target_kpi,
+                        s.id, s.slug, s.name, s.description, s.category, s.target_kpi, s.maturity_rating,
                         s.initial_display_limit, s.scope, 
                         s.cache_ttl_seconds, s.use_l2_cache,
                         s.created_at,
@@ -312,7 +317,7 @@ impl ScenarioRepository {
                 let row: Option<FlatScenarioRow> = sqlx::query_as(
                     r#"
                     SELECT 
-                        s.id, s.slug, s.name, s.description, s.category, s.target_kpi,
+                        s.id, s.slug, s.name, s.description, s.category, s.target_kpi, s.maturity_rating,
                         s.initial_display_limit, s.scope, 
                         s.cache_ttl_seconds, s.use_l2_cache,
                         s.created_at,
@@ -344,7 +349,7 @@ impl ScenarioRepository {
         let row: FlatScenarioRow = sqlx::query_as(
             r#"
             SELECT 
-                s.id, s.slug, s.name, s.description, s.category, s.target_kpi,
+                s.id, s.slug, s.name, s.description, s.category, s.target_kpi, s.maturity_rating,
                 s.initial_display_limit, s.scope, 
                 s.cache_ttl_seconds, s.use_l2_cache,
                 s.created_at,

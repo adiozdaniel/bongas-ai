@@ -144,6 +144,8 @@ impl ClickHouseSource {
                     user_id: row.user_id,
                     item_id: row.item_id,
                     session_id: "clickhouse_backfill".to_string(),
+                    visitor_id: None,
+                    device_hash: None,
                     watch_duration_seconds: row.watch_duration_seconds,
                     total_duration_seconds: row.watch_duration_seconds, // Fallback
                     watch_percentage: (row.rating / 5.0).min(1.0), // Reconstruct from rating if possible
@@ -154,6 +156,8 @@ impl ClickHouseSource {
                 "like" | "dislike" => UserActivity::Reaction {
                     user_id: row.user_id,
                     item_id: row.item_id,
+                    visitor_id: None,
+                    device_hash: None,
                     reaction_type: row.interaction_type,
                     scenario_slug: slug,
                     timestamp: event_time,
@@ -161,12 +165,16 @@ impl ClickHouseSource {
                 "click" => UserActivity::Click {
                     user_id: row.user_id,
                     item_id: row.item_id,
+                    visitor_id: None,
+                    device_hash: None,
                     scenario_slug: slug,
                     timestamp: event_time,
                 },
                 "impression" => UserActivity::Impression {
                     user_id: row.user_id,
                     item_id: row.item_id,
+                    visitor_id: None,
+                    device_hash: None,
                     scenario_slug: slug,
                     timestamp: event_time,
                 },

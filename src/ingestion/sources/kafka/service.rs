@@ -264,7 +264,6 @@ impl KafkaSource {
                         }
 
                         if classification == ErrorClassification::Permanent {
-                            // Fix #25, M3, N3: Forward original payload to DLQ
                             warn!(topic = %topic_name, "Poison message detected, moving to DLQ");
                             
                             if let Some(ref producer) = this.dlq_producer {
@@ -282,8 +281,6 @@ impl KafkaSource {
                                 let _ = producer.send::<str, [u8], _>(record, Duration::from_secs(0));
                             }
                         } else {
-                            // Check if this is a connection-level failure that warrants re-creating the consumer
-                            // We treat all KafkaErrors that aren't NoMessageReceived as potential connection issues
                             let is_connection_error = match &source {
                                 KafkaSourceError::Receive(ke) => !matches!(ke, rdkafka::error::KafkaError::NoMessageReceived),
                                 _ => false,
@@ -308,11 +305,11 @@ impl KafkaSource {
                             }
                         }
                     }
-                                    Err(crate::circuit_breaker::CircuitBreakerError::Rejected { .. }) => {
-                                        debug!(topic = %topic_name, "Kafka circuit open, pausing consumption");
-                                        tokio::time::sleep(Duration::from_secs(5)).await;
-                                    }                    Err(e) => {
-                        // Fix #L4: Log unhandled breaker errors
+                    Err(crate::circuit_breaker::CircuitBreakerError::Rejected { .. }) => {
+                        debug!(topic = %topic_name, "Kafka circuit open, pausing consumption");
+                        tokio::time::sleep(Duration::from_secs(5)).await;
+                    }
+                    Err(e) => {
                         error!(topic = %topic_name, error = ?e, "Unhandled circuit breaker error in Kafka source");
                     }
                 }
@@ -330,13 +327,8 @@ impl ActivitySource for KafkaSource {
     async fn start(&self, sender: mpsc::Sender<UserActivity>) -> Result<()> {
         info!(brokers = %self.config.brokers, "Starting Kafka activity source with multi-topic isolation");
 
-        // 0. Ensure topics exist (Best effort - don't fail startup if this fails, 
-        // as some brokers might have auto-create or different permissions)
         let _ = self.ensure_topics().await;
 
-        // Use tokio::join! to run consumers concurrently without losing dyn compatibility
-        // (Since ActivitySource::start now takes &self)
-        
         let p_topic = self.config.playback_topic.clone();
         let p_sender = sender.clone();
         
@@ -362,6 +354,8 @@ impl ActivitySource for KafkaSource {
                         user_id: v.get("user_id")?.as_i64()? as i32,
                         item_id: v.get("item_id")?.as_i64()? as i32,
                         session_id: v.get("session_id")?.as_str()?.to_string(),
+                        visitor_id: v.get("visitor_id").and_then(|id| id.as_str()).map(|s| s.to_string()),
+                        device_hash: v.get("device_hash").and_then(|h| h.as_str()).map(|s| s.to_string()),
                         watch_duration_seconds: v.get("watch_duration_seconds")?.as_i64()? as i32,
                         total_duration_seconds: v.get("total_duration_seconds")?.as_i64()? as i32,
                         watch_percentage: v.get("watch_percentage")?.as_f64()? as f32,
@@ -382,6 +376,8 @@ impl ActivitySource for KafkaSource {
                     Some(UserActivity::Reaction {
                         user_id: v.get("user_id")?.as_i64()? as i32,
                         item_id: v.get("item_id")?.as_i64()? as i32,
+                        visitor_id: v.get("visitor_id").and_then(|id| id.as_str()).map(|s| s.to_string()),
+                        device_hash: v.get("device_hash").and_then(|h| h.as_str()).map(|s| s.to_string()),
                         reaction_type: v.get("reaction_type")?.as_str()?.to_string(),
                         scenario_slug: None,
                         timestamp: ts,

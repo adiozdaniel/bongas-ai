@@ -1,10 +1,12 @@
+//! Service layer for recommendation orchestration and mapping.
+
 use std::sync::Arc;
 use crate::engine::BongasEngine;
 use crate::api::models::{RecommendationItem, ContextParams};
 use crate::error::AppError;
 use crate::ingestion::types::UserActivity;
 
-use tracing::{info, Instrument, info_span};
+use tracing::{Instrument, info_span};
 
 /// Execute a scenario and map engine items to API RecommendationItems.
 /// This service orchestrates engine execution, mapping, impression tracking, and pre-warming.
@@ -21,10 +23,16 @@ pub async fn execute_and_map(
     let engine_ref = engine.as_ref();
     
     // Extract context parameters
-    let (profile_id, maturity_rating, device_type) = if let Some(ref cp) = context_params {
-        (cp.profile_id.clone(), cp.maturity_rating.clone(), cp.device_type.clone())
+    let (profile_id, maturity_rating, device_type, visitor_id, device_hash) = if let Some(ref cp) = context_params {
+        (
+            cp.profile_id.clone(), 
+            cp.maturity_rating.clone(), 
+            cp.device_type.clone(),
+            cp.visitor_id.clone(),
+            cp.device_hash.clone()
+        )
     } else {
-        (None, None, None)
+        (None, None, None, None, None)
     };
     
     // 1. Get Scenario display limit
@@ -71,11 +79,17 @@ pub async fn execute_and_map(
 
     // ─── Impression Tracking (Baze-Style) ──────────────────────────────
     if let Some(uid) = user_id {
+        let vid = visitor_id.clone();
+        let dhash = device_hash.clone();
+        let slug_clone = scenario_slug.to_string();
+        
         let activities: Vec<UserActivity> = final_items.iter().map(|item| {
             UserActivity::Impression {
                 user_id: uid,
                 item_id: item.item_id,
-                scenario_slug: Some(scenario_slug.to_string()),
+                visitor_id: vid.clone(),
+                device_hash: dhash.clone(),
+                scenario_slug: Some(slug_clone.clone()),
                 timestamp: chrono::Utc::now(),
             }
         }).collect();
@@ -110,10 +124,11 @@ pub async fn execute_and_map(
         let slug = scenario_slug.to_string();
         let ctx = context_data.clone();
         let rid_warming = request_id.clone();
+        let slug_for_span = slug.clone();
         
         tokio::spawn(async move {
             let _ = engine_clone_for_warming.execute_scenario_with_stats(&slug, user_id, ctx, None).await;
-        }.instrument(info_span!("async_pre_warming", request_id = %rid_warming, scenario = %slug)));
+        }.instrument(info_span!("async_pre_warming", request_id = %rid_warming, scenario = %slug_for_span)));
     }
 
     Ok(final_items)

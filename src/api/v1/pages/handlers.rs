@@ -67,7 +67,7 @@ async fn get_page_layout(
         
     authorize_admin(&headers, &engine)?;
     
-    let layout = engine.pages.get_layout(&slug).await?
+    let layout = engine.pages.get_layout_contextual(&slug, None, None, None).await?
         .ok_or_else(|| AppError::NotFound(format!("Page layout {} not found", slug)))?;
         
     Ok(Json(StandardResponse::success(layout).with_request_id(request_id)))

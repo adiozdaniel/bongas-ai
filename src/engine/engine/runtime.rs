@@ -60,6 +60,12 @@ impl BongasEngine {
             error!(error = %e, "Failed to load initial page layouts");
         }
 
+        // Start Ingestion with Feedback Loop (The Brain)
+        {
+            let mut ingestion = engine.ingestion_manager.write().await;
+            ingestion.start(engine.pages.clone()).await?;
+        }
+
         Ok(engine)
     }
 

@@ -1,54 +1,33 @@
-# 📥 Activity Ingestion Module
+# 📥 Ingestion: The Feedback Brain
 
-> **The high-throughput backbone for source-agnostic user activity processing.**
+> **High-throughput activity collection and real-time feedback orchestration.**
 
-The Ingestion module is responsible for capturing user interactions from various sources (Kafka, API, ClickHouse) and funneling them into the BONGAS-AI engine. It ensures that activities are normalized, persisted, and used to drive real-time cache invalidation and ML training.
+The Ingestion module is the primary sensory organ of Bongas-AI. It collects user interactions (clicks, playbacks, reactions) from various sources and feeds them back into the engine to drive layout optimization and cache invalidation.
+
+[🏠 Hub](../../docs/HUB.md) | [🏗️ Architecture](../../docs/architecture/SYMPHONY.md) | [🧠 The Brain](../../docs/architecture/PAGES.md)
 
 ---
 
-## 🏗️ Architecture Overview
+## 🏗️ The Feedback Loop
+
+Ingestion is no longer a one-way street. It actively notifies the **PagesManager** of engagement events to enable **Algorithmic Row Ranking**.
 
 ```mermaid
 graph TD
-    K[Kafka Source] --> Pipeline
-    A[API Source] --> Pipeline
-    C[ClickHouse Source] --> Pipeline
-    
-    subgraph Pipeline [Shared Ingestion Pipeline]
-        Proc[Activity Processor] --> DB[(PostgreSQL)]
-        Proc --> Staleness[Staleness Engine]
-    end
-    
-    Proc -.-> Metrics[Ingestion Metrics]
-    Proc -.-> Sync[Ecosystem Synergy / Producer]
+    Client[Client App] -->|Click/Impression| API[API Gateway]
+    API -->|UserActivity| Manager[Ingestion Manager]
+    Manager -->|Channel| Proc[Activity Processor]
+    Proc -->|Persist| DB[PostgreSQL / ClickHouse]
+    Proc -->|Notify| Brain[PagesManager: The Brain]
+    Brain -->|Reorder| Layout[Dynamic Page Layout]
 ```
 
----
+## 🧩 Key Components
 
-## 🧩 Sub-Modules
-
-| Module | Description |
-| :--- | :--- |
-| [**🏢 Manager**](./manager/README.md) | Lifecycle orchestrator for the entire ingestion pipeline. |
-| [**⚙️ Processor**](./processor/README.md) | Core logic for normalizing and persisting activities. |
-| [**📡 Sources**](./sources/README.md) | Source-specific adapters (Kafka, API, ClickHouse). |
-| [**📦 Producer**](./producer/README.md) | Ecosystem synergy: broadcasting results to external systems. |
-| [**📊 Metrics**](./metrics/README.md) | Real-time health and throughput monitoring. |
-| [**🧬 Types**](./types/README.md) | Unified domain models for user activities. |
+- **`ActivityProcessor`**: Consumes the ingestion channel, flushes batches to the database, and triggers the layout reordering loop.
+- **`InteractionRepository`**: Persists enriched interaction data, including `visitor_id` and `device_hash` for cross-device identity stitching.
+- **`Sources`**: Multi-transport support for Kafka (high-scale), API (real-time), and ClickHouse (backfill).
 
 ---
 
-## 🚀 Quick Start
-
-```rust
-let mut manager = IngestionManager::new(config, pool, metrics, staleness, cb_registry, ...);
-
-// Start all background workers
-manager.start().await?;
-
-// Aggregated health status
-let health = manager.health().await;
-```
-
----
-[🏠 Back to Project Root](../../README.md)
+[🏠 Hub](../../docs/HUB.md) | [🔝 Top](#-ingestion-the-feedback-brain)

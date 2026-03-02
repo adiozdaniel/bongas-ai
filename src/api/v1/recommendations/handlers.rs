@@ -38,12 +38,14 @@ pub async fn get_page_recommendations(
     let cp_base = context_params.clone();
     let rid_orchestrator = request_id.clone();
 
-    // 2. Resolve Dynamic Page Layout (Targeting Resolver)
+    // 2. Resolve Dynamic Page Layout (Targeting Resolver + The Brain)
+    let identity_key = cp_base.visitor_id.as_deref().unwrap_or(&user_id.to_string()).to_string();
     let active_pages = engine.pages.list_active_pages().await.unwrap_or_default();
     let layout_res = engine.pages.get_layout_contextual(
         &page_slug, 
         cp_base.device_type.as_deref(), 
-        cp_base.maturity_rating.as_deref()
+        cp_base.maturity_rating.as_deref(),
+        Some(&identity_key)
     ).await;
     
     let composition = match layout_res {
