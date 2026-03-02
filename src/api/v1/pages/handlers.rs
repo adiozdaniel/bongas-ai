@@ -19,7 +19,7 @@ pub fn routes() -> Router {
     Router::new()
         .route("/", post(save_page_layout))
         .route("/active", get(list_active_pages))
-        .route("/{slug}", get(get_page_layout))
+        .route("/{slug}", get(get_page_layout).delete(delete_page_layout))
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -90,4 +90,27 @@ async fn save_page_layout(
     
     info!(request_id = %request_id, page = %layout.page_slug, "Page layout saved and cache invalidated");
     Ok(Json(StandardResponse::success(layout).with_request_id(request_id)))
+}
+
+/// DELETE /api/v1/pages/:slug
+async fn delete_page_layout(
+    headers: HeaderMap,
+    Path(slug): Path<String>,
+    Extension(engine): Extension<Arc<BongasEngine>>,
+) -> Result<Json<StandardResponse<bool>>, AppError> {
+    let request_id = headers.get("x-request-id")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("unknown")
+        .to_string();
+        
+    authorize_admin(&headers, &engine)?;
+    
+    let success = engine.pages.delete_layout(&slug).await?;
+    
+    if !success {
+        return Err(AppError::NotFound(format!("Page layout {} not found or already deleted", slug)));
+    }
+    
+    info!(request_id = %request_id, page = %slug, "Page layout soft-deleted");
+    Ok(Json(StandardResponse::success(true).with_request_id(request_id)))
 }

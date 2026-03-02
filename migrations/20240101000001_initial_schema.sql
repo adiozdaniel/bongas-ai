@@ -272,8 +272,9 @@ CREATE TABLE IF NOT EXISTS page_layouts (
     page_slug VARCHAR(64) UNIQUE NOT NULL,
     scenario_slugs JSONB NOT NULL, -- Array of scenario slugs
     is_active BOOLEAN DEFAULT true,
+    is_deleted BOOLEAN DEFAULT false,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_page_layouts_slug ON page_layouts(page_slug) WHERE is_active = true;
+CREATE INDEX IF NOT EXISTS idx_page_layouts_slug ON page_layouts(page_slug) WHERE is_active = true AND is_deleted = false;

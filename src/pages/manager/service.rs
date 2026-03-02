@@ -87,7 +87,6 @@ impl PagesManager {
         let db_layout = self.repo.find_by_slug(slug).await?;
 
         if let Some(layout_row) = db_layout {
-            // Convert DB model to domain model
             let scenario_slugs: Vec<String> = serde_json::from_value(layout_row.scenario_slugs)
                 .unwrap_or_default();
             
@@ -112,6 +111,15 @@ impl PagesManager {
     pub async fn invalidate_cache(&self, slug: &str) {
         let mut cache = self.cache.write().await;
         cache.pop(&PageSlug(slug.to_string()));
+    }
+
+    /// Soft-delete a page layout and invalidate cache.
+    pub async fn delete_layout(&self, slug: &str) -> AppResult<bool> {
+        let success = self.repo.soft_delete(slug).await?;
+        if success {
+            self.invalidate_cache(slug).await;
+        }
+        Ok(success)
     }
 
     /// Create or update a page layout.

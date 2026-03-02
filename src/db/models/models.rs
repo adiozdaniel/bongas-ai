@@ -240,6 +240,7 @@ pub struct PageLayout {
     pub page_slug: String,
     pub scenario_slugs: JsonValue, // Array of scenario slugs
     pub is_active: bool,
+    pub is_deleted: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
