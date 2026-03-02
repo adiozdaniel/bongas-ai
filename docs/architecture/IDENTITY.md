@@ -6,44 +6,48 @@
 
 ## 🎯 The Goal: Seamless Personalization
 
-Bongas-AI aims to provide world-class personalization without "Frontend Backlash." Our identity system is designed to be **Zero-Touch** for client developers while providing **Deep Insight** for the recommendation engine.
+Bongas-AI provides world-class personalization without "Frontend Backlash." Our identity system is **Zero-Touch** for client developers. The backend autonomously handles device recognition, persistence, and identity stitching.
 
 ## 🎭 Identity Tiers
 
 | Tier | Identification | Persistence | Personalization Level |
 | :--- | :--- | :--- | :--- |
-| **Anonymous** | IP + User-Agent Hash | Session-based | Contextual (Device + Time) |
-| **Visitor** | Transparent HTTP Cookie | Long-term | Behavioral (Device History) |
-| **User** | JWT Token / Auth Profile | Global | Fully Personalized |
+| **Anonymous** | `device_hash` (IP + UA) | Request-based | Contextual (Device + Time) |
+| **Visitor** | `visitor_id` (Transparent Cookie) | 1 Year (Persistent) | Behavioral (Device History) |
+| **User** | `user_id` (JWT / Auth Profile) | Account-based | Fully Personalized |
 
-## 🧶 Identity Stitching
+## 🧶 The Identity "Stitch"
 
-How we link an anonymous device to a logged-in user without manual effort:
+Our `identity_middleware` acts as a silent observer that links anonymous behavior to persistent profiles:
+
+1.  **Fingerprinting**: Every request is assigned a `device_hash` derived from the IP address and User-Agent. This allows us to recognize a "Living Room TV" even if cookies are disabled.
+2.  **Zero-Touch Cookie**: On the first request, the server issues a `Set-Cookie: visitor_id=UUID`. Most modern HTTP clients store this automatically.
+3.  **Context Injection**: These identifiers are injected into the `IdentityContext` extension and merged into `ContextParams`, making them available to every ML model in the engine.
 
 ```mermaid
 sequenceDiagram
     participant C as Client
-    participant G as API Gateway
+    participant M as Identity Middleware
     participant I as Ingestion Manager
     participant D as Identity Store
 
-    C->>G: Request /page/home (No Auth)
-    G->>G: Generate Visitor_ID (IP + UA Hash)
-    G->>C: Set-Cookie: visitor_id=XYZ
-    C->>I: User clicks "Action Movie"
-    I->>D: Record: Visitor XYZ likes Action
+    C->>M: GET /page/home (No Cookie)
+    M->>M: Generate Device_Hash & Visitor_ID
+    M->>C: Response + Set-Cookie (visitor_id)
+    C->>I: Action (Implicitly sends Cookie)
+    I->>D: Log behavior for Visitor_ID
 
     Note over C,D: User Logs In
-    C->>G: Request /page/home (Auth + Cookie)
-    G->>D: Stitch: User 123 == Visitor XYZ
-    D->>D: Migrate Behavioral Profile
+    C->>M: GET /page/home (Auth + Cookie)
+    M->>D: Stitch: User_ID == Visitor_ID
+    D->>D: Unify Behavioral History
 ```
 
-## 🛡️ Zero-Touch Implementation
+## 🛠️ Technical Implementation
 
-1. **Context Extractor (Middleware)**: Every request passes through a Rust middleware that extracts the `visitor_id` from cookies or hashes the IP/UA.
-2. **Context Propagation**: This ID is injected into the `ContextParams` and passed down to every Scenario and ML model.
-3. **Cross-Device Signals**: Even if User 123 logs out, the system remembers that *this specific TV* (Visitor XYZ) usually watches Kids' content in the morning.
+- **Location**: `src/api/middleware/identity.rs`
+- **Logic**: Uses SHA-256 for deterministic `device_hash` generation.
+- **Persistence**: Employs `HttpOnly`, `SameSite=Lax` cookies with a 1-year expiration (`Max-Age=31536000`).
 
 ---
 

@@ -28,4 +28,19 @@ pub struct ContextParams {
     pub maturity_rating: Option<String>,
     /// Device type for platform-specific optimizations.
     pub device_type: Option<String>,
+    /// Unique identifier for the visitor (unlogged or logged).
+    pub visitor_id: Option<String>,
+    /// Hash of the device metadata (IP + User-Agent).
+    pub device_hash: Option<String>,
+    /// IP address of the requesting client.
+    pub ip_address: Option<String>,
+}
+
+impl ContextParams {
+    /// Merge extracted identity information into the context parameters.
+    pub fn merge_identity(&mut self, identity: &crate::api::middleware::identity::IdentityContext) {
+        self.visitor_id = Some(identity.visitor_id.clone());
+        self.device_hash = Some(identity.device_hash.clone());
+        self.ip_address = Some(identity.ip_address.clone());
+    }
 }

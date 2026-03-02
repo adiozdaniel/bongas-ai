@@ -38,13 +38,17 @@ use crate::engine::BongasEngine;
 use crate::config::AppConfig;
 use std::time::Instant;
 
+use crate::api::middleware::identity::identity_middleware;
+use crate::api::middleware::identity::IdentityContext;
+
 /// Apply the full middleware stack to a router.
 ///
 /// Middleware is applied in reverse order (bottom to top):
-/// 10. Set Request ID (Outermost wrapper)
+/// 11. Set Request ID (Outermost wrapper)
+/// 10. Identity & Visitor Persistence (Zero-Touch)
 /// 9. Unified Error Handling (Catches everything below, uses Request ID)
 /// 8. Platform Security
-/// 7. Request Tracing (Creates Span with Request ID)
+/// 7. Request Tracing (Creates Span with Request ID & Identity)
 /// 6. Resilience (Circuit Breakers)
 /// 5. Bulkhead
 /// 4. Rate Limiting
@@ -107,7 +111,7 @@ pub fn apply_middleware(
         // 7. Unified Error Handling (Catches errors from all inner layers)
         .layer(from_fn(unified_error_middleware))
 
-        // 8. Request Tracing (Correlated via Request ID)
+        // 8. Request Tracing (Correlated via Request ID & Identity)
         .layer(TraceLayer::new_for_http()
             .make_span_with(|request: &Request<Body>| {
                 let request_id = request.extensions()
@@ -115,16 +119,25 @@ pub fn apply_middleware(
                     .map(|id| id.header_value().to_str().unwrap_or("unknown"))
                     .unwrap_or("unknown");
                 
+                let visitor_id = request.extensions()
+                    .get::<IdentityContext>()
+                    .map(|id| id.visitor_id.as_str())
+                    .unwrap_or("unknown");
+                
                 info_span!(
                     "http_request",
                     request_id = %request_id,
+                    visitor_id = %visitor_id,
                     method = %request.method(),
                     uri = %request.uri(),
                 )
             })
         )
 
-        // 9. Extension Injection (Available to all of the above)
+        // 9. Identity & Visitor Persistence (Zero-Touch)
+        .layer(from_fn(identity_middleware))
+
+        // 10. Extension Injection (Available to all of the above)
         .layer(axum::Extension(engine))
         .layer(axum::Extension(config))
         .layer(axum::Extension(redis))

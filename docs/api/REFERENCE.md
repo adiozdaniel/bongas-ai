@@ -21,6 +21,16 @@ In the new Bongas-AI architecture, this is the undisputed center of content deli
 | `device_type` | String | No | `mobile`, `tv`, `web`, `tablet`. |
 | `maturity_rating` | String | No | `G`, `PG`, `13+`, `18+`. |
 
+### 🛠️ Extracted Context (Implicit)
+
+The engine automatically extracts and propagates these fields from the request (No client action required):
+
+| Parameter | Source | Description |
+| :--- | :--- | :--- |
+| `visitor_id` | Cookie | Persistent across sessions. |
+| `device_hash` | IP + UA | Deterministic device fingerprint. |
+| `ip_address` | Header | Client IP for regional targeting. |
+
 ---
 
 ## 📤 The Streaming Response (SSE)

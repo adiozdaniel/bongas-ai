@@ -4,6 +4,8 @@ use crate::api::models::{RecommendationItem, ContextParams};
 use crate::error::AppError;
 use crate::ingestion::types::UserActivity;
 
+use tracing::{info, Instrument, info_span};
+
 /// Execute a scenario and map engine items to API RecommendationItems.
 /// This service orchestrates engine execution, mapping, impression tracking, and pre-warming.
 pub async fn execute_and_map(
@@ -14,12 +16,13 @@ pub async fn execute_and_map(
     context_data: serde_json::Value,
     offset: usize,
     _limit: usize,
+    request_id: String,
 ) -> Result<Vec<RecommendationItem>, AppError> {
     let engine_ref = engine.as_ref();
     
     // Extract context parameters
-    let (profile_id, maturity_rating, device_type) = if let Some(cp) = context_params {
-        (cp.profile_id, cp.maturity_rating, cp.device_type)
+    let (profile_id, maturity_rating, device_type) = if let Some(ref cp) = context_params {
+        (cp.profile_id.clone(), cp.maturity_rating.clone(), cp.device_type.clone())
     } else {
         (None, None, None)
     };
@@ -37,9 +40,9 @@ pub async fn execute_and_map(
         .execute_scenario_with_stats_contextual(
             scenario_slug, 
             user_id, 
-            profile_id.as_ref().map(|s: &String| s.clone()),
-            maturity_rating.as_ref().map(|s: &String| s.clone()),
-            device_type.as_ref().map(|s: &String| s.clone()),
+            profile_id.clone(),
+            maturity_rating.clone(),
+            device_type.clone(),
             context_data.clone(), 
             Some(display_limit)
         )
@@ -77,27 +80,28 @@ pub async fn execute_and_map(
             }
         }).collect();
 
-        // Ingest activities asynchronously
+        // Ingest activities asynchronously - Tied to Request ID
         let engine_clone_for_ingestion = engine_ref.ingestion_manager.clone();
+        let rid_ingest = request_id.clone();
         tokio::spawn(async move {
             let manager = engine_clone_for_ingestion.read().await;
             let api_source = manager.api_source();
             for act in activities {
                 let _ = api_source.ingest(act).await;
             }
-        });
+        }.instrument(info_span!("async_impression_ingestion", request_id = %rid_ingest)));
 
         // ─── Ecosystem Synergy (Phase 14) ──────────────────────────────────
         let engine_clone_for_synergy = engine.clone();
-        let uid = uid;
-        let pid = profile_id.clone();
         let slug = scenario_slug.to_string();
         let item_ids: Vec<i32> = final_items.iter().map(|i| i.item_id).collect();
+        let rid_synergy = request_id.clone();
+        let pid_clone = profile_id.clone();
         
         tokio::spawn(async move {
             let manager = engine_clone_for_synergy.ingestion_manager.read().await;
-            manager.broadcast_recommendations(uid, pid, slug, item_ids).await;
-        });
+            manager.broadcast_recommendations(uid, pid_clone, slug, item_ids).await;
+        }.instrument(info_span!("async_ecosystem_synergy", request_id = %rid_synergy)));
     }
 
     // 3. ─── Background Pre-Warming (Phase 12) ───────────────────────────
@@ -105,11 +109,11 @@ pub async fn execute_and_map(
         let engine_clone_for_warming = engine.clone();
         let slug = scenario_slug.to_string();
         let ctx = context_data.clone();
+        let rid_warming = request_id.clone();
         
         tokio::spawn(async move {
-            // We force a refresh of the cache by executing the scenario with a larger internal limit (None)
             let _ = engine_clone_for_warming.execute_scenario_with_stats(&slug, user_id, ctx, None).await;
-        });
+        }.instrument(info_span!("async_pre_warming", request_id = %rid_warming, scenario = %slug)));
     }
 
     Ok(final_items)
