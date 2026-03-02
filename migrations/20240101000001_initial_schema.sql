@@ -34,6 +34,9 @@ CREATE TABLE IF NOT EXISTS scenarios (
     target_kpi VARCHAR(32) DEFAULT 'retention',
     category VARCHAR(100),
     
+    -- Safety & Targeting Defaults (KFCB Standard)
+    maturity_rating VARCHAR(32) DEFAULT '18', -- Global safety ceiling
+    
     -- Configuration
     initial_display_limit INTEGER DEFAULT 5,
     scope JSONB DEFAULT '{}'::jsonb,
@@ -50,15 +53,20 @@ CREATE TABLE IF NOT EXISTS scenario_rules (
     id SERIAL PRIMARY KEY,
     scenario_id INTEGER REFERENCES scenarios(id) ON DELETE CASCADE,
     pipeline_id INTEGER REFERENCES pipelines(id) ON DELETE RESTRICT,
+    
+    -- Contextual Routing
+    device_type VARCHAR(32) DEFAULT 'default',
+    maturity_rating VARCHAR(32) DEFAULT 'all',
+    
     priority INTEGER DEFAULT 100,
-    condition JSONB NOT NULL,
+    condition JSONB NOT NULL DEFAULT '{}'::jsonb,
     is_active BOOLEAN DEFAULT true,
     description TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_scenario_rules_lookup ON scenario_rules(scenario_id, is_active, priority DESC);
+CREATE INDEX IF NOT EXISTS idx_scenario_rules_lookup ON scenario_rules(scenario_id, device_type, maturity_rating, is_active, priority DESC);
 
 -- ============================================================================
 -- 4. rule_suggestions (The Suggestion Box)
@@ -265,16 +273,23 @@ VALUES ('max_active_scenarios', '20'::jsonb, 'Maximum allowed scenarios with ena
 ON CONFLICT (key) DO NOTHING;
 
 -- ============================================================================
--- 11. page_layouts (Dynamic UI Layouts)
+-- 11. page_layouts (Dynamic UI Layouts - SDUI)
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS page_layouts (
     id SERIAL PRIMARY KEY,
-    page_slug VARCHAR(64) UNIQUE NOT NULL,
-    scenario_slugs JSONB NOT NULL, -- Array of scenario slugs
+    page_slug VARCHAR(64) NOT NULL,
+    device_type VARCHAR(32) DEFAULT 'default',
+    maturity_rating VARCHAR(32) DEFAULT 'all',
+    priority INTEGER DEFAULT 0,
+    composition JSONB NOT NULL, -- Array of objects: [{"slug": "...", "row_type": "..."}]
+    
     is_active BOOLEAN DEFAULT true,
     is_deleted BOOLEAN DEFAULT false,
     created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    
+    UNIQUE(page_slug, device_type, maturity_rating)
 );
 
-CREATE INDEX IF NOT EXISTS idx_page_layouts_slug ON page_layouts(page_slug) WHERE is_active = true AND is_deleted = false;
+CREATE INDEX IF NOT EXISTS idx_page_layouts_resolver ON page_layouts (page_slug, device_type, maturity_rating) 
+WHERE is_active = true AND is_deleted = false;

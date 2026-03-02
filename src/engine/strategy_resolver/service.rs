@@ -20,6 +20,11 @@ use crate::db::models::PipelineDefinition;
 pub struct ActiveRule {
     pub id: i32,
     pub priority: i32,
+    
+    // Contextual Targeting
+    pub device_type: Option<String>,
+    pub maturity_rating: Option<String>,
+    
     pub condition: JsonValue,
     pub pipeline_slug: String,
     pub pipeline_definition: PipelineDefinition,
@@ -49,12 +54,14 @@ impl StrategyResolver {
         
         if let Some(rules) = all_rules.get(scenario_slug) {
             for rule in rules {
-                if self.evaluate_condition(&rule.condition, context) {
+                if self.evaluate_rule(rule, context) {
                     if let Some(ref pipeline) = rule.pipeline {
                         debug!(
                             scenario = %scenario_slug, 
                             rule_id = rule.id, 
                             strategy = %rule.pipeline_slug,
+                            device = ?rule.device_type,
+                            maturity = ?rule.maturity_rating,
                             "Strategic rule matched"
                         );
                         return Some(pipeline.clone());
@@ -70,6 +77,28 @@ impl StrategyResolver {
     pub fn update_rules(&self, new_rules: HashMap<String, Vec<ActiveRule>>) {
         self.rules.store(Arc::new(new_rules));
         info!("Strategy Resolver rules updated (Atomic Swap)");
+    }
+
+    /// Full evaluation of an ActiveRule against the context.
+    fn evaluate_rule(&self, rule: &ActiveRule, context: &ExecutionContext) -> bool {
+        // 1. Check First-Class Contextual Columns (Targeting Resolver)
+        
+        // Device Type Match (supports 'default' or NULL as catch-all)
+        if let Some(ref rule_device) = rule.device_type {
+            if rule_device != "default" && context.device_type.as_ref() != Some(rule_device) {
+                return false;
+            }
+        }
+
+        // Maturity Rating Match (supports 'all' or NULL as catch-all)
+        if let Some(ref rule_maturity) = rule.maturity_rating {
+            if rule_maturity != "all" && context.maturity_rating.as_ref() != Some(rule_maturity) {
+                return false;
+            }
+        }
+
+        // 2. Evaluate Dynamic JSON Condition
+        self.evaluate_condition(&rule.condition, context)
     }
 
     /// Evaluate a macro-routing condition against the context.

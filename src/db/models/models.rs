@@ -20,6 +20,9 @@ pub struct Scenario {
     pub category: Option<String>,
     pub target_kpi: String,
 
+    // Safety & Targeting Defaults (KFCB Standard)
+    pub maturity_rating: String,
+
     // Configuration
     pub initial_display_limit: i32,
     pub scope: JsonValue,
@@ -199,6 +202,11 @@ pub struct ScenarioRule {
     pub id: i32,
     pub scenario_id: i32,
     pub pipeline_id: i32,
+    
+    // Contextual Targeting
+    pub device_type: Option<String>,
+    pub maturity_rating: Option<String>,
+    
     pub priority: i32,
     pub condition: JsonValue,
     pub is_active: bool,
@@ -231,14 +239,17 @@ pub struct RuleSuggestion {
 }
 
 // ============================================================================
-// 8. PageLayout (Dynamic UI Layouts)
+// 8. PageLayout (Dynamic UI Layouts - SDUI)
 // ============================================================================
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct PageLayout {
     pub id: i32,
     pub page_slug: String,
-    pub scenario_slugs: JsonValue, // Array of scenario slugs
+    pub composition: JsonValue, // Array of structured objects
+    pub device_type: Option<String>,
+    pub maturity_rating: Option<String>,
+    pub priority: i32,
     pub is_active: bool,
     pub is_deleted: bool,
     pub created_at: DateTime<Utc>,

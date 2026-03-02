@@ -30,13 +30,15 @@ impl ScenarioFactory {
         info!("Loading strategic rules from database...");
 
         // Query joining rules, pipelines, and scenarios
-        let rows: Vec<(i32, String, i32, serde_json::Value, String, serde_json::Value)> = self.repo.pool().execute(|pool| async move {
-            sqlx::query_as::<_, (i32, String, i32, serde_json::Value, String, serde_json::Value)>(
+        let rows: Vec<(i32, String, i32, Option<String>, Option<String>, serde_json::Value, String, serde_json::Value)> = self.repo.pool().execute(|pool| async move {
+            sqlx::query_as::<_, (i32, String, i32, Option<String>, Option<String>, serde_json::Value, String, serde_json::Value)>(
                 r#"
                 SELECT 
                     r.id, 
                     s.slug as scenario_slug, 
                     r.priority, 
+                    r.device_type,
+                    r.maturity_rating,
                     r.condition, 
                     p.slug as pipeline_slug, 
                     p.definition as pipeline_definition
@@ -54,12 +56,14 @@ impl ScenarioFactory {
 
         let mut rule_map: HashMap<String, Vec<ActiveRule>> = HashMap::new();
 
-        for (id, s_slug, priority, condition, p_slug, p_def) in rows {
+        for (id, s_slug, priority, device_type, maturity_rating, condition, p_slug, p_def) in rows {
             let pipeline_definition: PipelineDefinition = serde_json::from_value(p_def)?;
             
             let rule = ActiveRule {
                 id,
                 priority,
+                device_type,
+                maturity_rating,
                 condition,
                 pipeline_slug: p_slug,
                 pipeline_definition,
@@ -126,6 +130,7 @@ impl ScenarioFactory {
             slug: config.scenario.slug.clone(),
             name: config.scenario.name.clone(),
             pipeline: config.pipeline.clone(),
+            maturity_rating: config.scenario.maturity_rating.clone(),
             cache_ttl_seconds: config.scenario.cache_ttl_seconds,
             use_l2_cache: config.scenario.use_l2_cache,
             initial_display_limit: config.scenario.initial_display_limit,

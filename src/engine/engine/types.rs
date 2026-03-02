@@ -23,6 +23,7 @@ pub struct ScenarioDefinition {
     pub slug: String,
     pub name: String,
     pub pipeline: PipelineDefinition,
+    pub maturity_rating: String,
     pub cache_ttl_seconds: i32,
     pub use_l2_cache: bool,
     pub initial_display_limit: i32,

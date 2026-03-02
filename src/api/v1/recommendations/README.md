@@ -18,11 +18,12 @@ sequenceDiagram
     participant Engine
     
     User->>Handler: GET /api/v1/page/home
-    Handler->>Orchestrator: Resolve Page Layout
+    Handler->>Orchestrator: Resolve Contextual Layout
     Orchestrator->>User: Event: navigation (Instant-On)
     Orchestrator->>User: Event: manifest (Skeleton UI)
     
     par Parallel Execution
+        Orchestrator->>Orchestrator: Early Safety Check (Maturity)
         Orchestrator->>Engine: Scenario: Continue Watching
         Orchestrator->>Engine: Scenario: ML Personalized
         Orchestrator->>Engine: Scenario: Trending
@@ -36,8 +37,9 @@ sequenceDiagram
 
 - **Instant-On Navigation**: Delivers the app's navigation bar and metadata in the first 50ms of a single connection.
 - **Parallel Execution**: Executes multiple scenarios in parallel, streaming results as they finish to mask ML latency.
+- **Early Safety Check**: Hardened KFCB-compliant logic that blocks restricted content before the engine executes.
 - **Contextual Intelligence**: Every recommendation is enriched with `IdentityContext` (Visitor ID, Device Hash, IP).
-- **Graceful Degradation**: If a single scenario fails or times out, the stream continues, ensuring a resilient user experience.
+- **Graceful Degradation**: If a single scenario fails or is safety-blocked, the stream continues, ensuring a resilient user experience.
 
 ---
 

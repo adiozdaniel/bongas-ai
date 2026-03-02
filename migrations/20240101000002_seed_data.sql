@@ -48,37 +48,42 @@ VALUES
 ON CONFLICT (slug) DO NOTHING;
 
 -- 2. Seed Core Scenarios
-INSERT INTO scenarios (slug, name, description, category, target_kpi)
+INSERT INTO scenarios (slug, name, description, category, target_kpi, maturity_rating)
 VALUES 
 (
     'home_feed', 
     'Home Feed', 
     'Primary discovery feed for users', 
     'discovery', 
-    'retention'
+    'retention',
+    'all'
 ),
 (
     'trending_now',
     'Trending Now',
     'Most popular content across the platform',
     'popularity',
-    'conversion'
+    'conversion',
+    'all'
 ),
 (
     'personalized_picks',
     'Personalized Picks',
     'AI-curated selection based on your taste',
     'personalized',
-    'retention'
+    'retention',
+    '18'
 )
 ON CONFLICT (slug) DO NOTHING;
 
 -- 3. Seed Default Scenario Rules
-INSERT INTO scenario_rules (scenario_id, pipeline_id, priority, condition, is_active, description)
+INSERT INTO scenario_rules (scenario_id, pipeline_id, priority, device_type, maturity_rating, condition, is_active, description)
 SELECT 
     s.id, 
     p.id, 
     100, 
+    'default',
+    'all',
     '{}'::jsonb, 
     true, 
     'Default strategy for ' || s.name
@@ -91,19 +96,34 @@ JOIN pipelines p ON (
 ON CONFLICT DO NOTHING;
 
 -- 4. Seed Contextual Overrides
-INSERT INTO scenario_rules (scenario_id, pipeline_id, priority, condition, is_active, description)
+INSERT INTO scenario_rules (scenario_id, pipeline_id, priority, device_type, maturity_rating, condition, is_active, description)
 SELECT 
     s.id, 
     (SELECT id FROM pipelines WHERE slug = 'supreme_ranker_v1'), 
     200, 
-    '{"context.device_type": "tv"}'::jsonb, 
+    'tv',
+    'all',
+    '{}'::jsonb, 
     true, 
     'High-performance ranker for Smart TVs'
 FROM scenarios s
 WHERE s.slug = 'home_feed'
 ON CONFLICT DO NOTHING;
 
--- 5. Seed Page Layouts
-INSERT INTO page_layouts (page_slug, scenario_slugs)
-VALUES ('home', '["trending_now", "personalized_picks", "home_feed"]'::jsonb)
-ON CONFLICT (page_slug) DO NOTHING;
+-- 5. Seed Page Layouts (Symphony Blueprint)
+INSERT INTO page_layouts (page_slug, device_type, maturity_rating, priority, composition)
+VALUES 
+(
+    'home', 
+    'default', 
+    'all', 
+    100, 
+    '[
+        {"slug": "trending_now", "row_type": "hero_carousel", "row_style": "promotional"},
+        {"slug": "personalized_picks", "row_type": "horizontal_list", "row_style": "standard"},
+        {"slug": "home_feed", "row_type": "horizontal_list", "row_style": "standard"}
+    ]'::jsonb
+)
+ON CONFLICT (page_slug, device_type, maturity_rating) DO UPDATE 
+SET composition = EXCLUDED.composition, 
+    priority = EXCLUDED.priority;

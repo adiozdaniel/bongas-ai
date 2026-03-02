@@ -6,34 +6,46 @@
 
 ## 🏛️ The Philosophy: Living Layouts
 
-A "Page" in Bongas-AI is not a static list of items. It is a **Dynamic Blueprint** that adapts in real-time. Instead of hardcoding what a user sees, admins define **Rules** and **Pools** of content.
+A "Page" in Bongas-AI is no longer a static list of items. It is a **Dynamic Blueprint** that adapts in real-time. Instead of hardcoding what a user sees, admins define **Rules** and **Pools** of content that the engine resolves based on the user's environment.
 
 ## 📐 The Layout Contract
 
-Every page layout in Bongas-AI contains:
+Every page layout in Bongas-AI is defined by a structured **Composition**.
 
-- **Targeting Rules**: Which device, region, or user cohort is this layout for?
-- **Composition**: A list of `Scenario Slugs` or `Dynamic Slots`.
-- **Presentation Directives**: Should this row be a `Horizontal List`, `Hero Banner`, or `Grid`?
+### 1. Targeting Rules
 
-## 🧠 Intelligence: Algorithmic Reordering
+The engine uses a **Contextual Resolver** to pick the best layout for a request:
+- **`device_type`**: Optimize for `mobile`, `tv`, `web`, or `tablet`.
+- **`maturity_rating`**: Filter content for `G`, `PG`, `13+`, or `18+`.
+- **`priority`**: When multiple layouts match, the one with the highest priority wins.
 
-Beyond manual admin ordering, Bongas-AI supports **Personalized Layouts**.
+### 2. Composition (SDUI)
+
+Each row in a layout is a `PageCompositionItem` containing:
+- **`slug`**: The engine scenario to execute (e.g., `trending_now`).
+- **`row_type`**: The UI component type (e.g., `hero_carousel`, `horizontal_list`).
+- **`row_style`**: Visual hints (e.g., `promotional`, `compact`, `tall_cards`).
+
+## 🧠 The Resolution Logic
+
+When a request for `/page/home` arrives, the `PagesManager` performs a hierarchical search:
+
+1.  **Exact Match**: `slug` + `device` + `maturity`.
+2.  **Platform Match**: `slug` + `device` (for all ages).
+3.  **Default Layout**: `slug` + `default` device.
 
 ```mermaid
 graph TD
-    A[Request: /page/home] --> B[Fetch Base Layout]
-    B --> C[Identify User/Visitor History]
-    C --> D{Layout Ranker}
-    D -->|Click History| E[Promote 'Action' Rows]
-    D -->|Recency| F[Promote 'Continue Watching']
-    D -->|Time of Day| G[Inject 'Morning News']
-    E & F & G --> H[Final Optimized Stream]
+    A[Request: /page/home] --> B{Resolver}
+    B -->|Found TV + 18+| C[Adult TV Layout]
+    B -->|Found TV Only| D[Standard TV Layout]
+    B -->|No Match| E[Default 'Home' Layout]
+    C & D & E --> F[Parallel Execution Stream]
 ```
 
-## 📺 Server-Driven UI (SDUI)
+## 📺 Presentation Directives
 
-The backend dictates the **Visual Presentation**. The client receives a `row_type` and maps it to a UI component.
+The backend dictates the **Visual Presentation**. The client receives a `row_type` and maps it to a native UI component.
 
 | Row Type | Client Component | Best For |
 | :--- | :--- | :--- |
@@ -41,12 +53,6 @@ The backend dictates the **Visual Presentation**. The client receives a `row_typ
 | `horizontal_list` | `HorizontalScroll` | Standard browsing rows. |
 | `feature_grid` | `Grid` | Category pages or large collections. |
 | `billboard` | `StaticImage` | Static ads or announcements. |
-
-## 🛠️ Why This Matters
-
-- **Zero Releases**: Change your entire app's look and feel from the database.
-- **A/B Testing**: Run experiments on the *order* of rows, not just the content inside them.
-- **Device Optimization**: Send a dense layout to Web and a high-visual layout to TV.
 
 ---
 

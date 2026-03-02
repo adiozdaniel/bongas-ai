@@ -15,7 +15,8 @@ pub struct RecommendationItem {
 #[derive(Debug, Serialize)]
 pub struct FeedRow {
     pub title: String,
-    pub row_type: String, // e.g., "horizontal_list", "hero_banner", "grid"
+    pub row_type: String, // e.g., "horizontal_list", "hero_carousel", "feature_grid"
+    pub row_style: Option<String>, // e.g., "promotional", "compact", "tall_cards"
     pub scenario: String,
     pub items: Vec<RecommendationItem>,
 }

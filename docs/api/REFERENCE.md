@@ -19,7 +19,7 @@ In the new Bongas-AI architecture, this is the undisputed center of content deli
 | `user_id` | Integer | Yes | The ID of the user (use `0` for anonymous). |
 | `profile_id` | String | No | The specific profile within an account. |
 | `device_type` | String | No | `mobile`, `tv`, `web`, `tablet`. |
-| `maturity_rating` | String | No | `G`, `PG`, `13+`, `18+`. |
+| `maturity_rating`| String | No | KFCB Standards: `all`, `GE`, `PG`, `12`, `15`, `18`. |
 
 ### 🛠️ Extracted Context (Implicit)
 
@@ -28,7 +28,7 @@ The engine automatically extracts and propagates these fields from the request (
 | Parameter | Source | Description |
 | :--- | :--- | :--- |
 | `visitor_id` | Cookie | Persistent across sessions. |
-| `device_hash` | IP + UA | Deterministic device fingerprint. |
+| `device_hash`| IP + UA | Deterministic device fingerprint. |
 | `ip_address` | Header | Client IP for regional targeting. |
 
 ---
@@ -57,18 +57,20 @@ Sent early to allow the client to render skeleton loaders.
 ```json
 {
   "expected_rows": 5,
-  "layout_style": "default"
+  "request_id": "uuid-v4",
+  "page": "home"
 }
 ```
 
 ### 3. Event: `row`
 
-The actual content rows.
+The actual content rows with presentation metadata.
 
 ```json
 {
   "title": "Trending Now",
-  "row_type": "horizontal_list",
+  "row_type": "hero_carousel",
+  "row_style": "promotional",
   "scenario": "trending_now",
   "items": [...]
 }
@@ -76,9 +78,10 @@ The actual content rows.
 
 ---
 
-## 🛡️ Error Handling in Streams
+## 🛡️ Error & Safety Handling
 
-- **Partial Failures**: If a single row fails, the server will emit an **SSE Comment** with the error details. The client should ignore this and keep the connection open for remaining rows.
+- **Maturity Safety**: If a user's `maturity_rating` does not meet a scenario's global ceiling (e.g., a "GE" user requesting an "18" scenario), the engine emits an **SSE Comment** (`safety: restricted`) and skips the row.
+- **Partial Failures**: If a single row fails during execution, the server emits an **SSE Comment** with the error.
 - **Keep-Alive**: The server sends a `:` (comment) heartbeat every 15 seconds.
 
 ---

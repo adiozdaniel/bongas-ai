@@ -1,24 +1,29 @@
-# 🖼️ Pages: UI Orchestration
+# 🖼️ Pages: Smart SDUI Orchestration
 
-> **Dynamic discovery and layout management for recommendation-driven UIs.**
+> **The Dynamic Blueprint for the Bongas-AI Symphony.**
 
-The Pages module provides first-class support for dynamic UI orchestration. It enables the system to define and manage which recommendation scenarios appear on specific UI pages (e.g., Home, Movies, Music) and in what order.
+The Pages module is the heart of the **Server-Driven UI (SDUI)** engine. It transforms raw recommendation scenarios into high-fidelity UI compositions, resolving the best layout for every user's device and context.
 
----
-
-## 🏗️ Architecture
-
-- **`Types`**: Domain models for page slugs, layouts, and management requests.
-- **`Manager`**: The central coordinator handling layout resolution, LRU caching, and runtime updates.
+[🏠 Hub](../../docs/HUB.md) | [🏗️ Architecture](../../docs/architecture/SYMPHONY.md) | [🎨 Smart Pages](../../docs/architecture/PAGES.md)
 
 ---
 
-## 🧩 Sub-Modules
+## 🏗️ Core Capabilities
+
+- **Contextual Resolver**: Hierarchically resolves layouts based on `device_type`, `maturity_rating`, and `priority`.
+- **Structured Composition**: Dictates not just *what* content to show, but *how* to show it via `row_type` and `row_style` metadata.
+- **Dynamic Canvas**: Admins can reorder, swap, or experiment with page structures in real-time from the database.
+- **Resilient Caching**: Employs a multi-tenant LRU cache keyed by (Slug, Device, Maturity) for sub-millisecond resolution.
+
+---
+
+## 🧩 Module Structure
 
 | Module | Description |
 | :--- | :--- |
-| [**🏷️ Types**](./types/README.md) | Domain models and serialization logic for page layouts. |
-| [**🕹️ Manager**](./manager/README.md) | High-performance orchestration and caching of UI definitions. |
+| [**🏷️ Types**](./types/README.md) | Enriched SDUI models including `PageCompositionItem` and `PageLayout`. |
+| [**🕹️ Manager**](./manager/README.md) | The resolution engine and caching logic for page blueprints. |
 
 ---
-[🏠 Back to Project Root](../../README.md)
+
+[🏠 Hub](../../docs/HUB.md) | [🔝 Top](#-pages-smart-sdui-orchestration)
