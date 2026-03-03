@@ -28,7 +28,6 @@ use crate::middlewares::{
     rate_limit::{RateLimiter, RateLimitResult},
     resilience::ResilienceMiddleware,
     bulkhead::BulkheadMiddleware,
-    platform_security::platform_security_middleware,
 };
 use crate::config::{CompressionConfig, CorsConfig};
 use crate::circuit_breaker::CircuitBreakerRegistry;
@@ -45,12 +44,11 @@ use crate::api::middleware::adaptive_limiter::{adaptive_limiter_middleware, Conn
 /// Apply the full middleware stack to a router.
 ///
 /// Middleware is applied in reverse order (bottom to top):
-/// 12. Set Request ID (Outermost wrapper)
-/// 11. Adaptive Rate Limiting (SSE protection per visitor)
-/// 10. Identity & Visitor Persistence (Zero-Touch)
-/// 9. Unified Error Handling (Catches everything below, uses Request ID)
-/// 8. Platform Security
-/// 7. Request Tracing (Creates Span with Request ID & Identity)
+/// 11. Set Request ID (Outermost wrapper)
+/// 10. Adaptive Rate Limiting (SSE protection per visitor)
+/// 9. Identity & Visitor Persistence (Zero-Touch)
+/// 8. Request Tracing (Creates Span with Request ID & Identity)
+/// 7. Unified Error Handling (Catches everything below, uses Request ID)
 /// 6. Resilience (Circuit Breakers)
 /// 5. Bulkhead
 /// 4. Rate Limiting
@@ -108,13 +106,10 @@ pub fn apply_middleware(
             }
         }))
 
-        // 6. Platform Security (Needs AppConfig extension)
-        .layer(from_fn(platform_security_middleware))
-
-        // 7. Unified Error Handling (Catches errors from all inner layers)
+        // 6. Unified Error Handling (Catches errors from all inner layers)
         .layer(from_fn(unified_error_middleware))
 
-        // 8. Request Tracing (Correlated via Request ID & Identity)
+        // 7. Request Tracing (Correlated via Request ID & Identity)
         .layer(TraceLayer::new_for_http()
             .make_span_with(|request: &Request<Body>| {
                 let request_id = request.extensions()
@@ -137,13 +132,13 @@ pub fn apply_middleware(
             })
         )
 
-        // 9. Identity & Visitor Persistence (Zero-Touch)
+        // 8. Identity & Visitor Persistence (Zero-Touch)
         .layer(from_fn(identity_middleware))
 
-        // 10. Adaptive Rate Limiting
+        // 9. Adaptive Rate Limiting
         .layer(from_fn(adaptive_limiter_middleware))
 
-        // 11. Extension Injection (Available to all of the above)
+        // 10. Extension Injection (Available to all of the above)
         .layer(axum::Extension(engine))
         .layer(axum::Extension(config))
         .layer(axum::Extension(redis))
@@ -153,7 +148,7 @@ pub fn apply_middleware(
         .layer(axum::Extension(connection_tracker))
         .layer(axum::Extension(start_time))
 
-        // 12. Set Request ID (Outermost - runs FIRST)
+        // 11. Set Request ID (Outermost - runs FIRST)
         .layer(SetRequestIdLayer::x_request_id(MakeRequestUuid))
 }
 

@@ -11,12 +11,15 @@ The API layer is the orchestrator of the Bongas-AI user experience. It follows a
 The API is structured into functional domains based on the **Audience-Based Pillar** pattern:
 
 ### 1. [🌍 THE STAGE (Discovery)](./v1/stage/README.md)
+
 The public gateway for client applications. Optimized for **Zero Perceived Latency** through parallel SSE streaming and frictionless ingestion.
 
 ### 2. [🔐 THE BACKSTAGE (Admin)](./v1/backstage/README.md)
+
 The administrative command center. Handles layout compositions, ML strategy management, and **Atomic Engine Reloads**. Protected by strict System Key authorization.
 
 ### 3. [💓 THE PULSE (Operations)](./v1/pulse/README.md)
+
 The infrastructure observability layer. Provides health probes, circuit breaker metrics, and real-time cache performance stats.
 
 ---

@@ -17,28 +17,28 @@ use tracing::warn;
 use crate::engine::BongasEngine;
 use crate::api::models::{ContextParams, StandardResponse};
 use crate::api::models::recommendation::{FeedRow, SymphonyNavigation, RecommendationItem};
-use crate::api::middleware::service::extract_request_id_from_headers;
+use crate::api::middleware::service::{extract_request_id, extract_request_id_from_headers};
 use crate::api::middleware::identity::IdentityContext;
 use crate::pages::types::PageCompositionItem;
-use super::super::recommendations::service::execute_and_map;
+use crate::api::v1::stage::service::execute_and_map;
 
 // ─── Genesis Orchestrator ──────────────────────────────────────────────────
 
 /// GET /api/v1/recommendation
 /// The primary initiation call. Resolves entry point and navigation mesh.
 pub async fn genesis(
-    Query(context_params): Query<ContextParams>,
+    Query(mut context_params): Query<ContextParams>,
     Extension(engine): Extension<Arc<BongasEngine>>,
     req: Request<Body>,
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
-    let mut context_params = context_params;
-    let request_id = crate::api::middleware::service::extract_request_id(&req);
+    let request_id = extract_request_id(&req);
     let identity = req.extensions().get::<IdentityContext>().cloned();
     
     if let Some(ref id) = identity {
         context_params.merge_identity(id);
     }
 
+    let user_id = context_params.user_id;
     let engine_clone = engine.clone();
     let cp_base = context_params.clone();
     let rid = request_id.clone();
@@ -105,8 +105,9 @@ pub async fn genesis(
             let engine = engine_clone.clone();
             let cp = cp_base.clone();
             let rid_inner = rid.clone();
+            let uid = user_id;
             async move {
-                execute_row(engine, cp, rid_inner, comp_item).await
+                execute_row(engine, cp, rid_inner, comp_item, uid).await
             }
         })
         .buffered(5);
@@ -141,18 +142,18 @@ pub struct PageParams {
 pub async fn get_page_recommendations(
     Path(page_slug): Path<String>,
     Query(page_params): Query<PageParams>,
-    Query(context_params): Query<ContextParams>,
+    Query(mut context_params): Query<ContextParams>,
     Extension(engine): Extension<Arc<BongasEngine>>,
     req: Request<Body>,
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
-    let mut context_params = context_params;
-    let request_id = crate::api::middleware::service::extract_request_id(&req);
+    let request_id = extract_request_id(&req);
     let identity = req.extensions().get::<IdentityContext>().cloned();
     
     if let Some(ref id) = identity {
         context_params.merge_identity(id);
     }
 
+    let user_id = context_params.user_id;
     let engine_clone = engine.clone();
     let cp_base = context_params.clone();
     let rid = request_id.clone();
@@ -196,8 +197,9 @@ pub async fn get_page_recommendations(
             let engine = engine_clone.clone();
             let cp = cp_base.clone();
             let rid_inner = rid.clone();
+            let uid = user_id;
             async move {
-                execute_row(engine, cp, rid_inner, comp_item).await
+                execute_row(engine, cp, rid_inner, comp_item, uid).await
             }
         })
         .buffered(5);
@@ -240,7 +242,7 @@ pub async fn get_scenario_detail(
     let items = execute_and_map(
         engine,
         &slug,
-        None, 
+        context_params.user_id, 
         Some(context_params),
         serde_json::json!({}),
         params.offset.unwrap_or(0),
@@ -251,6 +253,44 @@ pub async fn get_scenario_detail(
     Ok(Json(StandardResponse::success(items).with_request_id(request_id)))
 }
 
+// ─── Predictive Pre-warming ───────────────────────────────────────────────
+
+#[derive(serde::Deserialize)]
+pub struct PrewarmRequest {
+    pub slugs: Vec<String>,
+    pub user_id: i32,
+}
+
+/// POST /api/v1/recommendation/admin/system/prewarm
+pub async fn prewarm_scenarios(
+    Extension(engine): Extension<Arc<BongasEngine>>,
+    headers: HeaderMap,
+    Json(payload): Json<PrewarmRequest>,
+) -> Json<StandardResponse<()>> {
+    let request_id = extract_request_id_from_headers(&headers);
+    
+    for slug in payload.slugs {
+        let engine = engine.clone();
+        let uid = payload.user_id;
+        let rid = request_id.clone();
+        
+        tokio::spawn(async move {
+            let _ = execute_and_map(
+                engine,
+                &slug,
+                Some(uid),
+                None,
+                serde_json::json!({}),
+                0,
+                50,
+                rid,
+            ).await;
+        });
+    }
+
+    Json(StandardResponse::success(()).with_request_id(request_id))
+}
+
 // ─── Private Helpers ───────────────────────────────────────────────────────
 
 async fn execute_row(
@@ -258,6 +298,7 @@ async fn execute_row(
     cp: ContextParams,
     rid: String,
     comp_item: PageCompositionItem,
+    user_id: Option<i32>,
 ) -> Result<Event, Infallible> {
     let slug = comp_item.slug.clone();
     let fallback = comp_item.fallback_slug.clone();
@@ -276,10 +317,10 @@ async fn execute_row(
         return Ok(Event::default().comment(format!("safety: restricted:{}", slug)));
     }
 
-    let mut result = execute_and_map(
+    let mut result: Result<Vec<RecommendationItem>, crate::error::AppError> = execute_and_map(
         engine.clone(),
         &slug,
-        None,
+        user_id,
         Some(cp.clone()),
         serde_json::json!({}),
         0,
@@ -292,7 +333,7 @@ async fn execute_row(
             result = execute_and_map(
                 engine.clone(),
                 &f_slug,
-                None,
+                user_id,
                 Some(cp),
                 serde_json::json!({}),
                 0,

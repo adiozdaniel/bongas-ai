@@ -36,9 +36,9 @@ pub fn create_router(
     let connection_tracker = Arc::new(ConnectionTracker::new(3));
 
     let routes = Router::new()
-        .route("/metrics", get(v1::admin::get_resilience_metrics))
-        .nest("/api/v1", v1::routes(config.clone()))
-        .nest("/health", v1::health::routes());
+        .nest("/api/v1", v1::routes(config.clone(), engine.clone()))
+        .route("/health/live", get(v1::pulse::health::liveness_check))
+        .route("/health/ready", get(v1::pulse::health::readiness_check));
 
     middleware::apply_middleware(
         routes, 

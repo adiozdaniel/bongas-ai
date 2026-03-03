@@ -39,7 +39,7 @@ pub async fn get_item_features(
     Path(item_id): Path<i32>,
 ) -> Result<Json<StandardResponse<serde_json::Value>>, AppError> {
     let request_id = extract_request_id_from_headers(&headers);
-    let features = engine.execution.item_feature_service.get_item_features(item_id).await?;
+    let features = engine.execution.item_feature_service.get_item_features_batch(&[item_id]).await?;
     Ok(Json(StandardResponse::success(serde_json::to_value(features).unwrap_or_default()).with_request_id(request_id)))
 }
 
@@ -48,13 +48,13 @@ pub async fn get_trending_items(
     headers: HeaderMap,
     Extension(engine): Extension<Arc<BongasEngine>>,
     Query(params): Query<TrendingQuery>,
-) -> Result<Json<StandardResponse<Vec<serde_json::Value>>>, AppError> {
+) -> Result<Json<StandardResponse<serde_json::Value>>, AppError> {
     let request_id = extract_request_id_from_headers(&headers);
-    let items = engine.execution.item_feature_service.get_trending_items(
-        params.category.as_deref(), 
-        params.limit.unwrap_or(10)
+    let items = engine.execution.item_feature_service.get_popular_content(
+        0, 
+        params.limit.unwrap_or(10) as i64
     ).await?;
-    Ok(Json(StandardResponse::success(items).with_request_id(request_id)))
+    Ok(Json(StandardResponse::success(serde_json::to_value(items).unwrap_or_default()).with_request_id(request_id)))
 }
 
 // ─── ML Suggestions & LLM ───────────────────────────────────────────────────

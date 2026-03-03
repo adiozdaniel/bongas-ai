@@ -7,15 +7,17 @@ use axum::{
     middleware::from_fn,
 };
 use std::sync::Arc;
+use crate::middlewares::{
+    platform_security::system_security_middleware,
+};
 use crate::config::{AppConfig, CompressionConfig};
 use crate::engine::BongasEngine;
-use super::*;
+use crate::api::v1::{stage, backstage, pulse};
 
 /// Build the complete v1 API router with context-aware infrastructure logic.
-pub fn routes(config: Arc<AppConfig>, engine: Arc<BongasEngine>) -> Router {
+pub fn routes(_config: Arc<AppConfig>, _engine: Arc<BongasEngine>) -> Router {
     
     // ─── THE PULSE (Operations & Observability) ──────────────────────────
-    // Infrastructure routes: Low overhead, no compression needed.
     let pulse_router = Router::new()
         .route("/health/live", get(pulse::health::liveness_check))
         .route("/health/ready", get(pulse::health::readiness_check))
@@ -24,9 +26,8 @@ pub fn routes(config: Arc<AppConfig>, engine: Arc<BongasEngine>) -> Router {
         .route("/system/ingestion/health", get(pulse::metrics::get_ingestion_health));
 
     // ─── THE STAGE (Public Discovery) ────────────────────────────────────
-    // Dynamic content delivery.
     
-    // 1. Streaming Layer (No Compression to avoid buffering delay)
+    // 1. Streaming Layer (No Compression to prevent buffering latency)
     let stage_streaming = Router::new()
         .route("/", get(stage::discovery::genesis))
         .route("/page/{slug}", get(stage::discovery::get_page_recommendations));
@@ -40,9 +41,7 @@ pub fn routes(config: Arc<AppConfig>, engine: Arc<BongasEngine>) -> Router {
     let stage_router = stage_streaming.merge(stage_data);
 
     // ─── THE BACKSTAGE (Admin Control) ──────────────────────────────────
-    // Governance and ML strategy.
     
-    // Admin features require full JSON compression and System Key Shield.
     let backstage_router = Router::new()
         .nest("/pages", Router::new()
             .route("/", post(backstage::orchestration::save_page_layout))
@@ -70,14 +69,8 @@ pub fn routes(config: Arc<AppConfig>, engine: Arc<BongasEngine>) -> Router {
             .route("/security/status", get(pulse::metrics::get_security_status))
             .route("/prewarm", post(stage::discovery::prewarm_scenarios)))
         
-        // GLOBAL BACKSTAGE SHIELD: Apply admin auth to all admin routes at once
-        .layer(from_fn(move |req, next| {
-            let engine = engine.clone();
-            async move {
-                // We use the helper logic directly or call the shared auth middleware
-                crate::api::middleware::service::platform_security_middleware(req, next).await
-            }
-        }))
+        // GLOBAL BACKSTAGE SHIELD: Apply strict system auth to all admin routes
+        .layer(from_fn(system_security_middleware))
         .layer(CompressionConfig::new().build());
 
     // ─── COMPOSE THE SYMPHONY ────────────────────────────────────────────

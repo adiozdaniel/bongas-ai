@@ -1,9 +1,10 @@
 use serde_json::Value as JsonValue;
 use chrono::{DateTime, Utc};
 use sqlx::FromRow;
+use serde::Serialize;
 
 /// Full item features row — superset of all columns pipeline stages may need.
-#[derive(Debug, Clone, FromRow)]
+#[derive(Debug, Clone, FromRow, Serialize)]
 pub struct ItemFeatureRow {
     pub item_id: i32,
     pub title: Option<String>,
@@ -59,7 +60,7 @@ pub struct ItemFeatureRow {
     pub tfidf_vector: Option<JsonValue>,
 }
 
-#[derive(Debug, Clone, FromRow)]
+#[derive(Debug, Clone, FromRow, Serialize)]
 pub struct UserFeatureRow {
     pub user_id: i32,
     pub genre_affinity: Option<JsonValue>,
@@ -73,12 +74,12 @@ pub struct UserFeatureRow {
     pub embedding: Option<Vec<f32>>,
 }
 
-#[derive(Debug, Clone, FromRow)]
+#[derive(Debug, Clone, FromRow, Serialize)]
 pub struct WatchedItemRow {
     pub item_id: i32,
 }
 
-#[derive(Debug, Clone, FromRow)]
+#[derive(Debug, Clone, FromRow, Serialize)]
 pub struct UserContentPreferencesRow {
     pub allow_explicit: Option<bool>,
     pub allow_violence: Option<bool>,
@@ -86,13 +87,13 @@ pub struct UserContentPreferencesRow {
     pub allow_drugs: Option<bool>,
 }
 
-#[derive(Debug, Clone, FromRow)]
+#[derive(Debug, Clone, FromRow, Serialize)]
 pub struct UserProfileRow {
     pub segment: Option<String>,
     pub subscription_tier: Option<String>,
 }
 
-#[derive(Debug, Clone, FromRow)]
+#[derive(Debug, Clone, FromRow, Serialize)]
 pub struct PromotionRow {
     pub item_id: i32,
     pub promotion_priority: Option<i32>,
@@ -100,20 +101,20 @@ pub struct PromotionRow {
     pub promotion_label: Option<String>,
 }
 
-#[derive(Debug, Clone, FromRow)]
+#[derive(Debug, Clone, FromRow, Serialize)]
 pub struct UserItemScoreRow {
     pub item_id: i32,
     pub score: f32,
     pub model_type: String,
 }
 
-#[derive(Debug, Clone, FromRow)]
+#[derive(Debug, Clone, FromRow, Serialize)]
 pub struct RecentWatchRow {
     pub item_id: i32,
     pub last_watched: Option<DateTime<Utc>>,
 }
 
-#[derive(Debug, Clone, FromRow)]
+#[derive(Debug, Clone, FromRow, Serialize)]
 pub struct PopularItemRow {
     pub item_id: i32,
     pub title: Option<String>,
@@ -126,7 +127,7 @@ pub struct PopularItemRow {
     pub genres: Option<JsonValue>,
 }
 
-#[derive(Debug, Clone, FromRow)]
+#[derive(Debug, Clone, FromRow, Serialize)]
 pub struct NewReleaseRow {
     pub item_id: i32,
     pub title: Option<String>,
@@ -134,14 +135,14 @@ pub struct NewReleaseRow {
     pub trending_score: f32,
 }
 
-#[derive(Debug, Clone, FromRow)]
+#[derive(Debug, Clone, FromRow, Serialize)]
 pub struct GenreItemRow {
     pub item_id: i32,
     pub title: Option<String>,
     pub popularity_score: Option<f32>,
 }
 
-#[derive(Debug, Clone, FromRow)]
+#[derive(Debug, Clone, FromRow, Serialize)]
 pub struct SeasonalItemRowExtended {
     pub item_id: i32,
     pub title: Option<String>,
@@ -151,13 +152,13 @@ pub struct SeasonalItemRowExtended {
     pub popularity_score: Option<f32>,
 }
 
-#[derive(Debug, Clone, FromRow)]
+#[derive(Debug, Clone, FromRow, Serialize)]
 pub struct ItemSimilarityRow {
     pub similar_item_id: i32,
     pub similarity_score: f32,
 }
 
-#[derive(Debug, Clone, FromRow)]
+#[derive(Debug, Clone, FromRow, Serialize)]
 pub struct WatchlistItemRow {
     pub item_id: i32,
     pub added_at: DateTime<Utc>,
