@@ -279,15 +279,22 @@ VALUES ('max_active_scenarios', '20'::jsonb, 'Maximum allowed scenarios with ena
 ON CONFLICT (key) DO NOTHING;
 
 -- ============================================================================
--- 11. page_layouts (Dynamic UI Layouts - SDUI)
+-- 11. page_layouts (Dynamic UI Layouts - SDUI Symphony)
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS page_layouts (
     id SERIAL PRIMARY KEY,
     page_slug VARCHAR(64) NOT NULL,
+    
+    -- Navigation Hierarchy
+    is_landing BOOLEAN DEFAULT false, -- If true, this is the entry point for the context
+    nav_type VARCHAR(32) DEFAULT 'hidden', -- 'main', 'sub', 'hidden'
+    
+    -- Contextual Targeting
     device_type VARCHAR(32) DEFAULT 'all',
     maturity_rating VARCHAR(32) DEFAULT 'all',
     priority INTEGER DEFAULT 0,
-    composition JSONB NOT NULL, -- Array of objects: [{"slug": "...", "row_type": "..."}]
+    
+    composition JSONB NOT NULL, -- Array of objects: [{"slug": "...", "row_type": "...", "fallback_slug": "..."}]
     
     is_active BOOLEAN DEFAULT true,
     is_deleted BOOLEAN DEFAULT false,
@@ -296,6 +303,16 @@ CREATE TABLE IF NOT EXISTS page_layouts (
     
     UNIQUE(page_slug, device_type, maturity_rating)
 );
+
+-- Singleton Rule: Ensure only ONE active landing page exists per context (Device + Maturity)
+CREATE UNIQUE INDEX IF NOT EXISTS idx_landing_page_singleton 
+ON page_layouts (device_type, maturity_rating) 
+WHERE is_landing = true AND is_active = true AND is_deleted = false;
+
+-- Nav-Mesh Index: Optimized for Genesis assembly
+CREATE INDEX IF NOT EXISTS idx_page_layouts_nav_mesh 
+ON page_layouts (nav_type, is_active) 
+WHERE is_deleted = false;
 
 CREATE INDEX IF NOT EXISTS idx_page_layouts_resolver ON page_layouts (page_slug, device_type, maturity_rating) 
 WHERE is_active = true AND is_deleted = false;

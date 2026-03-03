@@ -110,20 +110,69 @@ FROM scenarios s
 WHERE s.slug = 'home_feed'
 ON CONFLICT DO NOTHING;
 
--- 5. Seed Page Layouts (Symphony Blueprint)
-INSERT INTO page_layouts (page_slug, device_type, maturity_rating, priority, composition)
+-- 5. Seed Page Layouts (The Symphony Navigation Mesh)
+INSERT INTO page_layouts (page_slug, is_landing, nav_type, device_type, maturity_rating, priority, composition)
 VALUES 
 (
     'home', 
+    true,   -- This is the entry point for default users
+    'main', -- Always visible in primary nav
     'all', 
     'all', 
     100, 
     '[
-        {"slug": "trending_now", "row_type": "hero_carousel", "row_style": "promotional"},
-        {"slug": "personalized_picks", "row_type": "horizontal_list", "row_style": "standard"},
-        {"slug": "home_feed", "row_type": "horizontal_list", "row_style": "standard"}
+        {"slug": "trending_now", "row_type": "hero_carousel", "row_style": "promotional", "fallback_slug": null},
+        {"slug": "personalized_picks", "row_type": "horizontal_list", "row_style": "standard", "fallback_slug": "trending_now"},
+        {"slug": "home_feed", "row_type": "horizontal_list", "row_style": "standard", "fallback_slug": null}
+    ]'::jsonb
+),
+(
+    'movies',
+    false,
+    'main',
+    'all',
+    'all',
+    90,
+    '[
+        {"slug": "new_releases", "row_type": "hero_carousel", "row_style": "promotional", "fallback_slug": null},
+        {"slug": "trending_now", "row_type": "horizontal_list", "row_style": "standard", "fallback_slug": null}
+    ]'::jsonb
+),
+(
+    'tv_shows',
+    false,
+    'main',
+    'all',
+    'all',
+    80,
+    '[
+        {"slug": "home_feed", "row_type": "hero_carousel", "row_style": "promotional", "fallback_slug": null}
+    ]'::jsonb
+),
+(
+    'free_for_you',
+    false,
+    'sub', -- Contextual Hub
+    'all',
+    'all',
+    50,
+    '[
+        {"slug": "personalized_picks", "row_type": "feature_grid", "row_style": "compact", "fallback_slug": null}
+    ]'::jsonb
+),
+(
+    'action_universe',
+    false,
+    'sub', -- Contextual Hub
+    'all',
+    'all',
+    40,
+    '[
+        {"slug": "trending_now", "row_type": "horizontal_list", "row_style": "tall_cards", "fallback_slug": null}
     ]'::jsonb
 )
 ON CONFLICT (page_slug, device_type, maturity_rating) DO UPDATE 
-SET composition = EXCLUDED.composition, 
+SET is_landing = EXCLUDED.is_landing,
+    nav_type = EXCLUDED.nav_type,
+    composition = EXCLUDED.composition, 
     priority = EXCLUDED.priority;
