@@ -22,6 +22,8 @@ use serde::Deserialize;
 /// Shared context parameters used across various recommendation and engine endpoints.
 #[derive(Debug, Clone, Deserialize, serde::Serialize)]
 pub struct ContextParams {
+    /// The ID of the user (use 0 or None for anonymous).
+    pub user_id: Option<i32>,
     /// Unique identifier for the user profile.
     pub profile_id: Option<String>,
     /// Content maturity rating filter.

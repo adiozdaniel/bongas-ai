@@ -4,7 +4,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use lru::LruCache;
 use std::num::NonZeroUsize;
-use tracing::{info, debug};
+use tracing::info;
 use dashmap::DashMap;
 use std::collections::HashMap;
 
@@ -183,7 +183,7 @@ impl PagesManager {
                 .cloned()
         };
 
-        if let (Some(mut l), Some(id)) = (landing, identity_key) {
+        if let (Some(mut l), Some(id)) = (landing.clone(), identity_key) {
             self.reorder_composition(&mut l.composition, id);
             return Ok(Some(l));
         }
@@ -250,6 +250,29 @@ impl PagesManager {
         }
 
         Ok(layout)
+    }
+
+    pub async fn list_active_pages(&self) -> AppResult<Vec<PageLayout>> {
+        let db_layouts = self.repo.find_all_active().await?;
+        Ok(db_layouts.into_iter().map(|r| {
+            let composition: Vec<PageCompositionItem> = serde_json::from_value(r.composition).unwrap_or_default();
+            let nav_type = match r.nav_type.as_str() {
+                "main" => NavType::Main,
+                "sub" => NavType::Sub,
+                _ => NavType::Hidden,
+            };
+            PageLayout {
+                page_slug: PageSlug(r.page_slug),
+                is_landing: r.is_landing,
+                nav_type,
+                device_type: r.device_type,
+                maturity_rating: r.maturity_rating,
+                priority: r.priority,
+                composition,
+                is_active: r.is_active,
+                updated_at: r.updated_at,
+            }
+        }).collect())
     }
 
     fn reorder_composition(&self, composition: &mut Vec<PageCompositionItem>, identity: &str) {

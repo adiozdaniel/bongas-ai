@@ -5,6 +5,7 @@ use axum::{
     http::HeaderMap,
 };
 use std::sync::Arc;
+use tracing::info;
 
 use crate::engine::BongasEngine;
 use crate::api::models::{
@@ -12,8 +13,10 @@ use crate::api::models::{
     ModelReloadResponse, ModelStatsResponse, SecurityStatusResponse,
 };
 use crate::error::AppError;
+use tower_http::request_id::RequestId;
 
-/// Mount all admin routes.
+/// Mount all system and operational administrative routes.
+/// Mounted at: /api/v1/recommendation/admin/system
 pub fn routes() -> Router {
     Router::new()
         .route("/metrics", get(get_resilience_metrics))
@@ -23,6 +26,7 @@ pub fn routes() -> Router {
         .route("/models/reload", post(reload_models))
         .route("/models/stats", get(get_model_stats))
         .route("/security/status", get(get_security_status))
+        .route("/reload", post(reload_engine_atomic)) // Global Symphony Refresh
         .route("/suggestions", get(list_suggestions))
         .route("/suggestions/{id}/approve", post(approve_suggestion))
         .route("/suggestions/{id}/reject", post(reject_suggestion))
@@ -47,6 +51,43 @@ fn authorize_admin(headers: &HeaderMap, engine: &BongasEngine) -> Result<(), App
 }
 
 // ─── Handlers ───────────────────────────────────────────────────────────────
+
+/// POST /api/v1/recommendation/admin/system/reload
+/// Performs an atomic refresh of all engine components: Scenarios, Pipelines, and Page Layouts.
+async fn reload_engine_atomic(
+    headers: HeaderMap,
+    Extension(engine): Extension<Arc<BongasEngine>>,
+    Extension(request_id): Extension<RequestId>,
+) -> Result<Json<StandardResponse<serde_json::Value>>, AppError> {
+    let request_id = request_id.header_value().to_str().unwrap_or("unknown").to_string();
+    authorize_admin(&headers, &engine)?;
+    
+    info!(request_id = %request_id, "Triggering atomic symphony engine refresh...");
+    
+    // 1. Reload Scenarios & Rules
+    let scenario_count = engine.reload_scenarios().await?;
+    
+    // 2. Reload Page Layouts & Nav Mesh
+    let page_count = engine.pages.load_all_active().await?;
+    
+    // 3. Reload ML Models
+    let model_count = engine.reload_models().await?;
+
+    info!(
+        request_id = %request_id, 
+        scenarios = scenario_count, 
+        pages = page_count, 
+        models = model_count, 
+        "Atomic engine refresh complete"
+    );
+
+    Ok(Json(StandardResponse::success(serde_json::json!({
+        "status": "synchronized",
+        "scenarios_reloaded": scenario_count,
+        "pages_reloaded": page_count,
+        "models_reloaded": model_count
+    })).with_request_id(request_id)))
+}
 
 #[derive(serde::Deserialize)]
 pub struct ChatbotQuery {
@@ -114,8 +155,6 @@ async fn reject_suggestion(
     engine.reject_suggestion(id).await?;
     Ok(Json(StandardResponse::success(serde_json::json!({ "message": "Suggestion rejected" })).with_request_id(request_id)))
 }
-
-use tower_http::request_id::RequestId;
 
 pub async fn get_resilience_metrics(
     Extension(engine): Extension<Arc<BongasEngine>>,
