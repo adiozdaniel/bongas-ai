@@ -10,7 +10,7 @@ use axum::{
     body::Body,
     middleware::Next,
     response::{Response, IntoResponse},
-    http::StatusCode,
+    http::{StatusCode, HeaderMap},
     Json,
 };
 use std::sync::Arc;
@@ -40,11 +40,13 @@ use std::time::Instant;
 
 use crate::api::middleware::identity::identity_middleware;
 use crate::api::middleware::identity::IdentityContext;
+use crate::api::middleware::adaptive_limiter::{adaptive_limiter_middleware, ConnectionTracker};
 
 /// Apply the full middleware stack to a router.
 ///
 /// Middleware is applied in reverse order (bottom to top):
-/// 11. Set Request ID (Outermost wrapper)
+/// 12. Set Request ID (Outermost wrapper)
+/// 11. Adaptive Rate Limiting (SSE protection per visitor)
 /// 10. Identity & Visitor Persistence (Zero-Touch)
 /// 9. Unified Error Handling (Catches everything below, uses Request ID)
 /// 8. Platform Security
@@ -64,6 +66,7 @@ pub fn apply_middleware(
     redis: Arc<redis::Client>,
     rate_limiter: Arc<RateLimiter>,
     metrics_collector: Arc<MetricsCollector>,
+    connection_tracker: Arc<ConnectionTracker>,
     start_time: Arc<Instant>,
 ) -> Router {
     let endpoint_metrics = Arc::new(EndpointMetrics::new());
@@ -137,16 +140,20 @@ pub fn apply_middleware(
         // 9. Identity & Visitor Persistence (Zero-Touch)
         .layer(from_fn(identity_middleware))
 
-        // 10. Extension Injection (Available to all of the above)
+        // 10. Adaptive Rate Limiting
+        .layer(from_fn(adaptive_limiter_middleware))
+
+        // 11. Extension Injection (Available to all of the above)
         .layer(axum::Extension(engine))
         .layer(axum::Extension(config))
         .layer(axum::Extension(redis))
         .layer(axum::Extension(rate_limiter))
         .layer(axum::Extension(circuit_breaker_registry))
         .layer(axum::Extension(metrics_collector))
+        .layer(axum::Extension(connection_tracker))
         .layer(axum::Extension(start_time))
 
-        // 10. Set Request ID (Outermost - runs FIRST)
+        // 12. Set Request ID (Outermost - runs FIRST)
         .layer(SetRequestIdLayer::x_request_id(MakeRequestUuid))
 }
 
@@ -156,11 +163,16 @@ pub fn extract_request_id(req: &Request<Body>) -> String {
         .get::<RequestId>()
         .map(|id| id.header_value().to_str().unwrap_or("unknown").to_string())
         .or_else(|| {
-            req.headers()
-                .get("x-request-id")
-                .and_then(|v| v.to_str().ok())
-                .map(|s| s.to_string())
+            extract_request_id_from_headers(req.headers()).into()
         })
+        .unwrap_or_else(|| Uuid::new_v4().to_string())
+}
+
+/// Helper to extract request id from HeaderMap
+pub fn extract_request_id_from_headers(headers: &HeaderMap) -> String {
+    headers.get("x-request-id")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string())
         .unwrap_or_else(|| Uuid::new_v4().to_string())
 }
 

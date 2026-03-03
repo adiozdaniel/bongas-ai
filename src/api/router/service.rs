@@ -11,6 +11,7 @@ use crate::middlewares::rate_limit::RateLimiter;
 use crate::circuit_breaker::CircuitBreakerRegistry;
 use crate::api::v1;
 use crate::api::middleware;
+use crate::api::middleware::adaptive_limiter::ConnectionTracker;
 
 use axum::routing::get;
 
@@ -31,6 +32,9 @@ pub fn create_router(
         Some(engine.shutdown_tx.subscribe()),
     );
 
+    // Adaptive Rate Limiter: Max 3 concurrent SSE connections per visitor (Shield)
+    let connection_tracker = Arc::new(ConnectionTracker::new(3));
+
     let routes = Router::new()
         .route("/metrics", get(v1::admin::get_resilience_metrics))
         .nest("/api/v1", v1::routes(config.clone()))
@@ -44,6 +48,7 @@ pub fn create_router(
         redis,
         rate_limiter,
         metrics_collector,
+        connection_tracker,
         start_time
     )
 }

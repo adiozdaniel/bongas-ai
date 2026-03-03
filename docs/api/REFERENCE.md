@@ -18,71 +18,54 @@ In the new Bongas-AI architecture, this is the undisputed center of content deli
 | `page_slug` | String | Yes | The slug of the page layout (e.g., `home`, `movies`). |
 | `user_id` | Integer | Yes | The ID of the user (use `0` for anonymous). |
 | `profile_id` | String | No | The specific profile within an account. |
-| `device_type` | String | No | `mobile`, `tv`, `web`, `tablet`. |
+| `device_type` | String | No | KFCB standards detected automatically from UA. |
 | `maturity_rating`| String | No | KFCB Standards: `all`, `GE`, `PG`, `12`, `15`, `18`. |
 
-### 🛠️ Extracted Context (Implicit)
+---
 
-The engine automatically extracts and propagates these fields from the request (No client action required):
+## 🏎️ Predictive Warming Endpoint
 
-| Parameter | Source | Description |
-| :--- | :--- | :--- |
-| `visitor_id` | Cookie | Persistent across sessions. |
-| `device_hash`| IP + UA | Deterministic device fingerprint. |
-| `ip_address` | Header | Client IP for regional targeting. |
+Triggers background execution for scenarios further down the layout to eliminate scroll-latency.
+
+**Method:** `POST`  
+**Endpoint:** `/api/v1/recommendations/prewarm`
+
+### 📥 Request Body
+```json
+{
+  "slugs": ["trending_now", "home_feed"],
+  "user_id": 123
+}
+```
 
 ---
 
 ## 📤 The Streaming Response (SSE)
 
-The API returns an `EventSource` stream. Every event is a JSON payload.
-
 ### 1. Event: `navigation`
-
 Sent instantly to build the app's navigation bar.
 
-```json
-{
-  "active_pages": [
-    {"slug": "home", "title": "Home"},
-    {"slug": "movies", "title": "Movies"}
-  ]
-}
-```
-
 ### 2. Event: `manifest`
-
-Sent early to allow the client to render skeleton loaders.
-
+Sent early to allow the client to render skeleton loaders and plan pre-warming.
 ```json
 {
-  "expected_rows": 5,
+  "expected_rows": 8,
   "request_id": "uuid-v4",
-  "page": "home"
+  "page": "home",
+  "prewarm_scenarios": ["personalized_picks", "new_releases"]
 }
 ```
 
 ### 3. Event: `row`
-
-The actual content rows with presentation metadata.
-
-```json
-{
-  "title": "Trending Now",
-  "row_type": "hero_carousel",
-  "row_style": "promotional",
-  "scenario": "trending_now",
-  "items": [...]
-}
-```
+Individual content rows with fail-over protection. If a primary row fails, the engine automatically attempts its `fallback_slug`.
 
 ---
 
-## 🛡️ Error & Safety Handling
+## 🛡️ Resilience & The Shield
 
-- **Maturity Safety**: If a user's `maturity_rating` does not meet a scenario's global ceiling (e.g., a "GE" user requesting an "18" scenario), the engine emits an **SSE Comment** (`safety: restricted`) and skips the row.
-- **Partial Failures**: If a single row fails during execution, the server emits an **SSE Comment** with the error.
-- **Keep-Alive**: The server sends a `:` (comment) heartbeat every 15 seconds.
+- **Adaptive Rate Limiting**: Max 3 concurrent SSE connections per `visitor_id`. Rejections return `429 Too Many Requests`.
+- **Fail-Over**: Automatic execution of fallback scenarios on primary failure.
+- **Maturity Safety**: Early-block logic for KFCB compliance.
 
 ---
 

@@ -2,18 +2,19 @@ use axum::{
     extract::{Path, Extension, Query},
     response::sse::{Event, Sse, KeepAlive},
     body::Body,
-    http::Request,
+    http::{Request, HeaderMap},
+    Json,
 };
 use std::time::Duration;
 use futures::stream::{self, Stream, StreamExt};
 use std::convert::Infallible;
 use std::sync::Arc;
-use tracing::{warn, info_span, Instrument};
+use tracing::{info, warn, info_span, Instrument};
 
 use crate::engine::BongasEngine;
-use crate::api::models::ContextParams;
+use crate::api::models::{ContextParams, StandardResponse};
 use crate::api::models::recommendation::FeedRow;
-use crate::api::middleware::service::extract_request_id;
+use crate::api::middleware::service::extract_request_id_from_headers;
 use crate::api::middleware::identity::IdentityContext;
 use crate::pages::types::PageCompositionItem;
 use super::service::execute_and_map;
@@ -26,7 +27,7 @@ pub async fn get_page_recommendations(
     Extension(engine): Extension<Arc<BongasEngine>>,
     req: Request<Body>,
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
-    let request_id = extract_request_id(&req);
+    let request_id = crate::api::middleware::service::extract_request_id(&req);
     let identity = req.extensions().get::<IdentityContext>().cloned();
     
     // 1. Identity Stitching (Zero-Touch)
@@ -54,9 +55,9 @@ pub async fn get_page_recommendations(
             if page_slug == "home" {
                 warn!(request_id = %request_id, "Home layout not found for context, using default fallback symphony");
                 vec![
-                    PageCompositionItem { slug: "trending_now".into(), row_type: "hero_carousel".into(), row_style: Some("promotional".into()) },
-                    PageCompositionItem { slug: "personalized_picks".into(), row_type: "horizontal_list".into(), row_style: Some("standard".into()) },
-                    PageCompositionItem { slug: "home_feed".into(), row_type: "horizontal_list".into(), row_style: Some("standard".into()) },
+                    PageCompositionItem { slug: "trending_now".into(), fallback_slug: None, row_type: "hero_carousel".into(), row_style: Some("promotional".into()) },
+                    PageCompositionItem { slug: "personalized_picks".into(), fallback_slug: Some("trending_now".into()), row_type: "horizontal_list".into(), row_style: Some("standard".into()) },
+                    PageCompositionItem { slug: "home_feed".into(), fallback_slug: None, row_type: "horizontal_list".into(), row_style: Some("standard".into()) },
                 ]
             } else {
                 warn!(request_id = %request_id, page = %page_slug, "Page layout not found, stream will be empty");
@@ -73,12 +74,15 @@ pub async fn get_page_recommendations(
         .json_data(serde_json::json!({ "active_pages": active_pages }))
         .unwrap_or_else(|_| Event::default().comment("nav_serialization_error"));
 
+    // Event 2: Manifest (Skeleton UI Hints + Predictive Warming)
     let manifest_event = Event::default()
         .event("manifest")
         .json_data(serde_json::json!({ 
             "expected_rows": total_scenarios,
             "request_id": rid_orchestrator.clone(),
-            "page": page_slug
+            "page": page_slug,
+            // Pre-warm the next 5 scenarios beyond the initial parallel pool
+            "prewarm_scenarios": composition.iter().skip(5).map(|c| &c.slug).collect::<Vec<_>>()
         }))
         .unwrap_or_else(|_| Event::default().comment("manifest_serialization_error"));
 
@@ -91,6 +95,7 @@ pub async fn get_page_recommendations(
             let cp = cp_base.clone();
             let rid = rid_orchestrator.clone();
             let scenario_slug = comp_item.slug.clone();
+            let fallback_slug = comp_item.fallback_slug.clone();
             let row_type = comp_item.row_type.clone();
             let row_style = comp_item.row_style.clone();
             
@@ -99,14 +104,12 @@ pub async fn get_page_recommendations(
                 let is_safe = {
                     let scenarios = engine.scenarios.scenarios.read().await;
                     scenarios.get(&scenario_slug).map(|s| {
-                        // Logic: If scenario is '18', user MUST be '18'. 
-                        // If scenario is 'all', everyone can see it.
                         if s.maturity_rating == "18" {
                             cp.maturity_rating.as_deref() == Some("18")
                         } else {
                             true
                         }
-                    }).unwrap_or(true) // If scenario not found, let it fail in execution
+                    }).unwrap_or(true)
                 };
 
                 if !is_safe {
@@ -114,11 +117,12 @@ pub async fn get_page_recommendations(
                     return Ok(Event::default().comment(format!("safety: scenario '{}' restricted", scenario_slug)));
                 }
 
-                let result = execute_and_map(
+                // 4.2 Primary Execution
+                let mut result = execute_and_map(
                     engine.clone(),
                     &scenario_slug,
                     Some(user_id),
-                    Some(cp),
+                    Some(cp.clone()),
                     serde_json::json!({}),
                     0,
                     20,
@@ -127,20 +131,47 @@ pub async fn get_page_recommendations(
                 .instrument(info_span!("scenario_execution", request_id = %rid, scenario = %scenario_slug))
                 .await;
 
+                // 4.3 Fallback Logic (The Shield)
+                let mut is_fallback = false;
+                if result.is_err() {
+                    if let Some(ref f_slug) = fallback_slug {
+                        warn!(request_id = %rid, primary = %scenario_slug, fallback = %f_slug, "Primary scenario failed, attempting fallback");
+                        result = execute_and_map(
+                            engine.clone(),
+                            f_slug,
+                            Some(user_id),
+                            Some(cp.clone()),
+                            serde_json::json!({}),
+                            0,
+                            20,
+                            rid.clone(),
+                        )
+                        .instrument(info_span!("fallback_execution", request_id = %rid, fallback = %f_slug))
+                        .await;
+                        is_fallback = true;
+                    }
+                }
+
                 match result {
                     Ok(items) => {
+                        let current_slug = if is_fallback {
+                            fallback_slug.unwrap_or(scenario_slug)
+                        } else {
+                            scenario_slug
+                        };
+
                         let title = {
                             let scenarios = engine.scenarios.scenarios.read().await;
-                            scenarios.get(&scenario_slug)
+                            scenarios.get(&current_slug)
                                 .map(|s| s.name.clone())
-                                .unwrap_or_else(|| scenario_slug.replace('_', " "))
+                                .unwrap_or_else(|| current_slug.replace('_', " "))
                         };
 
                         let row = FeedRow {
                             title,
                             row_type,
                             row_style,
-                            scenario: scenario_slug,
+                            scenario: current_slug,
                             items,
                         };
 
@@ -152,7 +183,7 @@ pub async fn get_page_recommendations(
                         Ok(event)
                     }
                     Err(e) => {
-                        warn!(request_id = %rid, scenario = %scenario_slug, error = ?e, "Scenario failed in Symphony stream, emitting fallback comment");
+                        warn!(request_id = %rid, scenario = %scenario_slug, error = ?e, "Scenario and fallback failed in Symphony stream");
                         let comment = format!("error: scenario '{}' failed", scenario_slug);
                         Ok(Event::default().comment(comment))
                     }
@@ -164,4 +195,46 @@ pub async fn get_page_recommendations(
     let full_stream = initial_stream.chain(scenario_stream);
 
     Sse::new(full_stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(15)))
+}
+
+#[derive(serde::Deserialize)]
+pub struct PrewarmRequest {
+    pub slugs: Vec<String>,
+    pub user_id: i32,
+}
+
+/// POST /api/v1/recommendations/prewarm
+/// Triggers background warming for a list of scenarios (Scroll Depth Signal).
+pub async fn prewarm_scenarios(
+    Extension(engine): Extension<Arc<BongasEngine>>,
+    headers: HeaderMap,
+    Json(payload): Json<PrewarmRequest>,
+) -> Json<StandardResponse<()>> {
+    let request_id = extract_request_id_from_headers(&headers);
+    
+    // For background tasks, we don't have the IdentityContext extension 
+    // unless we use a custom extractor or re-extract here. 
+    // For pre-warming, we prioritize speed.
+    
+    for slug in payload.slugs {
+        let engine = engine.clone();
+        let uid = payload.user_id;
+        let rid = request_id.clone();
+        
+        tokio::spawn(async move {
+            info!(request_id = %rid, scenario = %slug, "Predictive pre-warming triggered via scroll depth");
+            let _ = execute_and_map(
+                engine,
+                &slug,
+                Some(uid),
+                None, // Pre-warming uses default scenario context
+                serde_json::json!({}),
+                0,
+                50,
+                rid,
+            ).await;
+        });
+    }
+
+    Json(StandardResponse::success(()).with_request_id(request_id))
 }

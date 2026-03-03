@@ -47,15 +47,23 @@ graph TD
 
 ## 🛠️ The "Velocity" Contract
 
-1. **The Manifest Event**: The first event in the SSE stream tells the client exactly how many rows to expect.
-2. **Buffer Unordered**: We execute scenarios in parallel.
+1. **The Manifest Event**: The first event in the SSE stream tells the client exactly how many rows to expect and which rows to **pre-warm**.
+2. **Buffer Unordered**: We execute scenarios in parallel (Concurrency: 5).
 3. **Ordered Streaming**: While execution is parallel, we maintain a logical "order of importance" where possible, but never allow one slow row to kill the stream.
 4. **Graceful Degradation**: If a scenario exceeds its timeout, the orchestrator emits an **Empty Comment** or a **Fallback Event** (e.g., "Popular") so the UI stays intact.
 
-## 💓 Heartbeats & Resilience
+## 🛡️ The Shield: Resilience & Scale
 
-- **Keep-Alive**: A 15-second heartbeat ensures load balancers don't drop the connection during heavy computation.
-- **Fault-Tolerance**: Every individual scenario is wrapped in a `catch_all` block. One failing model cannot crash the page.
+To ensure "Netflix-Grade" reliability, Bongas-AI implements three layers of protection:
+
+### 1. Fallback Scenarios (Fail-Over)
+Admins can configure a `fallback_slug` for every row. If the primary (personalized) scenario fails, the engine automatically swaps it for a generic, high-performance alternative (e.g., "Trending").
+
+### 2. Adaptive Rate Limiting
+The SSE pool is protected by a visitor-level concurrency tracker. Each `visitor_id` is limited to **3 concurrent connections**, preventing device malfunctions or bot attacks from exhausting server resources.
+
+### 3. Predictive Warming (Scroll Depth)
+The `manifest` event contains a `prewarm_scenarios` hint. As the user scrolls, the client can call the `/prewarm` endpoint to trigger background execution for future rows, ensuring they are already cached when the user reaches them.
 
 ---
 

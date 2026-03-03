@@ -19,6 +19,8 @@ impl std::fmt::Display for PageSlug {
 pub struct PageCompositionItem {
     /// The engine scenario to execute for this row.
     pub slug: String,
+    /// Fallback scenario if the primary fails (e.g., 'trending_now').
+    pub fallback_slug: Option<String>,
     /// The UI component type (e.g., "hero_carousel", "horizontal_list").
     pub row_type: String,
     /// Visual styling hints (e.g., "promotional", "compact").
