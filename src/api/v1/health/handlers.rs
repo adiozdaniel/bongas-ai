@@ -1,24 +1,16 @@
 //! Health check endpoint.
 
-use axum::{routing::get, Json, Router, extract::Extension};
+use axum::{Json, extract::Extension};
 use std::sync::Arc;
 use std::time::Instant;
 
 use crate::api::models::{HealthResponse, StandardResponse};
 
-/// Mount health routes.
-pub fn routes() -> Router {
-    Router::new()
-        .route("/", get(health_check))
-        .route("/live", get(liveness_check))
-        .route("/ready", get(readiness_check))
-}
-
 use tower_http::request_id::RequestId;
 
 /// Liveness probe - determines if the process is alive.
 /// Restarts container on failure. Should be very lightweight.
-async fn liveness_check(
+pub async fn liveness_check(
     Extension(start_time): Extension<Arc<Instant>>,
     Extension(request_id): Extension<RequestId>,
 ) -> Json<StandardResponse<HealthResponse>> {
@@ -34,7 +26,7 @@ async fn liveness_check(
 
 /// Readiness probe - determines if the app is ready for traffic.
 /// Removes from load balancer on failure. Checks dependencies.
-async fn readiness_check(
+pub async fn readiness_check(
     Extension(engine): Extension<Arc<crate::engine::BongasEngine>>,
     Extension(start_time): Extension<Arc<Instant>>,
     Extension(request_id): Extension<RequestId>,
@@ -55,7 +47,7 @@ async fn readiness_check(
 }
 
 /// Generic health check for monitoring.
-async fn health_check(
+pub async fn health_check(
     Extension(start_time): Extension<Arc<Instant>>,
     Extension(request_id): Extension<RequestId>,
 ) -> Json<StandardResponse<HealthResponse>> {

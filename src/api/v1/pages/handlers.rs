@@ -2,8 +2,7 @@
 
 use axum::{
     extract::{Path, Extension},
-    routing::{get, post},
-    Json, Router,
+    Json,
     http::HeaderMap,
 };
 use std::sync::Arc;
@@ -13,14 +12,6 @@ use crate::engine::BongasEngine;
 use crate::api::models::StandardResponse;
 use crate::error::AppError;
 use crate::pages::types::{PageLayout, SavePageLayoutRequest};
-
-/// Mount all page management routes.
-pub fn routes() -> Router {
-    Router::new()
-        .route("/", post(save_page_layout))
-        .route("/active", get(list_active_pages))
-        .route("/{slug}", get(get_page_layout).delete(delete_page_layout))
-}
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -41,7 +32,7 @@ fn authorize_admin(headers: &HeaderMap, engine: &BongasEngine) -> Result<(), App
 // ─── Handlers ───────────────────────────────────────────────────────────────
 
 /// GET /api/v1/pages/active
-async fn list_active_pages(
+pub async fn list_active_pages(
     headers: HeaderMap,
     Extension(engine): Extension<Arc<BongasEngine>>,
 ) -> Result<Json<StandardResponse<Vec<PageLayout>>>, AppError> {
@@ -55,7 +46,7 @@ async fn list_active_pages(
 }
 
 /// GET /api/v1/pages/:slug
-async fn get_page_layout(
+pub async fn get_page_layout(
     headers: HeaderMap,
     Path(slug): Path<String>,
     Extension(engine): Extension<Arc<BongasEngine>>,
@@ -74,7 +65,7 @@ async fn get_page_layout(
 }
 
 /// POST /api/v1/pages
-async fn save_page_layout(
+pub async fn save_page_layout(
     headers: HeaderMap,
     Extension(engine): Extension<Arc<BongasEngine>>,
     Json(payload): Json<SavePageLayoutRequest>,
@@ -93,7 +84,7 @@ async fn save_page_layout(
 }
 
 /// DELETE /api/v1/pages/:slug
-async fn delete_page_layout(
+pub async fn delete_page_layout(
     headers: HeaderMap,
     Path(slug): Path<String>,
     Extension(engine): Extension<Arc<BongasEngine>>,

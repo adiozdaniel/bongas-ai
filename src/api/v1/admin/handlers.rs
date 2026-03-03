@@ -1,7 +1,6 @@
 use axum::{
     extract::{Extension, Path},
-    routing::{get, post},
-    Json, Router,
+    Json,
     http::HeaderMap,
 };
 use std::sync::Arc;
@@ -14,25 +13,6 @@ use crate::api::models::{
 };
 use crate::error::AppError;
 use tower_http::request_id::RequestId;
-
-/// Mount all system and operational administrative routes.
-/// Mounted at: /api/v1/recommendation/admin/system
-pub fn routes() -> Router {
-    Router::new()
-        .route("/metrics", get(get_resilience_metrics))
-        .route("/cache/stats", get(get_cache_stats))
-        .route("/ingestion/metrics", get(get_ingestion_metrics))
-        .route("/ingestion/health", get(get_ingestion_health))
-        .route("/models/reload", post(reload_models))
-        .route("/models/stats", get(get_model_stats))
-        .route("/security/status", get(get_security_status))
-        .route("/reload", post(reload_engine_atomic)) // Global Symphony Refresh
-        .route("/suggestions", get(list_suggestions))
-        .route("/suggestions/{id}/approve", post(approve_suggestion))
-        .route("/suggestions/{id}/reject", post(reject_suggestion))
-        .route("/suggestions/{id}/simulate", get(simulate_suggestion))
-        .route("/chatbot/ask", post(chatbot_ask))
-}
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -54,7 +34,7 @@ fn authorize_admin(headers: &HeaderMap, engine: &BongasEngine) -> Result<(), App
 
 /// POST /api/v1/recommendation/admin/system/reload
 /// Performs an atomic refresh of all engine components: Scenarios, Pipelines, and Page Layouts.
-async fn reload_engine_atomic(
+pub async fn reload_engine_atomic(
     headers: HeaderMap,
     Extension(engine): Extension<Arc<BongasEngine>>,
     Extension(request_id): Extension<RequestId>,
@@ -94,7 +74,7 @@ pub struct ChatbotQuery {
     pub message: String,
 }
 
-async fn chatbot_ask(
+pub async fn chatbot_ask(
     headers: HeaderMap,
     Extension(engine): Extension<Arc<BongasEngine>>,
     Extension(request_id): Extension<RequestId>,
@@ -109,7 +89,7 @@ async fn chatbot_ask(
     })).with_request_id(request_id)))
 }
 
-async fn simulate_suggestion(
+pub async fn simulate_suggestion(
     headers: HeaderMap,
     Path(id): Path<i32>,
     Extension(engine): Extension<Arc<BongasEngine>>,
@@ -121,7 +101,7 @@ async fn simulate_suggestion(
     Ok(Json(StandardResponse::success(impact).with_request_id(request_id)))
 }
 
-async fn list_suggestions(
+pub async fn list_suggestions(
     headers: HeaderMap,
     Extension(engine): Extension<Arc<BongasEngine>>,
     Extension(request_id): Extension<RequestId>,
@@ -132,7 +112,7 @@ async fn list_suggestions(
     Ok(Json(StandardResponse::success(suggestions).with_request_id(request_id)))
 }
 
-async fn approve_suggestion(
+pub async fn approve_suggestion(
     headers: HeaderMap,
     Path(id): Path<i32>,
     Extension(engine): Extension<Arc<BongasEngine>>,
@@ -144,7 +124,7 @@ async fn approve_suggestion(
     Ok(Json(StandardResponse::success(serde_json::json!({ "message": "Suggestion approved and rule activated" })).with_request_id(request_id)))
 }
 
-async fn reject_suggestion(
+pub async fn reject_suggestion(
     headers: HeaderMap,
     Path(id): Path<i32>,
     Extension(engine): Extension<Arc<BongasEngine>>,
@@ -167,7 +147,7 @@ pub async fn get_resilience_metrics(
     Json(StandardResponse::success(snapshot).with_request_id(request_id))
 }
 
-async fn get_cache_stats(
+pub async fn get_cache_stats(
     headers: HeaderMap,
     Extension(engine): Extension<Arc<BongasEngine>>,
     Extension(request_id): Extension<RequestId>,
@@ -184,7 +164,7 @@ async fn get_cache_stats(
     }).with_request_id(request_id)))
 }
 
-async fn get_ingestion_metrics(
+pub async fn get_ingestion_metrics(
     headers: HeaderMap,
     Extension(engine): Extension<Arc<BongasEngine>>,
     Extension(request_id): Extension<RequestId>,
@@ -197,7 +177,7 @@ async fn get_ingestion_metrics(
     }).with_request_id(request_id)))
 }
 
-async fn get_ingestion_health(
+pub async fn get_ingestion_health(
     headers: HeaderMap,
     Extension(engine): Extension<Arc<BongasEngine>>,
     Extension(request_id): Extension<RequestId>,
@@ -218,7 +198,7 @@ async fn get_ingestion_health(
     }).with_request_id(request_id)))
 }
 
-async fn reload_models(
+pub async fn reload_models(
     headers: HeaderMap,
     Extension(engine): Extension<Arc<BongasEngine>>,
     Extension(request_id): Extension<RequestId>,
@@ -232,7 +212,7 @@ async fn reload_models(
     }).with_request_id(request_id)))
 }
 
-async fn get_model_stats(
+pub async fn get_model_stats(
     headers: HeaderMap,
     Extension(engine): Extension<Arc<BongasEngine>>,
     Extension(request_id): Extension<RequestId>,
@@ -245,7 +225,7 @@ async fn get_model_stats(
     }).with_request_id(request_id)))
 }
 
-async fn get_security_status(
+pub async fn get_security_status(
     headers: HeaderMap,
     Extension(engine): Extension<Arc<BongasEngine>>,
     Extension(request_id): Extension<RequestId>,

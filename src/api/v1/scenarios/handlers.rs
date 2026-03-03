@@ -2,8 +2,7 @@
 
 use axum::{
     extract::{Path, Extension},
-    routing::{get, post},
-    Json, Router,
+    Json,
     http::HeaderMap,
 };
 use std::sync::Arc;
@@ -16,15 +15,6 @@ use crate::error::AppError;
 use crate::db::models::ScenarioWithStrategy;
 use crate::api::models::scenario::{CreateScenarioRequest, UpdateScenarioRequest};
 use tower_http::request_id::RequestId;
-
-/// Mount all scenario management routes.
-pub fn routes() -> Router {
-    Router::new()
-        .route("/", post(create_scenario).get(list_scenarios))
-        .route("/{slug}", get(get_scenario).put(update_scenario).delete(delete_scenario))
-        .route("/{slug}/reload", post(reload_scenario))
-        .route("/reload-all", post(reload_all_scenarios))
-}
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -45,7 +35,7 @@ fn authorize_admin(headers: &HeaderMap, engine: &BongasEngine) -> Result<(), App
 // ─── Handlers ───────────────────────────────────────────────────────────────
 
 /// POST /api/v1/scenarios
-async fn create_scenario(
+pub async fn create_scenario(
     headers: HeaderMap,
     Extension(engine): Extension<Arc<BongasEngine>>,
     Extension(request_id): Extension<RequestId>,
@@ -65,7 +55,7 @@ async fn create_scenario(
 }
 
 /// GET /api/v1/scenarios
-async fn list_scenarios(
+pub async fn list_scenarios(
     headers: HeaderMap,
     Extension(engine): Extension<Arc<BongasEngine>>,
     Extension(request_id): Extension<RequestId>,
@@ -77,7 +67,7 @@ async fn list_scenarios(
 }
 
 /// GET /api/v1/scenarios/:slug
-async fn get_scenario(
+pub async fn get_scenario(
     headers: HeaderMap,
     Path(slug): Path<String>,
     Extension(engine): Extension<Arc<BongasEngine>>,
@@ -91,7 +81,7 @@ async fn get_scenario(
 }
 
 /// PUT /api/v1/scenarios/:slug
-async fn update_scenario(
+pub async fn update_scenario(
     headers: HeaderMap,
     Path(slug): Path<String>,
     Extension(engine): Extension<Arc<BongasEngine>>,
@@ -111,7 +101,7 @@ async fn update_scenario(
 }
 
 /// DELETE /api/v1/scenarios/:slug
-async fn delete_scenario(
+pub async fn delete_scenario(
     headers: HeaderMap,
     Path(slug): Path<String>,
     Extension(engine): Extension<Arc<BongasEngine>>,
@@ -129,7 +119,7 @@ async fn delete_scenario(
 }
 
 /// POST /api/v1/scenarios/:slug/reload
-async fn reload_scenario(
+pub async fn reload_scenario(
     headers: HeaderMap,
     Path(slug): Path<String>,
     Extension(engine): Extension<Arc<BongasEngine>>,
@@ -142,7 +132,7 @@ async fn reload_scenario(
 }
 
 /// POST /api/v1/scenarios/reload-all
-async fn reload_all_scenarios(
+pub async fn reload_all_scenarios(
     headers: HeaderMap,
     Extension(engine): Extension<Arc<BongasEngine>>,
     Extension(request_id): Extension<RequestId>,

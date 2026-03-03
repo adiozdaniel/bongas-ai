@@ -2,8 +2,6 @@
 
 use axum::{
     extract::{Extension, Path, Json, Query},
-    routing::get,
-    Router,
     http::HeaderMap,
 };
 use std::sync::Arc;
@@ -13,14 +11,6 @@ use tracing::{info, error};
 use crate::engine::BongasEngine;
 use crate::api::models::StandardResponse;
 use crate::error::{AppError, ScenarioError, CacheError};
-
-/// Mount all feature routes.
-pub fn routes() -> Router {
-    Router::new()
-        .route("/user/{user_id}", get(get_user_features))
-        .route("/item/{item_id}", get(get_item_features))
-        .route("/trending", get(get_trending_items))
-}
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -43,7 +33,7 @@ fn authorize_admin(headers: &HeaderMap, engine: &BongasEngine) -> Result<(), App
 use tower_http::request_id::RequestId;
 
 /// GET /api/v1/features/user/:user_id
-async fn get_user_features(
+pub async fn get_user_features(
     headers: HeaderMap,
     Extension(engine): Extension<Arc<BongasEngine>>,
     Path(user_id): Path<i32>,
@@ -70,7 +60,7 @@ async fn get_user_features(
 }
 
 /// GET /api/v1/features/item/:item_id
-async fn get_item_features(
+pub async fn get_item_features(
     headers: HeaderMap,
     Extension(engine): Extension<Arc<BongasEngine>>,
     Path(item_id): Path<i32>,
@@ -97,7 +87,7 @@ async fn get_item_features(
 }
 
 /// GET /api/v1/features/trending
-async fn get_trending_items(
+pub async fn get_trending_items(
     headers: HeaderMap,
     Extension(engine): Extension<Arc<BongasEngine>>,
     Query(params): Query<TrendingQuery>,

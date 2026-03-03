@@ -6,17 +6,15 @@ Welcome to the **Bongas-AI Symphony**. This hub is the central command center fo
 
 ---
 
-## 🎼 The Vision: "The Symphony Mesh"
+## 🎼 The Symphony Pillars
 
-Bongas-AI is not just a recommendation engine; it is a **Server-Driven UI (SDUI) Orchestration Platform**. It treats the entire user experience as a dynamic composition, where the server dictates both structure and content in a seamless, high-performance stream.
+The Bongas-AI API is structured into three functional pillars, ensuring high performance, security, and observability.
 
-| Module | Icon | Responsibility |
-| :--- | :---: | :--- |
-| **Orchestration** | ⚡ | Parallel Pipelined SSE Streaming |
-| **Identity** | 👤 | Zero-Touch Fingerprinting & Stitching |
-| **Pages** | 🎨 | Smart Layouts & SDUI Canvas |
-| **Engine** | ⚙️ | High-Concurrency Scenario Execution |
-| **ML/Brain** | 🧠 | Predictive Ranking & Content Intelligence |
+| Pillar | Focus | Functional Responsibility |
+| :--- | :--- | :--- |
+| **🌍 THE STAGE** | Public Discovery | Genesis Initiation, Page Orchestration, Frictionless Ingestion. |
+| **🔐 THE BACKSTAGE** | Admin Control | SDUI Layout Management, ML Strategy, Atomic Reloading. |
+| **💓 THE PULSE** | Operations | Health Probes, Resilience Metrics, Cache Observability. |
 
 ---
 
@@ -24,23 +22,23 @@ Bongas-AI is not just a recommendation engine; it is a **Server-Driven UI (SDUI)
 
 ### 1. 🏗️ [Core Architecture](./architecture/SYMPHONY.md)
 
-The high-level philosophy of Bongas-AI. Understand why we moved from static endpoints to a dynamic Symphony Mesh.
+The high-level philosophy of Bongas-AI. Understand the transition from a simple engine to a **Dynamic Discovery Graph**.
 
 ### 2. ⚡ [Streaming & Orchestration](./architecture/ORCHESTRATION.md)
 
-Deep dive into our Parallel Pipelined execution model. How we hide 500ms of ML latency to deliver 50ms perceived performance.
+Deep dive into the **Parallel Pipelined** execution model and the SSE state machine.
 
 ### 3. 👤 [Identity & Context](./architecture/IDENTITY.md)
 
-The "Zero-Touch" approach to visitor tracking, device fingerprinting, and identity stitching.
+The **Zero-Touch** approach to visitor tracking, device fingerprinting, and identity stitching.
 
 ### 4. 🎨 [Smart Pages & SDUI](./architecture/PAGES.md)
 
-How admins configure "living" pages that adapt to device type, time of day, and user behavior.
+How the **Symphony Resolver** dictates UI structure based on user context and engagement.
 
 ### 5. 📖 [API Reference](./api/REFERENCE.md)
 
-The unified contract. One endpoint to rule them all: `/page/{slug}`.
+The unified contract for the Stage, Backstage, and Pulse gateways.
 
 ---
 
