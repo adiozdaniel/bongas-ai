@@ -122,7 +122,7 @@ pub async fn reload_engine_atomic(
     let scenario_count = engine.reload_scenarios().await?;
     
     // 2. Reload Page Layouts & Nav Mesh
-    let page_count = engine.pages.load_all_active().await?;
+    let page_count = engine.governance.orchestration.load_all_active().await?;
     
     // 3. Reload ML Models
     let model_count = engine.reload_models().await?;

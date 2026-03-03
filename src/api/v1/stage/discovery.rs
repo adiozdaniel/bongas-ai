@@ -19,7 +19,7 @@ use crate::api::models::{ContextParams, StandardResponse};
 use crate::api::models::recommendation::{FeedRow, SymphonyNavigation, RecommendationItem};
 use crate::api::middleware::service::{extract_request_id, extract_request_id_from_headers};
 use crate::api::middleware::identity::IdentityContext;
-use crate::pages::types::PageCompositionItem;
+use crate::engine::governance::orchestration::types::PageCompositionItem;
 use crate::api::v1::stage::service::execute_and_map;
 
 // ─── Genesis Orchestrator ──────────────────────────────────────────────────
@@ -45,14 +45,14 @@ pub async fn genesis(
     let identity_key = cp_base.visitor_id.as_deref().map(|s| s.to_string());
 
     // 1. Resolve Navigation Mesh (Personalized)
-    let nav_mesh = engine.pages.get_nav_mesh_contextual(identity_key.as_deref()).await;
+    let nav_mesh = engine.governance.orchestration.get_nav_mesh_contextual(identity_key.as_deref()).await;
     
     // 2. Resolve Landing Page
-    let landing_layout = engine.pages.get_landing_page_contextual(
+    let landing_layout: Option<crate::engine::governance::orchestration::types::PageLayout> = engine.governance.orchestration.get_landing_page_contextual(
         cp_base.device_type.as_deref(),
         cp_base.maturity_rating.as_deref(),
         identity_key.as_deref()
-    ).await.unwrap_or(None);
+    ).await.unwrap_or_else(|_| None);
 
     let (composition, landing_slug) = match landing_layout {
         Some(l) => (l.composition, l.page_slug.0),
@@ -66,7 +66,7 @@ pub async fn genesis(
 
     // Slice for first batch (Genesis always starts at 0)
     let batch_size = 5;
-    let initial_batch: Vec<_> = composition.iter().take(batch_size).cloned().collect();
+    let initial_batch: Vec<PageCompositionItem> = composition.iter().take(batch_size).cloned().collect();
     let total_count = composition.len();
 
     // 3. Assemble Genesis Stream
@@ -163,14 +163,14 @@ pub async fn get_page_recommendations(
     let batch_size = page_params.batch.unwrap_or(5);
 
     // 1. Resolve Layout
-    let layout_res = engine.pages.get_layout_contextual(
+    let layout_res = engine.governance.orchestration.get_layout_contextual(
         &page_slug, 
         cp_base.device_type.as_deref(), 
         cp_base.maturity_rating.as_deref(),
         identity_key.as_deref()
     ).await;
     
-    let composition = match layout_res {
+    let composition: Vec<PageCompositionItem> = match layout_res {
         Ok(Some(layout)) => layout.composition,
         _ => vec![]
     };
@@ -305,7 +305,7 @@ async fn execute_row(
     
     // Safety check
     let is_safe = {
-        let s_map = engine.scenarios.scenarios.read().await;
+        let s_map: tokio::sync::RwLockReadGuard<'_, std::collections::HashMap<String, crate::engine::ScenarioDefinition>> = engine.governance.scenarios.scenarios.read().await;
         s_map.get(&slug).map(|s| {
             if s.maturity_rating == "18" {
                 cp.maturity_rating.as_deref() == Some("18")
@@ -329,10 +329,10 @@ async fn execute_row(
     ).await;
 
     if result.is_err() {
-        if let Some(f_slug) = fallback {
+        if let Some(ref f_slug) = fallback {
             result = execute_and_map(
                 engine.clone(),
-                &f_slug,
+                f_slug,
                 user_id,
                 Some(cp),
                 serde_json::json!({}),
@@ -346,7 +346,7 @@ async fn execute_row(
     match result {
         Ok(items) => {
             let title = {
-                let s_map = engine.scenarios.scenarios.read().await;
+                let s_map: tokio::sync::RwLockReadGuard<'_, std::collections::HashMap<String, crate::engine::ScenarioDefinition>> = engine.governance.scenarios.scenarios.read().await;
                 s_map.get(&slug).map(|s| s.name.clone()).unwrap_or_else(|| slug.replace('_', " "))
             };
             let row = FeedRow {

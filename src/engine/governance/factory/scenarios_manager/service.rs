@@ -9,10 +9,10 @@ use arc_swap::ArcSwap;
 use tracing::{info, warn};
 
 use crate::pipeline::{ExecutablePipeline, executor::PipelineExecutor};
-use crate::engine::engine::types::ScenarioDefinition;
-use crate::engine::scenario_factory::ScenarioFactory;
-use crate::engine::staging_manager::StagingManager;
-use crate::engine::strategy_resolver::StrategyResolver;
+use crate::engine::coordination::ScenarioDefinition;
+use crate::engine::governance::factory::scenario_factory::ScenarioFactory;
+use crate::engine::execution::cache::staging_manager::StagingManager;
+use crate::engine::governance::strategy::resolver::StrategyResolver;
 
 pub struct ScenariosManager {
     pub(crate) scenarios: Arc<RwLock<HashMap<String, ScenarioDefinition>>>,
@@ -61,8 +61,8 @@ impl ScenariosManager {
             new_scenarios.retain(|k, _| keys.contains(k));
         }
         
-        let mut rule_map = self.scenario_factory.load_all_rules().await?;
-        let mut linked_map = HashMap::new();
+        let mut rule_map: HashMap<String, Vec<crate::engine::governance::strategy::resolver::ActiveRule>> = self.scenario_factory.load_all_rules().await?;
+        let mut linked_map: HashMap<String, Arc<ExecutablePipeline>> = HashMap::new();
 
         // Link pipelines
         for scenario in new_scenarios.values_mut() {
@@ -82,30 +82,38 @@ impl ScenariosManager {
         }
 
         // Atomic Updates
-        let mut scenarios = self.scenarios.write().await;
-        scenarios.clear();
-        scenarios.extend(new_scenarios);
+        {
+            let mut scenarios: tokio::sync::RwLockWriteGuard<'_, HashMap<String, ScenarioDefinition>> = self.scenarios.write().await;
+            scenarios.clear();
+            scenarios.extend(new_scenarios);
+        }
 
         self.linked_scenarios.store(Arc::new(linked_map));
         self.strategy_resolver.update_rules(rule_map);
 
-        Ok(scenarios.len())
+        let count = {
+            let scenarios: tokio::sync::RwLockReadGuard<'_, HashMap<String, ScenarioDefinition>> = self.scenarios.read().await;
+            scenarios.len()
+        };
+        Ok(count)
     }
 
     pub async fn reload_scenario(&self, slug: &str) -> Result<bool> {
         if let Some(mut new_scenario) = self.scenario_factory.load_one_from_db(slug).await? {
-            let mut scenarios = self.scenarios.write().await;
+            {
+                let mut scenarios: tokio::sync::RwLockWriteGuard<'_, HashMap<String, ScenarioDefinition>> = self.scenarios.write().await;
 
-            if let Ok(executable) = self.pipeline_executor.link(&new_scenario.pipeline) {
-                let arc_executable = Arc::new(executable);
-                new_scenario.linked_pipeline = Some(arc_executable.clone());
-                
-                let mut linked_map = (**self.linked_scenarios.load()).clone();
-                linked_map.insert(slug.to_string(), arc_executable);
-                self.linked_scenarios.store(Arc::new(linked_map));
+                if let Ok(executable) = self.pipeline_executor.link(&new_scenario.pipeline) {
+                    let arc_executable = Arc::new(executable);
+                    new_scenario.linked_pipeline = Some(arc_executable.clone());
+                    
+                    let mut linked_map: HashMap<String, Arc<ExecutablePipeline>> = (**self.linked_scenarios.load()).clone();
+                    linked_map.insert(slug.to_string(), arc_executable);
+                    self.linked_scenarios.store(Arc::new(linked_map));
+                }
+
+                scenarios.insert(slug.to_string(), new_scenario);
             }
-
-            scenarios.insert(slug.to_string(), new_scenario);
             Ok(true)
         } else {
             Ok(false)
@@ -113,11 +121,13 @@ impl ScenariosManager {
     }
 
     pub async fn remove_scenario(&self, slug: &str) {
-        let mut scenarios = self.scenarios.write().await;
-        if scenarios.remove(slug).is_some() {
-            let mut linked_map = (**self.linked_scenarios.load()).clone();
-            linked_map.remove(slug);
-            self.linked_scenarios.store(Arc::new(linked_map));
+        {
+            let mut scenarios: tokio::sync::RwLockWriteGuard<'_, HashMap<String, ScenarioDefinition>> = self.scenarios.write().await;
+            if scenarios.remove(slug).is_some() {
+                let mut linked_map: HashMap<String, Arc<ExecutablePipeline>> = (**self.linked_scenarios.load()).clone();
+                linked_map.remove(slug);
+                self.linked_scenarios.store(Arc::new(linked_map));
+            }
         }
     }
 

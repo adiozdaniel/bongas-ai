@@ -14,7 +14,7 @@ use tracing::{info, warn, error};
 
 use crate::db::ResilientPool;
 use crate::db::repositories::interaction_repository::InteractionRepository;
-use crate::engine::staleness_engine::{StalenessEngine, UserEvent};
+use crate::engine::intelligence::monitoring::staleness_engine::{StalenessEngine, UserEvent};
 use crate::resilience::ResilienceMetricsCollector;
 
 use crate::ingestion::types::UserActivity;
@@ -36,7 +36,7 @@ pub struct ClickHouseInteraction {
 }
 
 use tokio::task::JoinSet;
-use crate::pages::PagesManager;
+use crate::engine::governance::orchestration::PagesManager;
 
 /// Processes activities from any source and routes them to DB + staleness engine + PagesManager.
 pub struct ActivityProcessor {

@@ -7,7 +7,7 @@ use crate::engine::BongasEngine;
 impl BongasEngine {
     /// Identify low-performing scenarios based on ClickThrough Rate (CTR) from ClickHouse.
     pub async fn get_low_performing_scenarios(&self) -> Vec<String> {
-        if let Some(ref ch) = self.execution.clickhouse {
+        if let Some(ref ch) = self.execution.manager.clickhouse {
             info!("Querying ClickHouse for scenario performance...");
             
             let query = r#"
@@ -41,7 +41,7 @@ impl BongasEngine {
     /// Start cache warming background task
     pub fn start_cache_warming(self: Arc<Self>, warm_scenarios: Vec<String>, interval: std::time::Duration) {
         let scenarios_clone = warm_scenarios.clone();
-        let cache_manager = self.cache_manager.clone();
+        let cache_manager = self.execution.manager.cache_manager.clone();
         let shutdown_rx = self.shutdown_tx.subscribe();
         
         let cache_warmer = Arc::new(crate::cache::warming::CacheWarmer::new(

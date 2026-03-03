@@ -37,7 +37,7 @@ pub async fn execute_and_map(
     
     // 1. Get Scenario display limit
     let display_limit = {
-        let scenarios = engine_ref.scenarios.scenarios.read().await;
+        let scenarios: tokio::sync::RwLockReadGuard<'_, std::collections::HashMap<String, crate::engine::ScenarioDefinition>> = engine_ref.governance.scenarios.scenarios.read().await;
         scenarios.get(scenario_slug)
             .map(|s| s.initial_display_limit as usize)
             .unwrap_or(5)
@@ -97,7 +97,7 @@ pub async fn execute_and_map(
         }).collect();
 
         // Ingest activities asynchronously - Tied to Request ID
-        let engine_clone_for_ingestion = engine_ref.ingestion_manager.clone();
+        let engine_clone_for_ingestion = engine_ref.ingestion.clone();
         let rid_ingest = request_id.clone();
         tokio::spawn(async move {
             let manager = engine_clone_for_ingestion.read().await;
@@ -115,7 +115,7 @@ pub async fn execute_and_map(
         let pid_clone = profile_id.clone();
         
         tokio::spawn(async move {
-            let manager = engine_clone_for_synergy.ingestion_manager.read().await;
+            let manager = engine_clone_for_synergy.ingestion.read().await;
             manager.broadcast_recommendations(uid, pid_clone, slug, item_ids).await;
         }.instrument(info_span!("async_ecosystem_synergy", request_id = %rid_synergy)));
     }

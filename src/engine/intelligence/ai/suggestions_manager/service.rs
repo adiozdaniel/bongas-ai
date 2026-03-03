@@ -9,7 +9,7 @@ use crate::pipeline::context::ExecutionContext;
 impl BongasEngine {
     /// List all pending rule suggestions from the Analytics Sidecar.
     pub async fn list_suggestions(&self) -> Result<Vec<serde_json::Value>> {
-        let rows: Vec<(i32, String, String, serde_json::Value, Option<String>, Option<f64>, String, chrono::DateTime<chrono::Utc>)> = self.scenarios.scenario_factory.repo().pool().execute(|pool| async move {
+        let rows: Vec<(i32, String, String, serde_json::Value, Option<String>, Option<f64>, String, chrono::DateTime<chrono::Utc>)> = self.governance.scenarios.scenario_factory.repo().pool().execute(|pool| async move {
             sqlx::query_as::<_, (i32, String, String, serde_json::Value, Option<String>, Option<f64>, String, chrono::DateTime<chrono::Utc>)>(
                 r#"
                 SELECT 
@@ -46,7 +46,7 @@ impl BongasEngine {
     pub async fn approve_suggestion(&self, suggestion_id: i32) -> Result<()> {
         info!(id = suggestion_id, "Approving rule suggestion...");
 
-        self.scenarios.scenario_factory.repo().pool().execute(move |pool| async move {
+        self.governance.scenarios.scenario_factory.repo().pool().execute(move |pool| async move {
             let mut tx = pool.begin().await?;
 
             let suggestion: (i32, i32, serde_json::Value) = sqlx::query_as(
@@ -86,7 +86,7 @@ impl BongasEngine {
     pub async fn simulate_suggestion(&self, suggestion_id: i32) -> Result<serde_json::Value> {
         info!(id = suggestion_id, "Simulating rule suggestion impact...");
 
-        let (scenario_slug, suggested_p_id, condition): (String, i32, serde_json::Value) = self.scenarios.scenario_factory.repo().pool().execute(move |pool| async move {
+        let (scenario_slug, suggested_p_id, condition): (String, i32, serde_json::Value) = self.governance.scenarios.scenario_factory.repo().pool().execute(move |pool| async move {
             sqlx::query_as(
                 r#"
                 SELECT s.slug, rs.suggested_pipeline_id, rs.suggested_condition 
@@ -100,18 +100,18 @@ impl BongasEngine {
             .await
         }).await?;
 
-        let p_def_json: serde_json::Value = self.scenarios.scenario_factory.repo().pool().execute(move |pool| async move {
+        let p_def_json: serde_json::Value = self.governance.scenarios.scenario_factory.repo().pool().execute(move |pool| async move {
             sqlx::query_scalar("SELECT definition FROM pipelines WHERE id = $1")
                 .bind(suggested_p_id)
                 .fetch_one(&pool)
                 .await
         }).await?;
         
-        let suggested_pipeline = Arc::new(self.execution.pipeline_executor.link(&serde_json::from_value::<crate::db::models::PipelineDefinition>(p_def_json)?)?);
-        let control_pipeline = self.scenarios.linked_scenarios.load().get(&scenario_slug).cloned();
+        let suggested_pipeline = Arc::new(self.execution.manager.pipeline_executor.link(&serde_json::from_value::<crate::db::models::PipelineDefinition>(p_def_json)?)?);
+        let control_pipeline = self.governance.scenarios.linked_scenarios.load().get(&scenario_slug).cloned();
 
-        let sample_users: Vec<i32> = self.scenarios.scenario_factory.repo().pool().execute(|pool| async move {
-            sqlx::query_scalar("SELECT DISTINCT user_id FROM user_interactions LIMIT 5")
+        let sample_users: Vec<i32> = self.governance.scenarios.scenario_factory.repo().pool().execute(|pool| async move {
+            sqlx::query_scalar::<_, i32>("SELECT DISTINCT user_id FROM user_interactions LIMIT 5")
                 .fetch_all(&pool)
                 .await
         }).await.unwrap_or_else(|_| vec![1, 2, 3]);
@@ -122,14 +122,14 @@ impl BongasEngine {
             let request_id = uuid::Uuid::new_v4().to_string();
             let mut context = ExecutionContext::new(
                 Some(uid),
-                self.execution.cache_manager.clone(),
-                self.execution.model_loader.clone(),
-                self.execution.item_feature_service.clone(),
-                self.execution.feature_store.clone(),
+                self.execution.manager.cache_manager.clone(),
+                self.execution.manager.model_loader.clone(),
+                self.execution.manager.item_feature_service.clone(),
+                self.execution.manager.feature_store.clone(),
                 request_id,
-            ).with_hot_registry(self.execution.hot_registry.clone());
+            ).with_hot_registry(self.execution.manager.hot_registry.clone());
 
-            if let Some(ref ch) = self.execution.clickhouse {
+            if let Some(ref ch) = self.execution.manager.clickhouse {
                 context = context.with_clickhouse_client(ch.clone());
             }
 
@@ -146,12 +146,22 @@ impl BongasEngine {
             }
 
             let control_items = if let Some(ref cp) = control_pipeline {
-                self.execution.pipeline_executor.execute_linked(cp, &context).await?
+                self.execution.manager.pipeline_executor.execute_linked(cp, &context).await?.into_iter().map(|item| crate::engine::coordination::service::RecommendationItem {
+                    item_id: item.item_id,
+                    score: item.score,
+                    metadata: item.metadata,
+                    reasoning: item.reasoning,
+                }).collect()
             } else {
                 Vec::new()
             };
             
-            let suggested_items = self.execution.pipeline_executor.execute_linked(&suggested_pipeline, &context).await?;
+            let suggested_items: Vec<crate::engine::coordination::service::RecommendationItem> = self.execution.manager.pipeline_executor.execute_linked(&suggested_pipeline, &context).await?.into_iter().map(|item| crate::engine::coordination::service::RecommendationItem {
+                item_id: item.item_id,
+                score: item.score,
+                metadata: item.metadata,
+                reasoning: item.reasoning,
+            }).collect();
 
             results.push(serde_json::json!({
                 "user_id": uid,
@@ -190,7 +200,7 @@ impl BongasEngine {
             }
         };
 
-        let suggested_pipeline_slug = self.scenarios.scenario_factory.repo().pool().execute(|pool| async move {
+        let suggested_pipeline_slug = self.governance.scenarios.scenario_factory.repo().pool().execute(|pool| async move {
             let query_lower = query.to_lowercase();
             let target_slug = if query_lower.contains("diverse") || query_lower.contains("variety") {
                 "discovery"
@@ -213,7 +223,7 @@ impl BongasEngine {
             reasoning += " (Optimized for Catalog Coverage)";
         }
 
-        let suggestion_id: i32 = self.scenarios.scenario_factory.repo().pool().execute(move |pool| {
+        let suggestion_id: i32 = self.governance.scenarios.scenario_factory.repo().pool().execute(move |pool| {
             let p_slug = suggested_pipeline_slug.clone();
             let cond = condition.clone();
             let reason = reasoning.clone();
@@ -250,7 +260,7 @@ impl BongasEngine {
 
     /// Reject a rule suggestion.
     pub async fn reject_suggestion(&self, suggestion_id: i32) -> Result<()> {
-        self.scenarios.scenario_factory.repo().pool().execute(move |pool| async move {
+        self.governance.scenarios.scenario_factory.repo().pool().execute(move |pool| async move {
             sqlx::query("UPDATE rule_suggestions SET status = 'rejected' WHERE id = $1")
                 .bind(suggestion_id)
                 .execute(&pool)

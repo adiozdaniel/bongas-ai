@@ -6,9 +6,9 @@ use std::sync::Arc;
 use tracing::warn;
 use crate::pipeline::context::ExecutionContext;
 use crate::pipeline::executor::PipelineExecutor;
-use crate::engine::staging_manager::StagingManager;
-use crate::engine::strategy_resolver::StrategyResolver;
-use crate::engine::engine::types::{RecommendationItem, ScenarioExecutionStats, ScenarioDefinition};
+use crate::engine::execution::cache::staging_manager::StagingManager;
+use crate::engine::governance::strategy::resolver::StrategyResolver;
+use crate::engine::coordination::{RecommendationItem, ScenarioExecutionStats, ScenarioDefinition};
 use crate::cache::CacheManager;
 use crate::ml::model_loader::ModelLoader;
 use crate::db::repositories::item_feature_service::ItemFeatureService;
@@ -147,7 +147,7 @@ impl ExecutionManager {
         });
         
         let scenario = {
-            let scenarios = self.scenarios.read().await;
+            let scenarios: tokio::sync::RwLockReadGuard<'_, HashMap<String, ScenarioDefinition>> = self.scenarios.read().await;
             scenarios.get(scenario_slug)
                 .cloned()
                 .ok_or_else(|| AppError::Scenario(ScenarioError::NotFound(scenario_slug.to_string())))?
@@ -156,7 +156,7 @@ impl ExecutionManager {
         if let Some(scope_obj) = scenario.scope.as_object() {
             if let Some(allowed_regions) = scope_obj.get("regions").and_then(|v| v.as_array()) {
                 let user_region = context_params.get("region").and_then(|v| v.as_str()).unwrap_or("UNKNOWN");
-                if !allowed_regions.iter().any(|r| r.as_str() == Some(user_region)) {
+                if !allowed_regions.iter().any(|r: &serde_json::Value| r.as_str() == Some(user_region)) {
                     warn!(scenario = %scenario_slug, user_region, "Scenario scope mismatch: Region not allowed");
                     return Err(AppError::Scenario(ScenarioError::InvalidConfig(format!("Scenario not available in region: {}", user_region))));
                 }
@@ -189,10 +189,11 @@ impl ExecutionManager {
             let entry = self.request_consolidation.entry(consolidation_key.clone());
             match entry {
                 dashmap::mapref::entry::Entry::Occupied(ref e) => {
-                    Some(e.get().subscribe())
+                    let tx: Arc<tokio::sync::broadcast::Sender<Vec<RecommendationItem>>> = e.get().clone();
+                    Some(tx.subscribe())
                 }
                 dashmap::mapref::entry::Entry::Vacant(e) => {
-                    let (tx, _) = tokio::sync::broadcast::channel(1);
+                    let (tx, _) = tokio::sync::broadcast::channel::<Vec<RecommendationItem>>(1);
                     e.insert(Arc::new(tx));
                     None
                 }

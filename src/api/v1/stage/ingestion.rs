@@ -59,7 +59,7 @@ pub async fn ingest_activities(
 
         let engine_inner = engine.clone();
         spawn(async move {
-            let manager = engine_inner.ingestion_manager.read().await;
+            let manager = engine_inner.ingestion.read().await;
             manager.api_source().ingest(activity).await;
         });
     }

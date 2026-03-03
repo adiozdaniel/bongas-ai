@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 use crate::pipeline::types::PipelineStage;
-use crate::scenarios::dynamic::stages as dynamic_stages;
+use crate::engine::governance::strategy::dynamic::stages as dynamic_stages;
 
 // Category 1: Data Fetching
 use crate::pipeline::stages::fetch::fetch_clickhouse_watch_progress::FetchClickHouseWatchProgressStage;

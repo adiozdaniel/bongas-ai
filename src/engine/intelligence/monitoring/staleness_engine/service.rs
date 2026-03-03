@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{info, warn, debug};
 
-use crate::engine::staging_manager::StagingManager;
+use crate::engine::execution::cache::staging_manager::StagingManager;
 use crate::db::repositories::item_feature_service::ItemFeatureService;
 
 pub struct StalenessEngine {

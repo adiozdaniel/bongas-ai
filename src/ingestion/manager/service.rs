@@ -8,7 +8,7 @@ use tracing::{info, warn};
 
 use crate::circuit_breaker::CircuitBreakerRegistry;
 use crate::db::ResilientPool;
-use crate::engine::staleness_engine::StalenessEngine;
+use crate::engine::intelligence::monitoring::staleness_engine::StalenessEngine;
 use crate::resilience::ResilienceMetricsCollector;
 
 use crate::ingestion::types::{ActivitySource, UserActivity};
@@ -16,7 +16,7 @@ use crate::ingestion::processor::ActivityProcessor;
 use crate::ingestion::metrics::{IngestionMetrics, IngestionHealth};
 use crate::ingestion::sources::{KafkaSource, ApiSource, ClickHouseSource};
 use crate::ingestion::producer::RecommendationProducer;
-use crate::pages::PagesManager;
+use crate::engine::governance::orchestration::PagesManager;
 
 /// Channel buffer size for the activity pipeline.
 const ACTIVITY_CHANNEL_BUFFER: usize = 10_000;

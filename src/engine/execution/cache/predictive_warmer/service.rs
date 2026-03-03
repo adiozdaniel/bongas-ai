@@ -5,7 +5,7 @@ use tokio::sync::Semaphore;
 use tracing::{info, warn, debug};
 use chrono::Timelike;
 
-use crate::engine::engine::BongasEngine;
+use crate::engine::BongasEngine;
 
 /// Phase 6: Predictive Cache Warmer
 /// 
@@ -70,7 +70,7 @@ impl PredictiveWarmer {
         ));
 
         let interaction_repo = crate::db::repositories::interaction_repository::InteractionRepository::new(
-            self.engine.execution.item_feature_service.pool().clone(),
+            self.engine.execution.manager.item_feature_service.pool().clone(),
             resilience_metrics,
         );
 

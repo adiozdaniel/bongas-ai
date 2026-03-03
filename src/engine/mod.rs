@@ -1,22 +1,14 @@
 //! Engine layer — central coordination, execution, and intelligence.
+//! The Bongas-AI Symphony: Functional pillars for Enterprise-Grade Discovery.
 
-pub mod engine;
-pub mod execution_manager;
-pub mod scenarios_manager;
-pub mod suggestions_manager;
-pub mod workers_manager;
-pub mod staging_manager;
-pub mod staleness_engine;
-pub mod scenario_factory;
-pub mod predictive_warmer;
-pub mod analytics_sidecar;
-pub mod hive_mind;
-pub mod strategy_resolver;
-pub mod context;
+pub mod execution;
+pub mod governance;
+pub mod intelligence;
+pub mod coordination;
 pub mod config;
-pub mod runtime;
 
-pub use engine::{BongasEngine, ScenarioDefinition, RecommendationItem, ScenarioExecutionStats, SecurityStatus};
-pub use scenarios_manager::ScenariosManager;
-pub use execution_manager::ExecutionManager;
-pub use runtime::BongasRuntime;
+// Re-export key types for public API stability and convenience
+pub use coordination::service::{BongasEngine, ScenarioDefinition, RecommendationItem, ScenarioExecutionStats, SecurityStatus};
+pub use execution::core::execution_manager::ExecutionManager;
+pub use execution::runtime::runtime::BongasRuntime;
+pub use governance::factory::scenarios_manager::ScenariosManager;

@@ -34,7 +34,7 @@ pub async fn readiness_check(
     let request_id = extract_request_id_from_headers(&headers);
     
     // Check if Postgres is reachable via the pool
-    let is_db_ready = engine.execution.item_feature_service.pool().check_health().await;
+    let is_db_ready = engine.execution.manager.item_feature_service.pool().check_health().await;
     
     let status = if is_db_ready { "ready" } else { "not_ready" };
 

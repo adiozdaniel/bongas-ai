@@ -93,7 +93,7 @@ impl AnalyticsSidecar {
 
             // 1. Analyze Catalog Coverage (Blindness)
             // Fetch total active items from Postgres first
-            let total_active_items = engine.execution.item_feature_service.get_active_item_count().await?;
+            let total_active_items = engine.execution.manager.item_feature_service.get_active_item_count().await?;
             let blindness = self.get_catalog_blindness(total_active_items).await?;
             if blindness > 0.6 { 
                 self.suggest_discovery_boost(&target_slug, blindness).await?;

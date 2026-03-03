@@ -8,7 +8,7 @@ use tracing::info;
 use dashmap::DashMap;
 use std::collections::HashMap;
 
-use crate::pages::types::{PageLayout, PageSlug, SavePageLayoutRequest, PageCompositionItem, NavType};
+use crate::engine::governance::orchestration::types::{PageLayout, PageSlug, SavePageLayoutRequest, PageCompositionItem, NavType};
 use crate::db::repositories::page_layout_repository::PageLayoutRepository;
 use crate::error::AppResult;
 use crate::ingestion::types::UserActivity;
@@ -125,7 +125,7 @@ impl PagesManager {
 
         // Atomic Swaps
         {
-            let mut cache = self.cache.write().await;
+            let mut cache: tokio::sync::RwLockWriteGuard<'_, lru::LruCache<(PageSlug, Option<String>, Option<String>), PageLayout>> = self.cache.write().await;
             *cache = page_cache;
         }
         {
@@ -171,7 +171,7 @@ impl PagesManager {
         let maturity = maturity_rating.unwrap_or("all");
 
         let landing = {
-            let landings = self.landing_pages.read().await;
+            let landings: tokio::sync::RwLockReadGuard<'_, std::collections::HashMap<(String, String), PageLayout>> = self.landing_pages.read().await;
             
             // Hierarchical resolution:
             // 1. Exact match
@@ -205,7 +205,7 @@ impl PagesManager {
 
         // 1. Try cache first
         let layout_from_cache = {
-            let mut cache = self.cache.write().await;
+            let mut cache: tokio::sync::RwLockWriteGuard<'_, lru::LruCache<(PageSlug, Option<String>, Option<String>), PageLayout>> = self.cache.write().await;
             cache.get(&(page_slug.clone(), device.clone(), maturity.clone())).cloned()
         };
 
@@ -235,7 +235,7 @@ impl PagesManager {
                     updated_at: db_layout.updated_at,
                 };
 
-                let mut cache = self.cache.write().await;
+                let mut cache: tokio::sync::RwLockWriteGuard<'_, lru::LruCache<(PageSlug, Option<String>, Option<String>), PageLayout>> = self.cache.write().await;
                 cache.put((page_slug, device, maturity), resolved.clone());
                 Some(resolved)
             } else {
@@ -285,8 +285,8 @@ impl PagesManager {
     }
 
     pub async fn invalidate_cache(&self, slug: &str) {
-        let mut cache = self.cache.write().await;
-        let keys: Vec<_> = cache.iter().filter(|((s, _, _), _)| s.0 == slug).map(|(k, _)| k.clone()).collect();
+        let mut cache: tokio::sync::RwLockWriteGuard<'_, lru::LruCache<(PageSlug, Option<String>, Option<String>), PageLayout>> = self.cache.write().await;
+        let keys: Vec<(PageSlug, Option<String>, Option<String>)> = cache.iter().filter(|((s, _, _), _)| s.0 == slug).map(|(k, _)| k.clone()).collect();
         for k in keys { cache.pop(&k); }
     }
 
