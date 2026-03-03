@@ -9,13 +9,17 @@ The Stage is the primary initiation point for client applications. It is optimiz
 ## 🏗️ Functional Domains
 
 ### 🛰️ Discovery (`discovery.rs`)
-Responsible for the **Genesis** entry point and **Page Orchestration**. 
+
+Responsible for the **Genesis** entry point and **Page Orchestration**.
+
 - **Genesis**: A single root call that resolves the user's personalized Navigation Mesh and initiates the SSE stream for the landing page.
 - **Batch-Streaming**: Delivers content rows in server-dictated batches to ensure memory safety on mobile devices.
 - **Continuation**: Emits `continuation` events with pre-calculated URLs for seamless deep-scrolling.
 
 ### 🧪 Ingestion (`ingestion.rs`)
+
 The frictionless feedback loop for "The Brain."
+
 - **Real-Time Tracking**: Receives clicks, impressions, and watch-time events.
 - **Context Enrichment**: Automatically attaches device fingerprints and visitor IDs to incoming events before passing them to the ingestion pipeline.
 

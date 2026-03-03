@@ -9,12 +9,16 @@ The Pulse provides real-time visibility into the health and performance of the B
 ## 🏗️ Functional Domains
 
 ### 🏥 Health (`health.rs`)
+
 Standardized probes for container orchestration (Kubernetes).
+
 - **Liveness**: Confirms the process is running.
 - **Readiness**: Confirms all external dependencies (Postgres, Redis, ClickHouse) are reachable and the engine is hydrated.
 
 ### 📊 Metrics (`metrics.rs`)
+
 Deep observability into the engine's resilience and throughput.
+
 - **Registry Snapshot**: Real-time state of all circuit breakers and bulkheads.
 - **Cache Observability**: L1/L2 hit ratios and staleness invalidation stats.
 - **Ingestion Health**: Monitoring of Kafka consumer lag and ClickHouse backfill velocity.

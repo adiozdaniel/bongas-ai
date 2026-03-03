@@ -9,17 +9,23 @@ The Backstage is the command center for the Bongas-AI engine. It provides high-i
 ## 🏗️ Functional Domains
 
 ### 🎨 Orchestration (`orchestration.rs`)
+
 Management of the **Navigation Mesh** and **SDUI Layouts**.
+
 - **Layout CRUD**: Create and update structured compositions with `row_type` and `row_style`.
 - **Targeting Rules**: Configure `is_landing` flags and contextual overrides per device/maturity.
 
 ### 🧠 Strategy (`strategy.rs`)
+
 Governance of **Scenarios** and **ML Pipelines**.
+
 - **Pipeline Recipes**: Define the selected stages, rankers, and diversity filters for each scenario.
 - **Safety Ceilings**: Enforce KFCB-compliant maturity ratings at the scenario level.
 
 ### 🤖 Intelligence (`intelligence.rs`)
+
 Control over the **Intelligent Brain** and feature store.
+
 - **ML Suggestions**: Review and approve AI-generated rule optimizations.
 - **Chatbot Interface**: Query and modify engine state using natural language.
 
