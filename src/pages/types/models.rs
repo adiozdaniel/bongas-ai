@@ -13,6 +13,24 @@ impl std::fmt::Display for PageSlug {
     }
 }
 
+/// Types of navigation categories for pages.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum NavType {
+    /// Always visible in the primary global navigation.
+    Main,
+    /// Contextual hubs ranked by user engagement.
+    Sub,
+    /// Accessible only via deep-link or specific actions.
+    Hidden,
+}
+
+impl Default for NavType {
+    fn default() -> Self {
+        Self::Hidden
+    }
+}
+
 /// A single row definition within a page composition.
 /// dictating both content (scenario) and presentation (UI metadata).
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -32,9 +50,14 @@ pub struct PageCompositionItem {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PageLayout {
     pub page_slug: PageSlug,
-    /// Targeted device type (e.g., "mobile", "tv", "default").
+    
+    // Navigation Metadata
+    pub is_landing: bool,
+    pub nav_type: NavType,
+
+    /// Targeted device type (e.g., "mobile", "tv", "all").
     pub device_type: Option<String>,
-    /// Targeted maturity rating (e.g., "G", "18+").
+    /// Targeted maturity rating (e.g., "GE", "18").
     pub maturity_rating: Option<String>,
     /// Priority for resolver selection (higher is better).
     pub priority: i32,
@@ -48,6 +71,8 @@ pub struct PageLayout {
 #[derive(Debug, Deserialize)]
 pub struct SavePageLayoutRequest {
     pub page_slug: String,
+    pub is_landing: Option<bool>,
+    pub nav_type: Option<NavType>,
     pub device_type: Option<String>,
     pub maturity_rating: Option<String>,
     pub priority: Option<i32>,

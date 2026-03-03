@@ -28,6 +28,8 @@ impl PageLayoutRepository {
     pub async fn upsert(
         &self, 
         page_slug: &str, 
+        is_landing: bool,
+        nav_type: &str,
         composition: serde_json::Value, 
         device_type: Option<String>,
         maturity_rating: Option<String>,
@@ -35,24 +37,28 @@ impl PageLayoutRepository {
         is_active: bool
     ) -> AppResult<PageLayout> {
         let page_slug = page_slug.to_string();
+        let nav_type = nav_type.to_string();
         self.pool
             .execute(|pool| async move {
                 let row: PageLayout = sqlx::query_as(
                     r#"
-                    INSERT INTO page_layouts (page_slug, composition, device_type, maturity_rating, priority, is_active, is_deleted, updated_at)
-                    VALUES ($1, $2, $3, $4, $5, $6, false, NOW())
-                    ON CONFLICT (page_slug) DO UPDATE
-                    SET composition = EXCLUDED.composition,
-                        device_type = EXCLUDED.device_type,
-                        maturity_rating = EXCLUDED.maturity_rating,
+                    INSERT INTO page_layouts 
+                        (page_slug, is_landing, nav_type, composition, device_type, maturity_rating, priority, is_active, is_deleted, updated_at)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, false, NOW())
+                    ON CONFLICT (page_slug, device_type, maturity_rating) DO UPDATE
+                    SET is_landing = EXCLUDED.is_landing,
+                        nav_type = EXCLUDED.nav_type,
+                        composition = EXCLUDED.composition,
                         priority = EXCLUDED.priority,
                         is_active = EXCLUDED.is_active,
                         is_deleted = false,
                         updated_at = NOW()
-                    RETURNING id, page_slug, composition, device_type, maturity_rating, priority, is_active, is_deleted, created_at, updated_at
+                    RETURNING id, page_slug, is_landing, nav_type, composition, device_type, maturity_rating, priority, is_active, is_deleted, created_at, updated_at
                     "#
                 )
                 .bind(&page_slug)
+                .bind(is_landing)
+                .bind(&nav_type)
                 .bind(&composition)
                 .bind(device_type)
                 .bind(maturity_rating)
@@ -78,7 +84,7 @@ impl PageLayoutRepository {
         self.pool
             .execute(|pool| async move {
                 let result = sqlx::query(
-                    "UPDATE page_layouts SET is_deleted = true, updated_at = NOW() WHERE page_slug = $1 AND is_deleted = false"
+                    "UPDATE page_layouts SET is_active = false, is_deleted = true, updated_at = NOW() WHERE page_slug = $1 AND is_deleted = false"
                 )
                 .bind(&slug)
                 .execute(&pool)
@@ -95,7 +101,50 @@ impl PageLayoutRepository {
             })
     }
 
-    /// The Targeting Resolver: Find the best layout for a given context.
+    /// Resolve the singleton landing page for a context.
+    pub async fn find_landing_page(
+        &self,
+        device_type: Option<&str>,
+        maturity_rating: Option<&str>
+    ) -> AppResult<Option<PageLayout>> {
+        let device = device_type.map(|s| s.to_string());
+        let maturity = maturity_rating.map(|s| s.to_string());
+
+        self.pool.execute(|pool| async move {
+            let row: Option<PageLayout> = sqlx::query_as(
+                r#"
+                SELECT id, page_slug, is_landing, nav_type, composition, device_type, maturity_rating, priority, is_active, is_deleted, created_at, updated_at 
+                FROM page_layouts 
+                WHERE is_landing = true 
+                  AND is_active = true 
+                  AND is_deleted = false
+                  AND (device_type = $1 OR device_type = 'all')
+                  AND (maturity_rating = $2 OR maturity_rating = 'all')
+                ORDER BY 
+                    (device_type = $1 AND maturity_rating = $2) DESC,
+                    (device_type = $1) DESC,
+                    (maturity_rating = $2) DESC,
+                    priority DESC
+                LIMIT 1
+                "#
+            )
+            .bind(device)
+            .bind(maturity)
+            .fetch_optional(&pool)
+            .await?;
+
+            Ok(row)
+        })
+        .await
+        .map_err(|e| {
+            AppError::Postgres(PostgresError::Query {
+                message: format!("Failed to resolve landing page: {}", e),
+                source: None,
+            })
+        })
+    }
+
+    /// The Targeting Resolver: Find the best layout for a specific slug and context.
     pub async fn find_best_match(
         &self, 
         slug: &str, 
@@ -109,20 +158,15 @@ impl PageLayoutRepository {
         
         let result = self.pool
             .execute(|pool| async move {
-                // Resolution logic:
-                // 1. Exact match on slug + device + maturity
-                // 2. Match on slug + device (any maturity)
-                // 3. Match on slug + maturity (any device)
-                // 4. Default match on slug (default device/maturity)
                 let row: Option<PageLayout> = sqlx::query_as(
                     r#"
-                    SELECT id, page_slug, composition, device_type, maturity_rating, priority, is_active, is_deleted, created_at, updated_at 
+                    SELECT id, page_slug, is_landing, nav_type, composition, device_type, maturity_rating, priority, is_active, is_deleted, created_at, updated_at 
                     FROM page_layouts 
                     WHERE page_slug = $1 
                       AND is_active = true 
                       AND is_deleted = false
-                      AND (device_type = $2 OR device_type IS NULL OR device_type = 'all')
-                      AND (maturity_rating = $3 OR maturity_rating IS NULL OR maturity_rating = 'all')
+                      AND (device_type = $2 OR device_type = 'all')
+                      AND (maturity_rating = $3 OR maturity_rating = 'all')
                     ORDER BY 
                         (device_type = $2 AND maturity_rating = $3) DESC,
                         (device_type = $2) DESC,
@@ -160,15 +204,15 @@ impl PageLayoutRepository {
         }
     }
 
-    /// Find all active page layouts.
+    /// Find all active page layouts for Nav-Mesh assembly.
     pub async fn find_all_active(&self) -> AppResult<Vec<PageLayout>> {
         self.pool
             .execute(|pool| async move {
                 let rows: Vec<PageLayout> = sqlx::query_as(
-                    "SELECT id, page_slug, composition, device_type, maturity_rating, priority, is_active, is_deleted, created_at, updated_at 
+                    "SELECT id, page_slug, is_landing, nav_type, composition, device_type, maturity_rating, priority, is_active, is_deleted, created_at, updated_at 
                      FROM page_layouts 
                      WHERE is_active = true AND is_deleted = false
-                     ORDER BY page_slug ASC, priority DESC"
+                     ORDER BY nav_type ASC, priority DESC, page_slug ASC"
                 )
                 .fetch_all(&pool)
                 .await?;

@@ -246,6 +246,11 @@ pub struct RuleSuggestion {
 pub struct PageLayout {
     pub id: i32,
     pub page_slug: String,
+    
+    // Navigation Mesh
+    pub is_landing: bool,
+    pub nav_type: String,
+
     pub composition: JsonValue, // Array of structured objects
     pub device_type: Option<String>,
     pub maturity_rating: Option<String>,
