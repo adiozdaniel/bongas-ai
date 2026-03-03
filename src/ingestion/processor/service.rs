@@ -29,13 +29,13 @@ pub struct ClickHouseInteraction {
     pub scenario_slug: String,
     pub visitor_id: Option<String>,
     pub device_hash: Option<String>,
+    pub device_type: Option<String>,
     pub rating: f32,
     pub watch_duration_seconds: i32,
     pub created_at: u64, 
 }
 
 use tokio::task::JoinSet;
-
 use crate::pages::PagesManager;
 
 /// Processes activities from any source and routes them to DB + staleness engine + PagesManager.
@@ -162,6 +162,7 @@ impl ActivityProcessor {
         let mut durations = Vec::with_capacity(buffer.len());
         let mut visitor_ids = Vec::with_capacity(buffer.len());
         let mut device_hashes = Vec::with_capacity(buffer.len());
+        let mut device_types = Vec::with_capacity(buffer.len());
         let mut timestamps = Vec::with_capacity(buffer.len());
 
         let mut clickhouse_rows = Vec::with_capacity(buffer.len());
@@ -178,7 +179,7 @@ impl ActivityProcessor {
             let ts_secs = event_timestamp.timestamp() as u64;
 
             match activity {
-                UserActivity::Playback { user_id, item_id, watch_percentage, watch_duration_seconds, completed, scenario_slug, visitor_id, device_hash, .. } => {
+                UserActivity::Playback { user_id, item_id, watch_percentage, watch_duration_seconds, completed, scenario_slug, visitor_id, device_hash, device_type, .. } => {
                     let mut rating = match watch_percentage {
                         p if *p < 0.25 => 1.0,
                         p if *p < 0.50 => 2.0,
@@ -196,6 +197,7 @@ impl ActivityProcessor {
                     durations.push(Some(*watch_duration_seconds));
                     visitor_ids.push(visitor_id.clone());
                     device_hashes.push(device_hash.clone());
+                    device_types.push(device_type.clone());
                     timestamps.push(event_timestamp);
 
                     clickhouse_rows.push(ClickHouseInteraction {
@@ -205,12 +207,13 @@ impl ActivityProcessor {
                         scenario_slug: scenario_slug.clone().unwrap_or_else(|| "unknown".to_string()),
                         visitor_id: visitor_id.clone(),
                         device_hash: device_hash.clone(),
+                        device_type: device_type.clone(),
                         rating,
                         watch_duration_seconds: *watch_duration_seconds,
                         created_at: ts_secs,
                     });
                 }
-                UserActivity::Reaction { user_id, item_id, reaction_type, scenario_slug, visitor_id, device_hash, .. } => {
+                UserActivity::Reaction { user_id, item_id, reaction_type, scenario_slug, visitor_id, device_hash, device_type, .. } => {
                     let rating = match reaction_type.as_str() {
                         "like" => 5.0,
                         "dislike" => 1.0,
@@ -224,6 +227,7 @@ impl ActivityProcessor {
                     durations.push(None);
                     visitor_ids.push(visitor_id.clone());
                     device_hashes.push(device_hash.clone());
+                    device_types.push(device_type.clone());
                     timestamps.push(event_timestamp);
 
                     clickhouse_rows.push(ClickHouseInteraction {
@@ -233,12 +237,13 @@ impl ActivityProcessor {
                         scenario_slug: scenario_slug.clone().unwrap_or_else(|| "unknown".to_string()),
                         visitor_id: visitor_id.clone(),
                         device_hash: device_hash.clone(),
+                        device_type: device_type.clone(),
                         rating,
                         watch_duration_seconds: 0,
                         created_at: ts_secs,
                     });
                 }
-                UserActivity::Click { user_id, item_id, scenario_slug, visitor_id, device_hash, .. } => {
+                UserActivity::Click { user_id, item_id, scenario_slug, visitor_id, device_hash, device_type, .. } => {
                     user_ids.push(*user_id);
                     item_ids.push(*item_id);
                     types.push("click".to_string());
@@ -246,6 +251,7 @@ impl ActivityProcessor {
                     durations.push(None);
                     visitor_ids.push(visitor_id.clone());
                     device_hashes.push(device_hash.clone());
+                    device_types.push(device_type.clone());
                     timestamps.push(event_timestamp);
 
                     clickhouse_rows.push(ClickHouseInteraction {
@@ -255,12 +261,13 @@ impl ActivityProcessor {
                         scenario_slug: scenario_slug.clone().unwrap_or_else(|| "unknown".to_string()),
                         visitor_id: visitor_id.clone(),
                         device_hash: device_hash.clone(),
+                        device_type: device_type.clone(),
                         rating: 0.0,
                         watch_duration_seconds: 0,
                         created_at: ts_secs,
                     });
                 }
-                UserActivity::Impression { user_id, item_id, scenario_slug, visitor_id, device_hash, .. } => {
+                UserActivity::Impression { user_id, item_id, scenario_slug, visitor_id, device_hash, device_type, .. } => {
                     user_ids.push(*user_id);
                     item_ids.push(*item_id);
                     types.push("impression".to_string());
@@ -268,6 +275,7 @@ impl ActivityProcessor {
                     durations.push(None);
                     visitor_ids.push(visitor_id.clone());
                     device_hashes.push(device_hash.clone());
+                    device_types.push(device_type.clone());
                     timestamps.push(event_timestamp);
 
                     clickhouse_rows.push(ClickHouseInteraction {
@@ -277,11 +285,13 @@ impl ActivityProcessor {
                         scenario_slug: scenario_slug.clone().unwrap_or_else(|| "unknown".to_string()),
                         visitor_id: visitor_id.clone(),
                         device_hash: device_hash.clone(),
+                        device_type: device_type.clone(),
                         rating: 0.0,
                         watch_duration_seconds: 0,
                         created_at: ts_secs,
                     });
                 }
+                // Handle complex types individually
                 UserActivity::ProfileUpdate { user_id, update_type, data, .. } => {
                     if let Err(e) = self.process_profile_update(*user_id, update_type, data).await {
                         error!(user_id, error = %e, "Failed to process profile update in batch");
@@ -298,7 +308,7 @@ impl ActivityProcessor {
         // Batch insert interactions into Postgres
         if !user_ids.is_empty() {
             if let Err(e) = self.interaction_repo.create_interactions_batch(
-                user_ids.clone(), item_ids, types, ratings, durations, visitor_ids, device_hashes, timestamps
+                user_ids.clone(), item_ids, types, ratings, durations, visitor_ids, device_hashes, device_types, timestamps
             ).await {
                 error!("Failed to batch insert interactions: {}", e);
             }

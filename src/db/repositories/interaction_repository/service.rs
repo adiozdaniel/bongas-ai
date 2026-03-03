@@ -32,14 +32,15 @@ impl InteractionRepository {
         watch_duration_seconds: i32,
         visitor_id: Option<String>,
         device_hash: Option<String>,
+        device_type: Option<String>,
     ) -> AppResult<()> {
         let start_time = std::time::Instant::now();
         let result = self.pool.execute(|pool| async move {
             sqlx::query(
                 r#"
                 INSERT INTO user_interactions
-                    (user_id, item_id, interaction_type, rating, watch_duration_seconds, visitor_id, device_hash, created_at)
-                VALUES ($1, $2, 'implicit_rating', $3, $4, $5, $6, NOW())
+                    (user_id, item_id, interaction_type, rating, watch_duration_seconds, visitor_id, device_hash, device_type, created_at)
+                VALUES ($1, $2, 'implicit_rating', $3, $4, $5, $6, $7, NOW())
                 "#,
             )
             .bind(user_id)
@@ -48,6 +49,7 @@ impl InteractionRepository {
             .bind(watch_duration_seconds)
             .bind(visitor_id)
             .bind(device_hash)
+            .bind(device_type)
             .execute(&pool)
             .await
             .map(|_| ())
@@ -73,18 +75,19 @@ impl InteractionRepository {
         watch_durations: Vec<Option<i32>>,
         visitor_ids: Vec<Option<String>>,
         device_hashes: Vec<Option<String>>,
+        device_types: Vec<Option<String>>,
         timestamps: Vec<chrono::DateTime<chrono::Utc>>,
     ) -> AppResult<u64> {
         if user_ids.is_empty() { return Ok(0); }
         self.pool.execute(|pool| async move {
             sqlx::query(
                 r#"
-                INSERT INTO user_interactions (user_id, item_id, interaction_type, rating, watch_duration_seconds, visitor_id, device_hash, created_at)
-                SELECT * FROM unnest($1::int[], $2::int[], $3::text[], $4::float4[], $5::int[], $6::text[], $7::text[], $8::timestamptz[])
+                INSERT INTO user_interactions (user_id, item_id, interaction_type, rating, watch_duration_seconds, visitor_id, device_hash, device_type, created_at)
+                SELECT * FROM unnest($1::int[], $2::int[], $3::text[], $4::float4[], $5::int[], $6::text[], $7::text[], $8::text[], $9::timestamptz[])
                 "#
             )
             .bind(&user_ids).bind(&item_ids).bind(&types).bind(&ratings).bind(&watch_durations)
-            .bind(&visitor_ids).bind(&device_hashes)
+            .bind(&visitor_ids).bind(&device_hashes).bind(&device_types)
             .bind(&timestamps)
             .execute(&pool).await.map(|r| r.rows_affected())
         }).await.map_err(|e| AppError::Postgres(PostgresError::Query { message: e.to_string(), source: None }))

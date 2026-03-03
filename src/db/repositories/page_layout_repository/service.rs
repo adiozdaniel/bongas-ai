@@ -121,7 +121,7 @@ impl PageLayoutRepository {
                     WHERE page_slug = $1 
                       AND is_active = true 
                       AND is_deleted = false
-                      AND (device_type = $2 OR device_type IS NULL OR device_type = 'default')
+                      AND (device_type = $2 OR device_type IS NULL OR device_type = 'all')
                       AND (maturity_rating = $3 OR maturity_rating IS NULL OR maturity_rating = 'all')
                     ORDER BY 
                         (device_type = $2 AND maturity_rating = $3) DESC,

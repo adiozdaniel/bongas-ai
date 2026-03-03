@@ -22,6 +22,7 @@ use tracing::debug;
 pub struct IdentityContext {
     pub visitor_id: String,
     pub device_hash: String,
+    pub device_type: String, // 'mobile', 'tv', 'web', 'tablet', 'all'
     pub ip_address: String,
     pub user_agent: String,
 }
@@ -41,12 +42,30 @@ pub async fn identity_middleware(mut req: Request<Body>, next: Next) -> Response
         })
         .unwrap_or_else(|| "127.0.0.1".to_string());
 
-    // 2. Extract User-Agent
+    // 2. Extract User-Agent & Guess Device Type
     let ua = req.headers()
         .get(header::USER_AGENT)
         .and_then(|v| v.to_str().ok())
         .unwrap_or("unknown")
         .to_string();
+
+    // Device Type Detection logic (Zero-Touch)
+    let device_type = req.headers()
+        .get("x-device-type")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_lowercase())
+        .unwrap_or_else(|| {
+            let ua_low = ua.to_lowercase();
+            if ua_low.contains("tv") || ua_low.contains("smarttv") || ua_low.contains("googletv") || ua_low.contains("appletv") {
+                "tv".to_string()
+            } else if ua_low.contains("mobi") || ua_low.contains("iphone") || ua_low.contains("android") && !ua_low.contains("tablet") {
+                "mobile".to_string()
+            } else if ua_low.contains("tablet") || ua_low.contains("ipad") || ua_low.contains("playbook") {
+                "tablet".to_string()
+            } else {
+                "web".to_string()
+            }
+        });
 
     // 3. Generate Device Hash (Deterministic)
     let mut hasher = Sha256::new();
@@ -72,6 +91,7 @@ pub async fn identity_middleware(mut req: Request<Body>, next: Next) -> Response
     let identity = IdentityContext {
         visitor_id: visitor_id.clone(),
         device_hash,
+        device_type,
         ip_address: ip,
         user_agent: ua,
     };

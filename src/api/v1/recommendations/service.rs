@@ -81,6 +81,7 @@ pub async fn execute_and_map(
     if let Some(uid) = user_id {
         let vid = visitor_id.clone();
         let dhash = device_hash.clone();
+        let dtype = device_type.clone();
         let slug_clone = scenario_slug.to_string();
         
         let activities: Vec<UserActivity> = final_items.iter().map(|item| {
@@ -89,6 +90,7 @@ pub async fn execute_and_map(
                 item_id: item.item_id,
                 visitor_id: vid.clone(),
                 device_hash: dhash.clone(),
+                device_type: dtype.clone(),
                 scenario_slug: Some(slug_clone.clone()),
                 timestamp: chrono::Utc::now(),
             }

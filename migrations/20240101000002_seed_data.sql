@@ -82,7 +82,7 @@ SELECT
     s.id, 
     p.id, 
     100, 
-    'default',
+    'all',
     'all',
     '{}'::jsonb, 
     true, 
@@ -115,7 +115,7 @@ INSERT INTO page_layouts (page_slug, device_type, maturity_rating, priority, com
 VALUES 
 (
     'home', 
-    'default', 
+    'all', 
     'all', 
     100, 
     '[

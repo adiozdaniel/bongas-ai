@@ -23,6 +23,7 @@ pub enum UserActivity {
         session_id: String,
         visitor_id: Option<String>,
         device_hash: Option<String>,
+        device_type: Option<String>,
         watch_duration_seconds: i32,
         total_duration_seconds: i32,
         watch_percentage: f32,
@@ -37,6 +38,7 @@ pub enum UserActivity {
         item_id: i32,
         visitor_id: Option<String>,
         device_hash: Option<String>,
+        device_type: Option<String>,
         /// "like", "dislike", or other reaction types.
         reaction_type: String,
         scenario_slug: Option<String>,
@@ -70,6 +72,7 @@ pub enum UserActivity {
         item_id: i32,
         visitor_id: Option<String>,
         device_hash: Option<String>,
+        device_type: Option<String>,
         scenario_slug: Option<String>,
         timestamp: chrono::DateTime<chrono::Utc>,
     },
@@ -80,6 +83,7 @@ pub enum UserActivity {
         item_id: i32,
         visitor_id: Option<String>,
         device_hash: Option<String>,
+        device_type: Option<String>,
         scenario_slug: Option<String>,
         timestamp: chrono::DateTime<chrono::Utc>,
     },
@@ -116,6 +120,17 @@ impl UserActivity {
             | Self::Reaction { device_hash, .. }
             | Self::Click { device_hash, .. }
             | Self::Impression { device_hash, .. } => device_hash.as_deref(),
+            _ => None,
+        }
+    }
+
+    /// The device type associated with this activity.
+    pub fn device_type(&self) -> Option<&str> {
+        match self {
+            Self::Playback { device_type, .. }
+            | Self::Reaction { device_type, .. }
+            | Self::Click { device_type, .. }
+            | Self::Impression { device_type, .. } => device_type.as_deref(),
             _ => None,
         }
     }

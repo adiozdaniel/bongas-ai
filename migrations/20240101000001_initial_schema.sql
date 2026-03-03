@@ -284,7 +284,7 @@ ON CONFLICT (key) DO NOTHING;
 CREATE TABLE IF NOT EXISTS page_layouts (
     id SERIAL PRIMARY KEY,
     page_slug VARCHAR(64) NOT NULL,
-    device_type VARCHAR(32) DEFAULT 'default',
+    device_type VARCHAR(32) DEFAULT 'all',
     maturity_rating VARCHAR(32) DEFAULT 'all',
     priority INTEGER DEFAULT 0,
     composition JSONB NOT NULL, -- Array of objects: [{"slug": "...", "row_type": "..."}]

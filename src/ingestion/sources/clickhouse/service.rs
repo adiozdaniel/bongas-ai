@@ -146,6 +146,7 @@ impl ClickHouseSource {
                     session_id: "clickhouse_backfill".to_string(),
                     visitor_id: None,
                     device_hash: None,
+                    device_type: Some("all".to_string()),
                     watch_duration_seconds: row.watch_duration_seconds,
                     total_duration_seconds: row.watch_duration_seconds, // Fallback
                     watch_percentage: (row.rating / 5.0).min(1.0), // Reconstruct from rating if possible
@@ -158,6 +159,7 @@ impl ClickHouseSource {
                     item_id: row.item_id,
                     visitor_id: None,
                     device_hash: None,
+                    device_type: Some("all".to_string()),
                     reaction_type: row.interaction_type,
                     scenario_slug: slug,
                     timestamp: event_time,
@@ -167,6 +169,7 @@ impl ClickHouseSource {
                     item_id: row.item_id,
                     visitor_id: None,
                     device_hash: None,
+                    device_type: Some("all".to_string()),
                     scenario_slug: slug,
                     timestamp: event_time,
                 },
@@ -175,6 +178,7 @@ impl ClickHouseSource {
                     item_id: row.item_id,
                     visitor_id: None,
                     device_hash: None,
+                    device_type: Some("all".to_string()),
                     scenario_slug: slug,
                     timestamp: event_time,
                 },

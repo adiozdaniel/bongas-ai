@@ -42,5 +42,10 @@ impl ContextParams {
         self.visitor_id = Some(identity.visitor_id.clone());
         self.device_hash = Some(identity.device_hash.clone());
         self.ip_address = Some(identity.ip_address.clone());
+        
+        // Prioritize detected device_type if not explicitly provided in query params
+        if self.device_type.is_none() {
+            self.device_type = Some(identity.device_type.clone());
+        }
     }
 }
