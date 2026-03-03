@@ -16,9 +16,10 @@ graph TD
     ID --> Trace[2. Tracing & Log ID]
     Trace --> Auth[3. Platform Security]
     Auth --> Error[4. Unified Error Handling]
-    Error --> Res[5. Resilience / Circuit Breakers]
-    Res --> Rate[6. Rate Limiting]
-    Rate --> Metrics[7. Performance Metrics]
+    Error --> Limiter[5. Adaptive Rate Limiting]
+    Limiter --> Res[6. Resilience / Circuit Breakers]
+    Res --> Rate[7. Rate Limiting]
+    Rate --> Metrics[8. Performance Metrics]
     Metrics --> Final[Execute Handler]
 ```
 
@@ -27,14 +28,13 @@ graph TD
 The `identity_middleware` is the entry point for device recognition. It extracts:
 
 - **`device_hash`**: A deterministic SHA-256 fingerprint (IP + UA).
+- **`device_type`**: Automatically detected from User-Agent or `x-device-type` header.
 - **`visitor_id`**: A transparent HTTP cookie for long-term persistence.
 - **`ip_address`**: Client IP for regional targeting.
 
-This context is injected into request extensions as `IdentityContext` and merged into the handler's parameters.
+### 🛡️ Adaptive Rate Limiting
 
-### ⚡ Resilience & Fault Tolerance
-
-We leverage the `circuit_breaker` module to ensure that failing sub-services or slow ML models do not crash the content stream. Every request is wrapped in a **Resilience Layer** that handles timeouts and graceful degradation.
+Protects the high-throughput SSE pool by tracking concurrent connections per `visitor_id`. This prevents resource exhaustion from bot attacks or device malfunctions.
 
 ---
 

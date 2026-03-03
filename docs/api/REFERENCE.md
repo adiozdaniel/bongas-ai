@@ -1,79 +1,100 @@
-# 📖 API Reference: The Unified Contract
+# 📖 API Reference: The Bongas-AI Symphony
 
 [🏠 Hub](../HUB.md) | [🏗️ Architecture](../architecture/SYMPHONY.md) | [👤 Identity](../architecture/IDENTITY.md) | [⚡ Streaming](../architecture/ORCHESTRATION.md)
 
 ---
 
-## 🔗 The Master Endpoint: `/page/{slug}`
+## 🔗 Route Structure
 
-In the new Bongas-AI architecture, this is the undisputed center of content delivery. All legacy endpoints (like `/trending` or `/home`) have been deprecated in favor of this unified streaming contract.
+The API is strictly divided between public content delivery and internal administration.
+
+- **Public Base**: `/api/v1/recommendation`
+- **Admin Base**: `/api/v1/recommendation/admin`
+
+---
+
+## 🌍 Public Endpoints (The Stage)
+
+### 1. The Genesis Entry Point
+
+The primary initiation call for the client application. It resolves the user's landing page and assembles the personalized navigation mesh.
 
 **Method:** `GET`  
-**Endpoint:** `/api/v1/page/{page_slug}/{user_id}`
+**Endpoint:** `/api/v1/recommendation`
 
-### 📥 Request Parameters
+#### 📥 Request Parameters
 
 | Parameter | Type | Required | Description |
 | :--- | :--- | :--- | :--- |
-| `page_slug` | String | Yes | The slug of the page layout (e.g., `home`, `movies`). |
-| `user_id` | Integer | Yes | The ID of the user (use `0` for anonymous). |
-| `profile_id` | String | No | The specific profile within an account. |
-| `device_type` | String | No | KFCB standards detected automatically from UA. |
-| `maturity_rating`| String | No | KFCB Standards: `all`, `GE`, `PG`, `12`, `15`, `18`. |
+| `user_id` | Integer | Yes | User ID (use `0` for anonymous). |
+| `profile_id` | String | No | Active profile ID. |
+| `maturity_rating` | String | No | KFCB standards: `all`, `GE`, `PG`, `12`, `15`, `18`. |
 
 ---
 
-## 🏎️ Predictive Warming Endpoint
+### 2. The Page Orchestrator (Specific View)
 
-Triggers background execution for scenarios further down the layout to eliminate scroll-latency.
+Fetches a specific main or sub-page layout with support for batch-streaming.
+
+**Method:** `GET`  
+**Endpoint:** `/api/v1/recommendation/page/{slug}`
+
+#### 📥 Page Request Parameters
+
+| Parameter | Type | Required | Description |
+| :--- | :--- | :--- | :--- |
+| `offset` | Integer | No | Starting row index (Default: `0`). |
+| `batch` | Integer | No | Number of rows to stream (Default: `5`). |
+
+---
+
+### 3. Frictionless Ingestion (Feedback)
+
+Real-time behavior tracking to feed "The Brain." Automatically enriched by the server.
 
 **Method:** `POST`  
-**Endpoint:** `/api/v1/recommendations/prewarm`
+**Endpoint:** `/api/v1/recommendation/ingest`
 
-### 📥 Request Body
+#### 📥 Ingest Request Body
+
 ```json
-{
-  "slugs": ["trending_now", "home_feed"],
-  "user_id": 123
-}
+[
+  { "event": "click", "item_id": 123, "scenario": "trending_now" },
+  { "event": "playback", "item_id": 456, "watch_percentage": 0.85 }
+]
 ```
 
 ---
 
-## 📤 The Streaming Response (SSE)
+### 4. Scenario Detail (See All)
 
-### 1. Event: `navigation`
-Sent instantly to build the app's navigation bar.
+Paginates items inside a specific row for grid views or infinite horizontal scrolls.
 
-### 2. Event: `manifest`
-Sent early to allow the client to render skeleton loaders and plan pre-warming.
-```json
-{
-  "expected_rows": 8,
-  "request_id": "uuid-v4",
-  "page": "home",
-  "prewarm_scenarios": ["personalized_picks", "new_releases"]
-}
-```
+**Method:** `GET`  
+**Endpoint:** `/api/v1/recommendation/scenario/{slug}`
 
-### 3. Event: `row`
-Individual content rows with fail-over protection. If a primary row fails, the engine automatically attempts its `fallback_slug`.
+---
+
+## 📤 The SSE Event Lifecycle
+
+Bongas-AI uses a multi-stage SSE stream to deliver an "Instant-On" experience.
+
+| Event | Order | Description |
+| :--- | :---: | :--- |
+| `navigation` | 1 | Global main pages (Home, Movies, TV). |
+| `sub_navigation` | 2 | Contextual sub-pages ranked by user engagement. |
+| `manifest` | 3 | Metadata for the landing page (Expected rows, Trace ID). |
+| `row` | 4+ | Individual content rows with SDUI metadata. |
+| `continuation` | Last | The URL to fetch the **next batch** of rows. |
 
 ---
 
 ## 🛡️ Resilience & The Shield
 
-- **Adaptive Rate Limiting**: Max 3 concurrent SSE connections per `visitor_id`. Rejections return `429 Too Many Requests`.
-- **Fail-Over**: Automatic execution of fallback scenarios on primary failure.
-- **Maturity Safety**: Early-block logic for KFCB compliance.
+- **Adaptive Rate Limiting**: Max 3 concurrent SSE connections per `visitor_id`.
+- **Fail-Over**: Automatic execution of `fallback_slug` on primary scenario failure.
+- **Maturity Safety**: Early-block logic ensures KFCB compliance.
 
 ---
 
-## 🚀 Next Steps
-
-- Return to the [**Documentation Hub**](../HUB.md).
-- Read about [**Identity & Context**](../architecture/IDENTITY.md).
-
----
-
-[🏠 Hub](../HUB.md) | [🔝 Top](#-api-reference-the-unified-contract)
+[🏠 Hub](../HUB.md) | [🔝 Top](#-api-reference-the-bongas-ai-symphony)

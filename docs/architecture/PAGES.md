@@ -6,25 +6,37 @@
 
 ## 🏛️ The Philosophy: Living Layouts
 
-A "Page" in Bongas-AI is no longer a static list of items. It is a **Dynamic Blueprint** that adapts in real-time. Instead of hardcoding what a user sees, admins define **Rules** and **Pools** of content that the engine resolves and optimizes based on user engagement.
+A "Page" in Bongas-AI is a **Dynamic Blueprint** that adapts in real-time. Instead of hardcoding what a user sees, admins define **Rules** and **Pools** of content that the engine resolves and optimizes based on user engagement and device context.
 
-## 📐 The Layout Contract
+## 📐 The Navigation Mesh
 
-Every page layout in Bongas-AI is defined by a structured **Composition**.
+The engine assembles a personalized application structure every time a user connects to the root endpoint (`GET /api/v1/recommendation`).
 
-### 1. Targeting Rules
+### 1. The Landing Page (Singleton)
 
-The engine uses a **Contextual Resolver** to pick the best layout for a request:
-- **`device_type`**: Optimize for `mobile`, `tv`, `web`, or `tablet`.
-- **`maturity_rating`**: Filter content for `GE`, `PG`, `12`, `15`, or `18`.
-- **`priority`**: When multiple layouts match, the one with the highest priority wins.
+Admins can flag layouts as `is_landing = true`. The engine enforces a **Singleton Constraint** per (Device, Maturity).
 
-### 2. Composition (SDUI)
+- **Resolver**: Finds the single entry point for the user's specific context.
+- **Fall-Over**: If no specific landing page exists, it uses the global `all`-category default.
 
-Each row in a layout is a `PageCompositionItem` containing:
-- **`slug`**: The engine scenario to execute (e.g., `trending_now`).
-- **`row_type`**: The UI component type (e.g., `hero_carousel`, `horizontal_list`).
-- **`row_style`**: Visual hints (e.g., `promotional`, `compact`, `tall_cards`).
+### 2. Navigation Hierarchy
+
+Pages are categorized into three types:
+
+- **Main**: Global top-level pages (e.g., Home, Live TV, Movies).
+- **Sub**: Contextual hubs (e.g., "Free for You", "Action Universe"). These are **ML-Ranked** based on user affinity.
+- **Hidden**: Accessible only via deep-link or specific buttons (e.g., "Privacy Policy").
+
+```mermaid
+graph TD
+    A[Genesis Request] --> B{Page Resolver}
+    B --> C[Fetch Landing Page Composition]
+    B --> D[Assemble Main Nav]
+    B --> E[Assemble Sub Nav]
+    E --> F{ML Ranker}
+    F -->|Affinity| G[Personalized Sub-Nav Mesh]
+    C & D & G --> H[SSE Genesis Stream]
+```
 
 ## 🧠 The Brain: Algorithmic Reordering
 
@@ -32,27 +44,20 @@ Beyond manual admin ordering, Bongas-AI implements **Personalized Layouts**. The
 
 ### The Feedback Loop
 
-The **Ingestion Manager** streams processed activities back to the **PagesManager**, which maintains real-time engagement scores:
-
-- **Click**: +1.0 Score
-- **Playback**: +0.0 to +1.0 (based on watch percentage)
-- **Like**: +2.0 Score
-- **Impression (Ignored)**: -0.05 (Slight decay)
+The **Ingestion Manager** streams processed activities back to the **PagesManager**, which maintains real-time engagement scores per `visitor_id`.
 
 ### Sorting Logic
 
-When a user requests a page, the engine fetches the base layout and then performs a **stable sort** of the composition based on the user's specific engagement scores. This ensures that "Continue Watching" or "Favorite Genres" automatically bubble to the top if the user interacts with them frequently.
+When a user requests a page, the engine performs a **stable sort** of the composition based on the user's specific engagement scores. High-engagement scenarios (like "Recently Watched") automatically bubble to the top.
 
-```mermaid
-graph TD
-    A[Request: /page/home] --> B[Fetch Base Layout]
-    B --> C[Identify User/Visitor History]
-    C --> D{Layout Ranker}
-    D -->|Click History| E[Promote 'Action' Rows]
-    D -->|Recency| F[Promote 'Continue Watching']
-    D -->|Time of Day| G[Inject 'Morning News']
-    E & F & G --> H[Final Optimized Stream]
-```
+## 📺 Presentation Directives (SDUI)
+
+| Row Type | Client Component | Best For |
+| :--- | :--- | :--- |
+| `hero_carousel` | `HeroSlider` | Big promotional items at the top. |
+| `horizontal_list` | `HorizontalScroll` | Standard browsing rows. |
+| `feature_grid` | `Grid` | Category pages or large collections. |
+| `billboard` | `StaticImage` | Static ads or announcements. |
 
 ---
 

@@ -16,14 +16,14 @@ The most critical model in the Bongas-AI engine. It carries the environmental si
 - **Targeting**: `profile_id`, `maturity_rating`, `device_type`.
 - **Regional**: `ip_address`.
 
-This struct includes the **`merge_identity`** method, which seamlessly integrates context extracted from the `identity_middleware`.
+This struct includes the **`merge_identity`** method, which seamlessly integrates context automatically extracted from the `identity_middleware`.
 
 ## 📦 Model Categories
 
 | Category | Description |
 | :--- | :--- |
 | **Response** | Standard wrappers for success and error messages (`StandardResponse`). |
-| **Recommendation** | Items (`RecommendationItem`) and dynamic rows (`FeedRow`). |
+| **Recommendation** | Items (`RecommendationItem`), dynamic rows (`FeedRow`), and navigation models. |
 | **Scenario** | Management payloads for creating/updating engine logic. |
 | **System** | Contextual parameters and infrastructure metadata. |
 

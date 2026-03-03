@@ -1,45 +1,44 @@
 # 🎯 API V1: Recommendation Symphony
 
-The primary surface for delivering the Bongas-AI Symphony. This module orchestrates the **Server-Driven UI (SDUI)** flow through streaming content delivery.
+The primary surface for delivering the Bongas-AI Symphony. This module orchestrates the **Server-Driven UI (SDUI)** flow through a unified streaming gateway.
 
-[🏠 Hub](../../../../docs/HUB.md) | [🏗️ Architecture](../../../../docs/architecture/SYMPHONY.md) | [⚡ Streaming](../../../../docs/architecture/ORCHESTRATION.md)
+[🏠 Hub](../../../../docs/HUB.md) | [🏗️ Architecture](../../../../docs/architecture/SYMPHONY.md) | [🎨 Smart Pages](../../../../docs/architecture/PAGES.md)
 
 ---
 
-## 🏗️ The Unified Page Flow
+## 🏗️ The Genesis Flow
 
-We have moved from static, single-purpose endpoints to a unified, streaming contract centered on the `/page/{slug}` router.
+The client app enters the Symphony through a single root endpoint that resolves the entire application structure and initial content.
 
 ```mermaid
 sequenceDiagram
     participant User
     participant Handler
     participant Orchestrator
-    participant Engine
+    participant Brain
     
-    User->>Handler: GET /api/v1/page/home
-    Handler->>Orchestrator: Resolve Contextual Layout
+    User->>Handler: GET /api/v1/recommendation
+    Handler->>Orchestrator: Resolve Landing Page & Nav Mesh
     Orchestrator->>User: Event: navigation (Instant-On)
-    Orchestrator->>User: Event: manifest (Skeleton UI)
+    Orchestrator->>User: Event: sub_navigation (Personalized Hubs)
+    Orchestrator->>User: Event: manifest (Landing Blueprint)
     
     par Parallel Execution
+        Orchestrator->>Brain: Reorder Rows based on engagement
         Orchestrator->>Orchestrator: Early Safety Check (Maturity)
-        Orchestrator->>Engine: Scenario: Continue Watching
-        Orchestrator->>Engine: Scenario: ML Personalized
-        Orchestrator->>Engine: Scenario: Trending
+        Orchestrator->>Orchestrator: Execute Scenarios (Batch Concurrency: 5)
     end
 
-    Engine-->>Orchestrator: Scored Items
     Orchestrator->>User: Event: row (Stream as finished)
+    Orchestrator->>User: Event: continuation (Next Batch URL)
 ```
 
 ## 🔑 Key Symphony Features
 
-- **Instant-On Navigation**: Delivers the app's navigation bar and metadata in the first 50ms of a single connection.
-- **Parallel Execution**: Executes multiple scenarios in parallel, streaming results as they finish to mask ML latency.
-- **Early Safety Check**: Hardened KFCB-compliant logic that blocks restricted content before the engine executes.
-- **Contextual Intelligence**: Every recommendation is enriched with `IdentityContext` (Visitor ID, Device Hash, IP).
-- **Graceful Degradation**: If a single scenario fails or is safety-blocked, the stream continues, ensuring a resilient user experience.
+- **The Genesis Gateway**: One root call to rule them all. No hardcoded home slugs.
+- **Batch-Streaming**: Protects client memory by streaming rows in server-dictated batches.
+- **Continuation Pattern**: Seamlessly handles deep-scrolling via `continuation` events.
+- **Adaptive Resilience**: Integrated fallback logic and visitor-level rate limiting.
 
 ---
 

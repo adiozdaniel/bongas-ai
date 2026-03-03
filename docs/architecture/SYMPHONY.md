@@ -12,10 +12,10 @@ In a traditional API architecture, the client (Mobile/Web) is "smart"—it knows
 
 ```mermaid
 graph LR
-    A[Client Request: /page/home] --> B[Bongas Engine]
-    B --> C{Layout Engine}
-    C --> D[Identify Device/User]
-    C --> E[Fetch Page Layout from DB]
+    A[Genesis Request: /api/v1/recommendation] --> B[Bongas Engine]
+    B --> C{Symphony Resolver}
+    C --> D[Identify Context]
+    C --> E[Resolve Landing Page & Nav Mesh]
     E --> F[Scenario Orchestrator]
     F --> G[Parallel Execution]
     G --> H[Streaming SSE Results]
@@ -37,9 +37,10 @@ Bongas-AI doesn't just return data; it returns a **Composition**. Every response
 
 By leveraging Server-Sent Events (SSE) and Rust's `futures` ecosystem, we deliver content as a **continuous flow**.
 
-- **Event: `navigation`**: Sent instantly to render the app's top-level structure.
+- **Event: `navigation`**: Sent instantly to render the global navigation bar.
+- **Event: `sub_navigation`**: Personalized sub-hubs ranked by engagement.
 - **Event: `manifest`**: Sent early to allow the frontend to render "Skeleton UI" loaders.
-- **Event: `row`**: Individual content rows (Horizontals, Grids, Heros) stream in as they are processed.
+- **Event: `row`**: Content rows (Horizontals, Grids, Heros) stream in as they are processed.
 
 ### 3. Zero-Touch Persistence
 
