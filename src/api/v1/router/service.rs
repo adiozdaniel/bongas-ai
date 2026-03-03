@@ -1,90 +1,88 @@
 //! V1 API Router assembly.
-//! This is the single source of truth for all API routes in the system.
+//! The Grand Composer: Context-Aware Routing for the Bongas-AI Symphony.
 
 use axum::{
-    routing::{get, post, put, delete},
+    routing::{get, post},
     Router,
+    middleware::from_fn,
 };
 use std::sync::Arc;
-use crate::config::AppConfig;
+use crate::config::{AppConfig, CompressionConfig};
+use crate::engine::BongasEngine;
 use super::*;
 
-/// Build the complete v1 API router with all domain routes nested under their prefixes.
-pub fn routes(config: Arc<AppConfig>) -> Router {
-    // ─── STAGE (Public Endpoints) ──────────────────────────────────────────
+/// Build the complete v1 API router with context-aware infrastructure logic.
+pub fn routes(config: Arc<AppConfig>, engine: Arc<BongasEngine>) -> Router {
     
-    let public_recommendation_router = Router::new()
-        // 1. The Genesis Entry Point: Resolves World & Nav Mesh
-        .route("/", get(recommendations::handlers::genesis))
-        // 2. The Page Orchestrator: Contextual View Delivery
-        .route("/page/{slug}", get(recommendations::handlers::get_page_recommendations))
-        // 3. Scenario Detail: Deep Pagination (See All)
-        .route("/scenario/{slug}", get(recommendations::handlers::get_scenario_detail))
-        // 4. Ingestion: Real-time behavior tracking
-        .route("/ingest", post(recommendations::handlers::ingest_activities));
+    // ─── THE PULSE (Operations & Observability) ──────────────────────────
+    // Infrastructure routes: Low overhead, no compression needed.
+    let pulse_router = Router::new()
+        .route("/health/live", get(pulse::health::liveness_check))
+        .route("/health/ready", get(pulse::health::readiness_check))
+        .route("/system/metrics", get(pulse::metrics::get_resilience_metrics))
+        .route("/system/cache/stats", get(pulse::metrics::get_cache_stats))
+        .route("/system/ingestion/health", get(pulse::metrics::get_ingestion_health));
 
-    // ─── BACKSTAGE (Admin Endpoints - System Key Auth) ───────────────────
+    // ─── THE STAGE (Public Discovery) ────────────────────────────────────
+    // Dynamic content delivery.
+    
+    // 1. Streaming Layer (No Compression to avoid buffering delay)
+    let stage_streaming = Router::new()
+        .route("/", get(stage::discovery::genesis))
+        .route("/page/{slug}", get(stage::discovery::get_page_recommendations));
 
-    let admin_pages_router = Router::new()
-        .route("/", post(pages::handlers::save_page_layout))
-        .route("/active", get(pages::handlers::list_active_pages))
-        .route("/{slug}", get(pages::handlers::get_page_layout).delete(pages::handlers::delete_page_layout));
+    // 2. Data Layer (JSON-heavy, Compression enabled)
+    let stage_data = Router::new()
+        .route("/scenario/{slug}", get(stage::discovery::get_scenario_detail))
+        .route("/ingest", post(stage::ingestion::ingest_activities))
+        .layer(CompressionConfig::new().build());
 
-    let admin_scenarios_router = Router::new()
-        .route("/", post(scenarios::handlers::create_scenario).get(scenarios::handlers::list_scenarios))
-        .route("/{slug}", get(scenarios::handlers::get_scenario).put(scenarios::handlers::update_scenario).delete(scenarios::handlers::delete_scenario))
-        .route("/{slug}/reload", post(scenarios::handlers::reload_scenario))
-        .route("/reload-all", post(scenarios::handlers::reload_all_scenarios));
+    let stage_router = stage_streaming.merge(stage_data);
 
-    let admin_features_router = Router::new()
-        .route("/user/{user_id}", get(features::handlers::get_user_features))
-        .route("/item/{item_id}", get(features::handlers::get_item_features))
-        .route("/trending", get(features::handlers::get_trending_items));
-
-    let admin_system_router = Router::new()
-        .route("/metrics", get(admin::handlers::get_resilience_metrics))
-        .route("/cache/stats", get(admin::handlers::get_cache_stats))
-        .route("/ingestion/metrics", get(admin::handlers::get_ingestion_metrics))
-        .route("/ingestion/health", get(admin::handlers::get_ingestion_health))
-        .route("/models/reload", post(admin::handlers::reload_models))
-        .route("/models/stats", get(admin::handlers::get_model_stats))
-        .route("/security/status", get(admin::handlers::get_security_status))
-        .route("/reload", post(admin::handlers::reload_engine_atomic)) // Global Symphony Refresh
-        .route("/suggestions", get(admin::handlers::list_suggestions))
-        .route("/suggestions/{id}/approve", post(admin::handlers::approve_suggestion))
-        .route("/suggestions/{id}/reject", post(admin::handlers::reject_suggestion))
-        .route("/suggestions/{id}/simulate", get(admin::handlers::simulate_suggestion))
-        .route("/chatbot/ask", post(admin::handlers::chatbot_ask));
+    // ─── THE BACKSTAGE (Admin Control) ──────────────────────────────────
+    // Governance and ML strategy.
+    
+    // Admin features require full JSON compression and System Key Shield.
+    let backstage_router = Router::new()
+        .nest("/pages", Router::new()
+            .route("/", post(backstage::orchestration::save_page_layout))
+            .route("/active", get(backstage::orchestration::list_active_pages))
+            .route("/{slug}", get(backstage::orchestration::get_page_layout).delete(backstage::orchestration::delete_page_layout)))
         
-    let admin_recommendation_router = Router::new()
-        .route("/prewarm", post(recommendations::handlers::prewarm_scenarios));
-
-    let mut admin_router = Router::new()
-        .nest("/pages", admin_pages_router)
-        .nest("/scenarios", admin_scenarios_router)
-        .nest("/features", admin_features_router)
-        .nest("/system", admin_system_router)
-        .nest("/recommendations", admin_recommendation_router);
-
-    if config.experiments.enabled {
-        let experiments_router = Router::new()
-            .route("/", get(experiments::handlers::list_experiments));
-        admin_router = admin_router.nest("/experiments", experiments_router);
-    }
-
-    // ─── HEALTH (System Status) ──────────────────────────────────────────
-
-    let health_router = Router::new()
-        .route("/", get(health::handlers::health_check))
-        .route("/live", get(health::handlers::liveness_check))
-        .route("/ready", get(health::handlers::readiness_check));
+        .nest("/scenarios", Router::new()
+            .route("/", post(backstage::strategy::create_scenario).get(backstage::strategy::list_scenarios))
+            .route("/{slug}", get(backstage::strategy::get_scenario).put(backstage::strategy::update_scenario).delete(backstage::strategy::delete_scenario))
+            .route("/{slug}/reload", post(backstage::strategy::reload_scenario))
+            .route("/reload-all", post(backstage::strategy::reload_all_scenarios)))
+        
+        .nest("/intelligence", Router::new()
+            .route("/features/user/{user_id}", get(backstage::intelligence::get_user_features))
+            .route("/features/item/{item_id}", get(backstage::intelligence::get_item_features))
+            .route("/features/trending", get(backstage::intelligence::get_trending_items))
+            .route("/suggestions", get(backstage::intelligence::list_suggestions))
+            .route("/suggestions/{id}/approve", post(backstage::intelligence::approve_suggestion))
+            .route("/chatbot/ask", post(backstage::intelligence::chatbot_ask)))
+        
+        .nest("/system", Router::new()
+            .route("/reload", post(pulse::metrics::reload_engine_atomic))
+            .route("/models/reload", post(pulse::metrics::reload_models))
+            .route("/models/stats", get(pulse::metrics::get_model_stats))
+            .route("/security/status", get(pulse::metrics::get_security_status))
+            .route("/prewarm", post(stage::discovery::prewarm_scenarios)))
+        
+        // GLOBAL BACKSTAGE SHIELD: Apply admin auth to all admin routes at once
+        .layer(from_fn(move |req, next| {
+            let engine = engine.clone();
+            async move {
+                // We use the helper logic directly or call the shared auth middleware
+                crate::api::middleware::service::platform_security_middleware(req, next).await
+            }
+        }))
+        .layer(CompressionConfig::new().build());
 
     // ─── COMPOSE THE SYMPHONY ────────────────────────────────────────────
 
-    let symphony_router = public_recommendation_router
-        .nest("/admin", admin_router);
-
     Router::new()
-        .nest("/recommendation", symphony_router)
-        .nest("/health", health_router)
+        .nest("/recommendation", stage_router.nest("/admin", backstage_router))
+        .merge(pulse_router)
 }
