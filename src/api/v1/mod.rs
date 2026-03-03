@@ -10,4 +10,8 @@ pub mod admin;
 pub mod experiments;
 pub mod router;
 
+pub mod stage;
+pub mod backstage;
+pub mod pulse;
+
 pub use router::routes;
