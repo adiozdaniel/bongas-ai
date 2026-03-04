@@ -9,8 +9,8 @@ use crate::cache::CacheManager;
 use crate::ml::model_loader::ModelLoader;
 use crate::db::repositories::item_feature_service::ItemFeatureService;
 use crate::ml::FeatureStore;
-use crate::db::repositories::feature_repository::FeatureRepository;
-use crate::db::repositories::cache_repository::CacheRepository;
+use crate::db::repositories::feature_repository::service::FeatureRepository;
+use crate::db::repositories::cache_repository::service::CacheRepository;
 use crate::circuit_breaker::CircuitBreakerRegistry;
 
 /// ⚡ THE STAGE: High-performance discovery execution.
@@ -33,27 +33,20 @@ impl ExecutionPillar {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         manager: Arc<ExecutionManager>,
-        pipeline_executor: Arc<PipelineExecutor>,
-        strategy_resolver: Arc<StrategyResolver>,
-        staging_manager: Arc<StagingManager>,
-        cache_manager: Arc<CacheManager>,
-        model_loader: Arc<ModelLoader>,
-        item_feature_service: Arc<ItemFeatureService>,
-        feature_store: Arc<FeatureStore>,
         feature_repo: Arc<FeatureRepository>,
         cache_repo: Arc<CacheRepository>,
         circuit_breaker_registry: Arc<CircuitBreakerRegistry>,
         warmer: Arc<PredictiveWarmer>,
     ) -> Self {
         Self { 
+            pipeline_executor: manager.pipeline_executor.clone(),
+            strategy_resolver: manager.strategy_resolver.clone(),
+            staging_manager: manager.staging_manager.clone(),
+            cache_manager: manager.cache_manager.clone(),
+            model_loader: manager.model_loader.clone(),
+            item_feature_service: manager.item_feature_service.clone(),
+            feature_store: manager.feature_store.clone(),
             manager, 
-            pipeline_executor,
-            strategy_resolver,
-            staging_manager,
-            cache_manager,
-            model_loader,
-            item_feature_service,
-            feature_store,
             feature_repo,
             cache_repo,
             circuit_breaker_registry,

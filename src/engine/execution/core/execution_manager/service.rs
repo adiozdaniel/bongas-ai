@@ -16,9 +16,6 @@ use crate::ml::FeatureStore;
 use crate::analytics::types::PerformanceStats;
 use crate::experiments::ExperimentCoordinator;
 use crate::middlewares::MetricsCollector;
-use crate::db::repositories::feature_repository::FeatureRepository;
-use crate::db::repositories::cache_repository::CacheRepository;
-use crate::circuit_breaker::CircuitBreakerRegistry;
 use tokio::sync::RwLock;
 use arc_swap::ArcSwap;
 use crate::pipeline::ExecutablePipeline;
@@ -36,9 +33,6 @@ pub struct ExecutionManager {
     pub(crate) metrics_collector: Arc<MetricsCollector>,
     pub(crate) clickhouse: Option<Arc<clickhouse::Client>>,
     pub(crate) hot_registry: Arc<crate::cache::HotRegistry>,
-    pub(crate) _feature_repo: Arc<FeatureRepository>,
-    pub(crate) _cache_repo: Arc<CacheRepository>,
-    pub(crate) _circuit_breaker_registry: Arc<CircuitBreakerRegistry>,
     
     // Coordination with Scenarios
     pub(crate) scenarios: Arc<RwLock<HashMap<String, ScenarioDefinition>>>,
@@ -49,6 +43,7 @@ pub struct ExecutionManager {
 }
 
 impl ExecutionManager {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         pipeline_executor: Arc<PipelineExecutor>,
         strategy_resolver: Arc<StrategyResolver>,
@@ -62,9 +57,6 @@ impl ExecutionManager {
         metrics_collector: Arc<MetricsCollector>,
         clickhouse: Option<Arc<clickhouse::Client>>,
         hot_registry: Arc<crate::cache::HotRegistry>,
-        feature_repo: Arc<FeatureRepository>,
-        cache_repo: Arc<CacheRepository>,
-        circuit_breaker_registry: Arc<CircuitBreakerRegistry>,
         scenarios: Arc<RwLock<HashMap<String, ScenarioDefinition>>>,
         linked_scenarios: Arc<ArcSwap<HashMap<String, Arc<ExecutablePipeline>>>>,
     ) -> Self {
@@ -81,9 +73,6 @@ impl ExecutionManager {
             metrics_collector,
             clickhouse,
             hot_registry,
-            _feature_repo: feature_repo,
-            _cache_repo: cache_repo,
-            _circuit_breaker_registry: circuit_breaker_registry,
             scenarios,
             linked_scenarios,
             request_consolidation: Arc::new(dashmap::DashMap::new()),
