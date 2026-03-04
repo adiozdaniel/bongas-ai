@@ -15,7 +15,7 @@ use anyhow::Result;
 use ndarray::Array2;
 use ort::session::Session;
 use ort::session::builder::GraphOptimizationLevel;
-use ort::value::TensorRef;
+use ort::value::Value;
 use tokio::sync::Semaphore;
 use tracing::{info, warn, debug};
 
@@ -44,10 +44,6 @@ pub struct OnnxInferenceEngine {
     // Analytics
     analytics: Option<Arc<crate::analytics::types::PerformanceStats>>,
 }
-
-// OnnxInferenceEngine is Sync because all its fields are Sync (Mutex<Session> is Sync).
-// By using a Mutex wrapper and &self for inference methods, we satisfy the 
-// compiler while allowing safe multi-threaded access.
 
 impl OnnxInferenceEngine {
     /// Create new ONNX inference engine with full resilience wiring.
@@ -269,9 +265,12 @@ impl OnnxInferenceEngine {
         user_features: Array2<f32>,
         item_features: Array2<f32>,
     ) -> Result<Vec<f32>, ModelError> {
-        let user_input = TensorRef::from_array_view(user_features.view())
+        // OWNED Tensors: Using ort::Value::from_array to transfer ownership into the ONNX runtime.
+        // This is critical for memory safety across the FFI boundary, preventing segfaults
+        // that occur when ndarray buffers are dropped while ONNX is still processing them.
+        let user_input = Value::from_array(user_features)
             .map_err(|e| ModelError::InferenceFailed(format!("user tensor: {e}")))?;
-        let item_input = TensorRef::from_array_view(item_features.view())
+        let item_input = Value::from_array(item_features)
             .map_err(|e| ModelError::InferenceFailed(format!("item tensor: {e}")))?;
 
         let mut session = self.session.lock().unwrap_or_else(|e| {
@@ -297,9 +296,7 @@ impl OnnxInferenceEngine {
         Ok(scores_slice.to_vec())
     }
 
-    /// Batch inference with resilience: circuit breaker + bulkhead + analytics.
     /// Run multi-action inference (multi-head output).
-    /// Returns a Vec of Vecs, where each inner vec contains all predicted action probabilities for an item.
     pub async fn predict_multi_action(
         self: Arc<Self>,
         user_features: Array2<f32>,
@@ -324,9 +321,10 @@ impl OnnxInferenceEngine {
                     e.into_inner()
                 });
 
-                let user_input = TensorRef::from_array_view(user_features.view())
+                // OWNED Tensors: Critical for FFI safety
+                let user_input = Value::from_array(user_features)
                     .map_err(|e| ModelError::InferenceFailed(format!("user tensor: {e}")))?;
-                let item_input = TensorRef::from_array_view(item_features.view())
+                let item_input = Value::from_array(item_features)
                     .map_err(|e| ModelError::InferenceFailed(format!("item tensor: {e}")))?;
 
                 let outputs = session.run(ort::inputs![
