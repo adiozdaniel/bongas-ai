@@ -13,7 +13,7 @@ use tracing::{info, error, debug};
 use async_trait::async_trait;
 
 use crate::circuit_breaker::{CircuitBreakerRegistry, CircuitBreakerId, CircuitBreakerConfig, CircuitState};
-use crate::ingestion::types::{ActivitySource, SourceHealth, UserActivity};
+use crate::ingestion::{ActivitySource, SourceHealth, UserActivity};
 use crate::config::types::ingestion as config_ingestion;
 
 /// Configuration for the ClickHouse polling source.

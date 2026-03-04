@@ -2,4 +2,3 @@
 
 pub mod service;
 
-pub use service::ActivityProcessor;

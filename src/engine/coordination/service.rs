@@ -74,7 +74,7 @@ pub struct BongasEngine {
 }
 
 use crate::error::{AppResult, AppError, ScenarioError};
-use crate::ingestion::metrics::IngestionHealth;
+use crate::ingestion::IngestionHealth;
 use crate::cache::metrics::CacheMetricsSnapshot;
 use crate::db::repositories::feature_repository::service::FeatureRepository;
 use crate::db::repositories::cache_repository::service::CacheRepository;

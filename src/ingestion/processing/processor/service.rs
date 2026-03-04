@@ -9,7 +9,7 @@ use crate::db::repositories::interaction_repository::InteractionRepository;
 use crate::engine::intelligence::monitoring::staleness_engine::service::{StalenessEngine, UserEvent};
 use crate::resilience::ResilienceMetricsCollector;
 
-use crate::ingestion::types::UserActivity;
+use crate::ingestion::UserActivity;
 use clickhouse::Row;
 use serde::{Serialize, Deserialize};
 

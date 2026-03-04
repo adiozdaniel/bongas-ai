@@ -12,10 +12,12 @@ use crate::db::ResilientPool;
 use crate::engine::intelligence::monitoring::staleness_engine::service::StalenessEngine;
 use crate::resilience::ResilienceMetricsCollector;
 
-use crate::ingestion::types::{ActivitySource, UserActivity};
-use crate::ingestion::processor::ActivityProcessor;
-use crate::ingestion::metrics::{IngestionMetrics, IngestionHealth};
-use crate::ingestion::sources::{KafkaSource, ApiSource, ClickHouseSource};
+use crate::ingestion::{ActivitySource, UserActivity};
+use crate::ingestion::ActivityProcessor;
+use crate::ingestion::{IngestionMetrics, IngestionHealth};
+use crate::ingestion::recovery::kafka::service::KafkaSource;
+use crate::ingestion::recovery::api::service::ApiSource;
+use crate::ingestion::recovery::clickhouse::service::ClickHouseSource;
 use crate::engine::governance::orchestration::manager::service::PagesManager;
 
 /// Channel buffer size for the activity pipeline.
@@ -50,7 +52,7 @@ impl IngestionManager {
 
         // Add Kafka if configured
         if !kafka_brokers.is_empty() {
-            let kafka_config = crate::ingestion::sources::kafka::service::KafkaSourceConfig {
+            let kafka_config = crate::ingestion::recovery::kafka::service::KafkaSourceConfig {
                 brokers: kafka_brokers,
                 playback_topic: "user-activities-playback".into(),
                 reaction_topic: "user-activities-reaction".into(),
@@ -64,7 +66,7 @@ impl IngestionManager {
 
         // Add ClickHouse if configured
         if let Some(ref ch) = clickhouse {
-            let ch_config = crate::ingestion::sources::clickhouse::service::ClickHouseSourceConfig {
+            let ch_config = crate::ingestion::recovery::clickhouse::service::ClickHouseSourceConfig {
                 poll_interval_secs: 60,
                 batch_size: 1000,
             };

@@ -1,19 +1,18 @@
 //! Activity ingestion backbone — source-agnostic user activity pipeline.
 //!
-//! Three sources feed activities through one processor into the staleness engine:
-//! - **Kafka** — real-time stream consumer
-//! - **API** — direct endpoint for user-reaction calls
-//! - **ClickHouse** — polling feedback
+//! Organized into three functional pillars:
+//! 📥 RECOVERY (The Stage): Ingestion sources (Kafka, ClickHouse, API).
+//! 🎭 PROCESSING (The Backstage): Transformation and enrichment.
+//! 🥇 BROADCAST (The Pulse): Downstream delivery and orchestration.
 
 pub mod types;
-pub mod processor;
-pub mod sources;
-pub mod metrics;
-pub mod producer;
-pub mod manager;
+pub mod recovery;
+pub mod processing;
+pub mod broadcast;
 
-pub use manager::IngestionManager;
-pub use types::{UserActivity, ActivitySource};
-pub use processor::ActivityProcessor;
-pub use metrics::{IngestionMetrics, IngestionHealth};
-pub use producer::RecommendationProducer;
+// Re-export common types for external consumption
+pub use types::models::*;
+pub use broadcast::manager::service::IngestionManager;
+pub use processing::processor::service::ActivityProcessor;
+pub use broadcast::metrics::service::{IngestionMetrics, IngestionHealth};
+pub use broadcast::producer::service::RecommendationProducer;
