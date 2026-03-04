@@ -10,8 +10,8 @@ use crate::circuit_breaker::{
 };
 use crate::circuit_breaker::observer::ResilienceObserver;
 use crate::config::PipelineConfig;
-use crate::pipeline::validator::PipelineValidator;
-use crate::pipeline::registry::PipelineRegistry;
+use crate::pipeline::validator::service::PipelineValidator;
+use crate::pipeline::registry::service::PipelineRegistry;
 
 pub struct PipelineExecutor {
     pub(super) registry: PipelineRegistry,

@@ -4,7 +4,7 @@ use serde_json::{Value as JsonValue, json};
 use serde::Deserialize;
 use std::sync::Arc;
 use crate::pipeline::{PipelineStage, ScoredItem};
-use crate::pipeline::context::ExecutionContext;
+use crate::pipeline::context::service::ExecutionContext;
 use crate::ml::inference::onnx::service::OnnxInferenceEngine;
 use tracing::info;
 

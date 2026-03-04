@@ -4,7 +4,7 @@ use serde_json::{Value as JsonValue, json};
 use serde::Deserialize;
 use std::collections::HashMap;
 use crate::pipeline::{PipelineStage, ScoredItem};
-use crate::pipeline::context::ExecutionContext;
+use crate::pipeline::context::service::ExecutionContext;
 use tracing::{info, debug};
 
 #[derive(Deserialize)]

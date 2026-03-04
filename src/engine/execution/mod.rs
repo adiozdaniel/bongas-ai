@@ -9,6 +9,6 @@ pub use core::execution_manager::service::ExecutionManager;
 pub use crate::engine::governance::strategy::resolver::service::StrategyResolver;
 pub use cache::predictive_warmer::service::PredictiveWarmer;
 pub use cache::staging_manager::service::StagingManager;
-pub use crate::pipeline::context::ExecutionContext;
+pub use crate::pipeline::context::service::ExecutionContext;
 pub use runtime::runtime::service::BongasRuntime;
 pub use pillar::service::ExecutionPillar;

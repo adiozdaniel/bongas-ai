@@ -1,6 +1,6 @@
 use criterion::{criterion_group, criterion_main, Criterion, black_box};
-use bongas_ai::pipeline::executor::PipelineExecutor;
-use bongas_ai::pipeline::context::ExecutionContext;
+use bongas_ai::pipeline::PipelineExecutor;
+use bongas_ai::pipeline::ExecutionContext;
 use bongas_ai::pipeline::{ScoredItem, PipelineStage, StageDataKind};
 use bongas_ai::db::models::{PipelineDefinition, PipelineStageConfig};
 use bongas_ai::cache::{HotRegistry, HotItem};
@@ -84,14 +84,14 @@ fn bench_fast_path_vs_slow_path(c: &mut Criterion) {
     
     group.bench_function("slow_path_dynamic_link", |b| {
         b.to_async(&rt).iter(|| async {
-            let res = executor.execute(&pipeline, &context).await.unwrap();
+            let res: Vec<ScoredItem> = executor.execute(&pipeline, &context).await.unwrap();
             black_box(res)
         })
     });
 
     group.bench_function("fast_path_pre_linked", |b| {
         b.to_async(&rt).iter(|| async {
-            let res = executor.execute_linked(&linked_pipeline, &context).await.unwrap();
+            let res: Vec<ScoredItem> = executor.execute_linked(&linked_pipeline, &context).await.unwrap();
             black_box(res)
         })
     });
@@ -151,14 +151,14 @@ fn bench_parallel_fetch_gains(c: &mut Criterion) {
     
     group.bench_function("3_fetches_serial", |b| {
         b.to_async(&rt).iter(|| async {
-            let res = executor.execute_linked(&serial_linked, &context).await.unwrap();
+            let res: Vec<ScoredItem> = executor.execute_linked(&serial_linked, &context).await.unwrap();
             black_box(res)
         })
     });
 
     group.bench_function("3_fetches_parallel", |b| {
         b.to_async(&rt).iter(|| async {
-            let res = executor.execute_linked(&parallel_linked, &context).await.unwrap();
+            let res: Vec<ScoredItem> = executor.execute_linked(&parallel_linked, &context).await.unwrap();
             black_box(res)
         })
     });

@@ -4,8 +4,8 @@ use crate::error::{AppResult, AppError, ScenarioError};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tracing::warn;
-use crate::pipeline::context::ExecutionContext;
-use crate::pipeline::executor::PipelineExecutor;
+use crate::pipeline::context::service::ExecutionContext;
+use crate::pipeline::executor::service::PipelineExecutor;
 use crate::engine::execution::cache::staging_manager::service::StagingManager;
 use crate::engine::governance::strategy::resolver::service::StrategyResolver;
 use crate::engine::coordination::service::{RecommendationItem, ScenarioExecutionStats, ScenarioDefinition};
@@ -18,7 +18,7 @@ use crate::experiments::ExperimentCoordinator;
 use crate::middlewares::MetricsCollector;
 use tokio::sync::RwLock;
 use arc_swap::ArcSwap;
-use crate::pipeline::ExecutablePipeline;
+use crate::pipeline::types::models::ExecutablePipeline;
 
 pub struct ExecutionManager {
     pub(crate) pipeline_executor: Arc<PipelineExecutor>,
@@ -239,7 +239,7 @@ impl ExecutionManager {
         Ok((self.convert_to_recommendation_items(final_scored_items), stats))
     }
 
-    fn convert_to_recommendation_items(&self, scored_items: Vec<crate::pipeline::ScoredItem>) -> Vec<RecommendationItem> {
+    fn convert_to_recommendation_items(&self, scored_items: Vec<crate::pipeline::types::models::ScoredItem>) -> Vec<RecommendationItem> {
         scored_items.into_iter().map(|item| RecommendationItem {
             item_id: item.item_id,
             score: item.score,

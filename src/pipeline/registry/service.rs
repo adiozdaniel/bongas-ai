@@ -1,30 +1,30 @@
 use std::collections::HashMap;
 use std::sync::Arc;
-use crate::pipeline::types::PipelineStage;
+use crate::pipeline::types::models::PipelineStage;
 use crate::engine::governance::strategy::dynamic::stages as dynamic_stages;
 
-// Category 1: Data Fetching
-use crate::pipeline::stages::fetch::fetch_clickhouse_watch_progress::service::FetchClickHouseWatchProgressStage;
-use crate::pipeline::stages::fetch::fetch_clickhouse_trending::service::FetchClickHouseTrendingStage;
-use crate::pipeline::stages::fetch::fetch_recent_watches::service::FetchRecentWatchesStage;
-use crate::pipeline::stages::fetch::fetch_popular_content::service::FetchPopularContentStage;
-use crate::pipeline::stages::fetch::fetch_by_category::service::FetchByCategoryStage;
-use crate::pipeline::stages::fetch::fetch_because_you_watched::service::FetchBecauseYouWatchedStage;
-use crate::pipeline::stages::fetch::fetch_similar_content::service::FetchSimilarContentStage;
-use crate::pipeline::stages::fetch::fetch_new_releases::service::FetchNewReleasesStage;
+// Category 1: Recovery (The Stage)
+use crate::pipeline::recovery::fetch_clickhouse_watch_progress::service::FetchClickHouseWatchProgressStage;
+use crate::pipeline::recovery::fetch_clickhouse_trending::service::FetchClickHouseTrendingStage;
+use crate::pipeline::recovery::fetch_recent_watches::service::FetchRecentWatchesStage;
+use crate::pipeline::recovery::fetch_popular_content::service::FetchPopularContentStage;
+use crate::pipeline::recovery::fetch_by_category::service::FetchByCategoryStage;
+use crate::pipeline::recovery::fetch_because_you_watched::service::FetchBecauseYouWatchedStage;
+use crate::pipeline::recovery::fetch_similar_content::service::FetchSimilarContentStage;
+use crate::pipeline::recovery::fetch_new_releases::service::FetchNewReleasesStage;
 
-// Category 2: Processing & Filtering
-use crate::pipeline::stages::filter::filter_already_watched::service::FilterAlreadyWatchedStage;
-use crate::pipeline::stages::filter::maturity_filter::service::MaturityFilterStage;
-use crate::pipeline::stages::sort::sort_by_score::service::SortByScoreStage;
-use crate::pipeline::stages::sort::deduplicate::service::DeduplicateStage;
-use crate::pipeline::stages::diversify::diversify_genres::service::DiversifyGenresStage;
-use crate::pipeline::stages::sort::limit::service::LimitStage;
+// Category 2: Processing (The Backstage)
+use crate::pipeline::processing::filter_already_watched::service::FilterAlreadyWatchedStage;
+use crate::pipeline::processing::maturity_filter::service::MaturityFilterStage;
+use crate::pipeline::processing::deduplicate::service::DeduplicateStage;
 
-// Category 3: ML & Inference
-use crate::pipeline::stages::ml::onnx_inference::service::ONNXInferenceStage;
-use crate::pipeline::stages::ml::ml_inference_similarity::service::MLInferenceSimilarityStage;
-use crate::pipeline::stages::ml::multi_action_ranker::service::MultiActionRankerStage;
+// Category 3: Ranking (The Pulse)
+use crate::pipeline::ranking::sort_by_score::service::SortByScoreStage;
+use crate::pipeline::ranking::diversify_genres::service::DiversifyGenresStage;
+use crate::pipeline::ranking::limit::service::LimitStage;
+use crate::pipeline::ranking::onnx_inference::service::ONNXInferenceStage;
+use crate::pipeline::ranking::ml_inference_similarity::service::MLInferenceSimilarityStage;
+use crate::pipeline::ranking::multi_action_ranker::service::MultiActionRankerStage;
 
 /// Global registry of all available pipeline stages.
 #[derive(Clone)]
@@ -54,7 +54,7 @@ impl PipelineRegistry {
 }
 
 fn register_static_stages(registry: &mut HashMap<String, Arc<dyn PipelineStage>>) {
-    // Fetch
+    // Recovery
     registry.insert("fetch_clickhouse_watch_progress".into(), Arc::new(FetchClickHouseWatchProgressStage));
     registry.insert("fetch_clickhouse_trending".into(), Arc::new(FetchClickHouseTrendingStage));
     registry.insert("fetch_recent_watches".into(), Arc::new(FetchRecentWatchesStage));
@@ -69,14 +69,14 @@ fn register_static_stages(registry: &mut HashMap<String, Arc<dyn PipelineStage>>
     registry.insert("filter_seen_items".into(), Arc::new(FilterAlreadyWatchedStage)); // Alias
     registry.insert("maturity_filter".into(), Arc::new(MaturityFilterStage));
     registry.insert("filter_maturity_rating".into(), Arc::new(MaturityFilterStage)); // Alias
-    registry.insert("sort_by_score".into(), Arc::new(SortByScoreStage));
     registry.insert("deduplicate".into(), Arc::new(DeduplicateStage));
     registry.insert("deduplicate_items".into(), Arc::new(DeduplicateStage)); // Alias
+
+    // Ranking
+    registry.insert("sort_by_score".into(), Arc::new(SortByScoreStage));
     registry.insert("diversify_genres".into(), Arc::new(DiversifyGenresStage));
     registry.insert("limit".into(), Arc::new(LimitStage));
     registry.insert("top_k_selector".into(), Arc::new(LimitStage)); // Alias
-
-    // ML
     registry.insert("onnx_inference".into(), Arc::new(ONNXInferenceStage));
     registry.insert("ml_inference_similarity".into(), Arc::new(MLInferenceSimilarityStage));
     registry.insert("multi_action_ranker".into(), Arc::new(MultiActionRankerStage));

@@ -6,7 +6,7 @@ use serde_json::Value as JsonValue;
 use std::sync::Arc;
 use std::time::Duration;
 use crate::circuit_breaker::CircuitBreaker;
-use crate::pipeline::context::ExecutionContext;
+use crate::pipeline::context::service::ExecutionContext;
 use rkyv::{Archive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize};
 
 /// The type of data that a stage expects or produces.

@@ -3,8 +3,8 @@
 use anyhow::Result;
 use std::collections::HashMap;
 
-use crate::pipeline::types::{StageDataKind, PipelineError, ExecutablePipeline, ExecutionNode};
-use crate::pipeline::registry::PipelineRegistry;
+use crate::pipeline::{StageDataKind, PipelineError, ExecutablePipeline, ExecutionNode};
+use crate::pipeline::registry::service::PipelineRegistry;
 use crate::db::models::{PipelineDefinition, PipelineStageConfig};
 
 /// Validates the structural integrity and type safety of a pipeline.

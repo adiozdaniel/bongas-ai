@@ -8,7 +8,7 @@ use tokio::sync::RwLock;
 use arc_swap::ArcSwap;
 use tracing::{info, warn};
 
-use crate::pipeline::{ExecutablePipeline, executor::PipelineExecutor};
+use crate::pipeline::{ExecutablePipeline, PipelineExecutor};
 use crate::engine::coordination::service::ScenarioDefinition;
 use crate::engine::governance::factory::scenario_factory::service::ScenarioFactory;
 use crate::engine::execution::cache::staging_manager::service::StagingManager;

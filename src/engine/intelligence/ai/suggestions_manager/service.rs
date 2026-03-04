@@ -4,7 +4,7 @@ use anyhow::{Result, Context};
 use std::sync::Arc;
 use tracing::info;
 use crate::engine::coordination::service::BongasEngine;
-use crate::pipeline::context::ExecutionContext;
+use crate::pipeline::context::service::ExecutionContext;
 
 /// 🤖 AI: Strategic rule generation and optimization.
 pub struct SuggestionsManager;

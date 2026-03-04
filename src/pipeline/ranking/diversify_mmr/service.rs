@@ -3,7 +3,7 @@ use anyhow::Result;
 use serde_json::Value as JsonValue;
 use serde::Deserialize;
 use crate::pipeline::{PipelineStage, ScoredItem, StageDataKind};
-use crate::pipeline::context::ExecutionContext;
+use crate::pipeline::context::service::ExecutionContext;
 use std::collections::HashMap;
 
 /// Maximal Marginal Relevance (MMR) diversification algorithm

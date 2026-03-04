@@ -1,25 +1,35 @@
-# 📥 Pipeline Stages: Fetch
+# 📥 Pipeline: RECOVERY (The Stage)
 
-> **Retrieval components for gathering candidate items.**
+> **The retrieval domain — gathering candidate items from high-performance sources.**
 
-Fetch stages are usually the entry point of a pipeline or a branch. They interface with databases, caches, and ML services to retrieve an initial set of items.
+Recovery stages represent the "Stage" of the pipeline, where initial data is brought into the engine. These components are optimized for high-concurrency and resilient I/O, utilizing ClickHouse, Postgres, and Redis to fetch the raw material for our recommendation models.
+
+[🏠 Hub](../../docs/HUB.md) | [🏗️ Architecture](../../docs/architecture/SYMPHONY.md) | [📖 Pipeline Main](../README.md)
+
+---
+
+## 🏛️ Recovery Principles
+
+- **Candidate Retrieval**: Fetches a broad set of items based on simple heuristic or collaborative signals.
+- **I/O Resilience**: Every stage is protected by a dedicated circuit breaker to prevent slow data sources from degrading the entire cluster.
+- **Asynchronous Execution**: Stages are designed to execute in parallel, allowing the engine to pull from multiple sources concurrently.
 
 ---
 
-## 🧩 Sub-Modules
+## 🧩 Retrieval Manifest
 
-| Stage | Description |
-| :--- | :--- |
-| [**👤 User Preferences**](./fetch_user_preferences/README.md) | Fetches items based on explicit user profile interests. |
-| [**🔍 Similar Content**](./fetch_similar_content/README.md) | Vector-search based retrieval for "More like this". |
-| [**🆕 New Releases**](./fetch_new_releases/README.md) | Time-based retrieval for recently published items. |
-| [**📈 Popular Content**](./fetch_popular_content/README.md) | Global trending items from ClickHouse or Redis. |
-| [**📺 Because You Watched**](./fetch_because_you_watched/README.md) | Collaborative filtering based on the user's last interaction. |
-| [**📂 By Category**](./fetch_by_category/README.md) | Targeted retrieval for specific content taxonomies. |
-| [**🏗️ ClickHouse Trending**](./fetch_clickhouse_trending/README.md) | High-volume analytical retrieval from ClickHouse. |
-| [**⏳ Watch Progress**](./fetch_clickhouse_watch_progress/README.md) | Resumes items the user has partially consumed. |
-| [**🗓️ Seasonal**](./fetch_seasonal_content/README.md) | Context-aware retrieval for specific dates/events. |
-| [**⏪ Recent Watches**](./fetch_recent_watches/README.md) | Retrieves the user's most recent activity history. |
+| Stage | Description | Source |
+| :--- | :--- | :--- |
+| [**👤 User Preferences**](./fetch_user_preferences/README.md) | Fetches items based on explicit user profile interests. | Postgres |
+| [**🔍 Similar Content**](./fetch_similar_content/README.md) | Vector-search based retrieval for "More like this". | Redis |
+| [**🆕 New Releases**](./fetch_new_releases/README.md) | Time-based retrieval for recently published items. | Postgres |
+| [**📈 Popular Content**](./fetch_popular_content/README.md) | Global trending items from ClickHouse or Redis. | ClickHouse |
+| [**📺 Because You Watched**](./fetch_because_you_watched/README.md) | Collaborative filtering based on user interaction. | Postgres |
+| [**📂 By Category**](./fetch_by_category/README.md) | Targeted retrieval for specific content taxonomies. | Postgres |
+| [**🏗️ ClickHouse Trending**](./fetch_clickhouse_trending/README.md) | High-volume analytical retrieval. | ClickHouse |
+| [**⏳ Watch Progress**](./fetch_clickhouse_watch_progress/README.md) | Resumes items the user has partially consumed. | ClickHouse |
+| [**🗓️ Seasonal**](./fetch_seasonal_content/README.md) | Context-aware retrieval for specific events. | Redis |
+| [**⏪ Recent Watches**](./fetch_recent_watches/README.md) | Retrieves the user's most recent activity history. | Redis |
 
 ---
-[⬅️ Back to Stages Main](../README.md)
+[🏠 Hub](../../docs/HUB.md) | [🔝 Top](#-pipeline-recovery-the-stage)

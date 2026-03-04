@@ -16,7 +16,7 @@ use crate::cache::CacheManager;
 use crate::db::repositories::cache_repository::CacheRepository;
 use crate::db::ResilientPool;
 use crate::resilience::ResilienceMetricsCollector;
-use crate::pipeline::ScoredItem;
+use crate::pipeline::types::models::ScoredItem;
 
 use std::collections::HashMap;
 

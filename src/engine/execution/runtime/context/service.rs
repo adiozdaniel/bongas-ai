@@ -1,4 +1,4 @@
-use crate::pipeline::context::ExecutionContext;
+use crate::pipeline::context::service::ExecutionContext;
 
 /// Engine-level request context wrapping pipeline context
 /// with additional metadata for tracing and analytics.

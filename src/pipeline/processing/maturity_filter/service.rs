@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use anyhow::Result;
 use serde_json::Value as JsonValue;
 use crate::pipeline::{PipelineStage, ScoredItem, MaturityRating, StageDataKind};
-use crate::pipeline::context::ExecutionContext;
+use crate::pipeline::context::service::ExecutionContext;
 use tracing::debug;
 
 /// Phase 11: Maturity Filter Stage

@@ -10,7 +10,8 @@ pub mod validator;
 pub mod optimizer;
 pub mod types;
 
-pub use types::*;
+pub use types::models::*;
+pub use types::error::PipelineError;
 pub use executor::service::PipelineExecutor;
 pub use context::service::ExecutionContext;
 pub use registry::service::PipelineRegistry;

@@ -4,7 +4,7 @@ pub use crate::engine::governance::strategy::resolver::service::StrategyResolver
 pub use crate::engine::execution::cache::predictive_warmer::service::PredictiveWarmer;
 pub use crate::engine::execution::cache::staging_manager::service::StagingManager;
 
-use crate::pipeline::executor::PipelineExecutor;
+use crate::pipeline::executor::service::PipelineExecutor;
 use crate::cache::CacheManager;
 use crate::ml::assets::loader::service::ModelLoader;
 use crate::db::repositories::item_feature_service::ItemFeatureService;

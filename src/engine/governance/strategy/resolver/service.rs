@@ -11,8 +11,8 @@ use arc_swap::ArcSwap;
 use std::collections::HashMap;
 use chrono::Timelike;
 
-use crate::pipeline::ExecutablePipeline;
-use crate::pipeline::context::ExecutionContext;
+use crate::pipeline::types::models::ExecutablePipeline;
+use crate::pipeline::context::service::ExecutionContext;
 use crate::db::models::PipelineDefinition;
 
 /// Represents an active rule for strategy selection.

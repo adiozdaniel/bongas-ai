@@ -4,7 +4,7 @@ use tracing::warn;
 use async_recursion::async_recursion;
 
 use crate::pipeline::{ScoredItem, ExecutionNode, ExecutablePipeline, BoundStage};
-use crate::pipeline::context::ExecutionContext;
+use crate::pipeline::context::service::ExecutionContext;
 use crate::db::models::PipelineDefinition;
 use crate::error::{PipelineError, AppError};
 use crate::pipeline::executor::service::PipelineExecutor;

@@ -4,7 +4,7 @@ use serde::{Serialize, Deserialize};
 
 use crate::AppConfig;
 use crate::db::models::PipelineDefinition;
-use crate::pipeline::ExecutablePipeline;
+use crate::pipeline::types::models::ExecutablePipeline;
 use crate::security::SecurityManager;
 use crate::cache::CacheManager;
 use crate::ingestion::IngestionManager;

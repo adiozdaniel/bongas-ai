@@ -1,5 +1,5 @@
 use criterion::{criterion_group, criterion_main, Criterion, BenchmarkId, black_box};
-use bongas_ai::ml::utils::{cosine_similarity, dot_product, euclidean_similarity, pad_or_truncate};
+use bongas_ai::ml::assets::utils::service::{cosine_similarity, dot_product, euclidean_similarity, pad_or_truncate};
 
 fn bench_math_utils(c: &mut Criterion) {
     let mut group = c.benchmark_group("math_utils");

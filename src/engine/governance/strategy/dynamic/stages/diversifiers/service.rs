@@ -3,8 +3,8 @@ use anyhow::{Result, Context};
 use serde_json::Value as JsonValue;
 use serde::Deserialize;
 use crate::pipeline::{PipelineStage, ScoredItem, StageDataKind};
-use crate::pipeline::context::ExecutionContext;
-use crate::pipeline::stages::diversify::DiversifyGenresStage;
+use crate::pipeline::context::service::ExecutionContext;
+use crate::pipeline::ranking::diversify_genres::service::DiversifyGenresStage;
 
 #[derive(Deserialize)]
 struct Params {

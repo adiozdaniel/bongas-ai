@@ -3,7 +3,7 @@ use anyhow::Result;
 use serde_json::{Value as JsonValue, json};
 use serde::Deserialize;
 use crate::pipeline::{PipelineStage, ScoredItem, StageDataKind};
-use crate::pipeline::context::ExecutionContext;
+use crate::pipeline::context::service::ExecutionContext;
 use crate::db::repositories::item_feature_service::ItemFeatureRow;
 use tracing::info;
 

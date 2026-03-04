@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use anyhow::Result;
-use crate::pipeline::ScoredItem;
-use crate::pipeline::context::ExecutionContext;
+use crate::pipeline::types::models::ScoredItem;
+use crate::pipeline::context::service::ExecutionContext;
 
 /// Core trait for different scenario execution strategies.
 ///
