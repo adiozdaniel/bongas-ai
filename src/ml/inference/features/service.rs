@@ -81,7 +81,7 @@ impl FeatureStore {
             if let Some(ref a) = self.analytics {
                 a.increment_throughput(&format!("{}.cache_hit", metric_key));
             }
-            return Ok(crate::ml::utils::pad_or_truncate(features, feature_dim));
+            return Ok(crate::ml::assets::utils::service::pad_or_truncate(features, feature_dim));
         }
 
         // L2: Database
@@ -97,7 +97,7 @@ impl FeatureStore {
             Ok(feats) => {
                 // Write-back to cache (fire-and-forget)
                 let _ = self.cache_manager.set(&cache_key, &feats).await;
-                Ok(crate::ml::utils::pad_or_truncate(feats, feature_dim))
+                Ok(crate::ml::assets::utils::service::pad_or_truncate(feats, feature_dim))
             }
             Err(e) => {
                 warn!(user_id = user_id, error = %e, "Feature fetch failed, using cold-start defaults");
@@ -254,7 +254,7 @@ impl FeatureStore {
                 features.push(row.completion_rate.unwrap_or(0.0));
                 features
             };
-            map.insert(row.item_id, crate::ml::utils::pad_or_truncate(features, feature_dim));
+            map.insert(row.item_id, crate::ml::assets::utils::service::pad_or_truncate(features, feature_dim));
         }
 
         // Fill missing items with zero vectors

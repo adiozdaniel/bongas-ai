@@ -5,7 +5,7 @@ use serde::Deserialize;
 use crate::pipeline::{PipelineStage, ScoredItem};
 use crate::pipeline::context::ExecutionContext;
 use crate::db::repositories::item_feature_service::ItemFeatureRow;
-use crate::ml::utils::{cosine_similarity, dot_product};
+use crate::ml::assets::utils::service::{cosine_similarity, dot_product};
 use tracing::info;
 
 #[derive(Deserialize)]

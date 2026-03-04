@@ -62,7 +62,7 @@ impl DiversifyMMRStage {
 
     /// Calculate cosine similarity between two embedding vectors
     fn cosine_similarity(emb_a: &[f32], emb_b: &[f32]) -> f32 {
-        crate::ml::utils::cosine_similarity(emb_a, emb_b)
+        crate::ml::assets::utils::service::cosine_similarity(emb_a, emb_b)
     }
 }
 

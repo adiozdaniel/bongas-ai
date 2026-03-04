@@ -19,7 +19,7 @@ use tokio::io::AsyncWriteExt;
 
 use crate::config::MlConfig;
 use crate::security::SecurityManager;
-use crate::ml::model_loader::ModelLoader;
+use crate::ml::assets::loader::service::ModelLoader;
 
 /// Represents a single interaction sequence for training.
 #[derive(Debug, Serialize, Deserialize, clickhouse::Row)]

@@ -125,7 +125,7 @@ impl EmbeddingManager {
             if let Some(ref a) = self.analytics {
                 a.increment_throughput(&format!("{}.cache_hit", metric_key));
             }
-            return Ok(crate::ml::utils::pad_or_truncate(embedding, embedding_dim));
+            return Ok(crate::ml::assets::utils::service::pad_or_truncate(embedding, embedding_dim));
         }
 
         // DB fetch
@@ -140,7 +140,7 @@ impl EmbeddingManager {
         match result {
             Ok(embedding) => {
                 let _ = self.cache_manager.set(&cache_key, &embedding).await;
-                Ok(crate::ml::utils::pad_or_truncate(embedding, embedding_dim))
+                Ok(crate::ml::assets::utils::service::pad_or_truncate(embedding, embedding_dim))
             }
             Err(e) => {
                 warn!(user_id = user_id, error = %e, "User embedding fetch failed, using zero fallback");
@@ -154,17 +154,17 @@ impl EmbeddingManager {
 
     /// Compute cosine similarity between two vectors.
     pub fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
-        crate::ml::utils::cosine_similarity(a, b)
+        crate::ml::assets::utils::service::cosine_similarity(a, b)
     }
 
     /// Compute dot product between two vectors.
     pub fn dot_product(a: &[f32], b: &[f32]) -> f32 {
-        crate::ml::utils::dot_product(a, b)
+        crate::ml::assets::utils::service::dot_product(a, b)
     }
 
     /// Compute euclidean similarity (1 / (1 + distance)).
     pub fn euclidean_similarity(a: &[f32], b: &[f32]) -> f32 {
-        crate::ml::utils::euclidean_similarity(a, b)
+        crate::ml::assets::utils::service::euclidean_similarity(a, b)
     }
 
     // ── Internal DB queries ──────────────────────────────────────────────────
@@ -200,7 +200,7 @@ impl EmbeddingManager {
             } else {
                 vec![0.0; embedding_dim]
             };
-            found.insert(row.item_id, crate::ml::utils::pad_or_truncate(emb, embedding_dim));
+            found.insert(row.item_id, crate::ml::assets::utils::service::pad_or_truncate(emb, embedding_dim));
         }
 
         // Fill missing with zeros

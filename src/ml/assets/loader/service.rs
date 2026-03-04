@@ -21,7 +21,7 @@ use crate::config::MlConfig;
 use crate::db::models::ModelRegistry;
 use crate::db::repositories::model_repository::ModelRepository;
 use crate::error::ModelError;
-use crate::ml::onnx_runtime::OnnxInferenceEngine;
+use crate::ml::inference::onnx::service::OnnxInferenceEngine;
 
 /// Metadata about a cached model for staleness tracking.
 struct CachedModel {
@@ -253,7 +253,7 @@ impl ModelLoader {
             .await?
             .context(format!("Model not found: {}", model_key))?;
 
-        let engine = self.load_model_with_retry(&model_entry).await
+        let engine: Arc<OnnxInferenceEngine> = self.load_model_with_retry(&model_entry).await
             .map_err(|e| anyhow::anyhow!("{}", e))?;
         Ok(engine)
     }
@@ -278,7 +278,7 @@ impl ModelLoader {
             }
         }
 
-        let engine = self.load_model_with_retry(&model_entry).await
+        let engine: Arc<OnnxInferenceEngine> = self.load_model_with_retry(&model_entry).await
             .map_err(|e| anyhow::anyhow!("{}", e))?;
         Ok(engine)
     }

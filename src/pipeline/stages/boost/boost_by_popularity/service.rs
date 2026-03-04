@@ -4,7 +4,7 @@ use serde_json::Value as JsonValue;
 use serde::Deserialize;
 use crate::pipeline::{PipelineStage, ScoredItem, StageDataKind};
 use crate::pipeline::context::ExecutionContext;
-use crate::ml::utils::apply_weights_simd;
+use crate::ml::assets::utils::service::apply_weights_simd;
 
 #[derive(Deserialize)]
 struct Params {

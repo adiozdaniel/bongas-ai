@@ -109,10 +109,10 @@ impl PipelineStage for ONNXInferenceSimilarityStage {
                 .filter(|(cid, _)| !seed_ids.contains(cid))
                 .map(|(cid, cand_vec)| {
                     let score = match params.method.as_str() {
-                        "cosine" => crate::ml::utils::cosine_similarity(seed_vec, cand_vec),
-                        "dot_product" => crate::ml::utils::dot_product(seed_vec, cand_vec),
-                        "euclidean" => crate::ml::utils::euclidean_similarity(seed_vec, cand_vec),
-                        _ => crate::ml::utils::cosine_similarity(seed_vec, cand_vec),
+                        "cosine" => crate::ml::assets::utils::service::cosine_similarity(seed_vec, cand_vec),
+                        "dot_product" => crate::ml::assets::utils::service::dot_product(seed_vec, cand_vec),
+                        "euclidean" => crate::ml::assets::utils::service::euclidean_similarity(seed_vec, cand_vec),
+                        _ => crate::ml::assets::utils::service::cosine_similarity(seed_vec, cand_vec),
                     };
                     ScoredItem::new(
                         *cid,

@@ -13,9 +13,9 @@ use crate::analytics::types::PerformanceStats;
 use crate::cache::{CacheManager, HotRegistry};
 use crate::config::PipelineConfig;
 use crate::db::repositories::item_feature_service::ItemFeatureService;
-use crate::ml::model_loader::ModelLoader;
-use crate::ml::feature_store::FeatureStore;
-use crate::ml::embeddings::EmbeddingManager;
+use crate::ml::assets::loader::service::ModelLoader;
+use crate::ml::inference::features::service::FeatureStore;
+use crate::ml::inference::embeddings::service::EmbeddingManager;
 
 /// Execution context passed to all pipeline stages.
 ///
@@ -106,8 +106,7 @@ impl ExecutionContext {
         use crate::resilience::{ResilienceMetricsCollector, MetricsRegistry, ResilienceMetricsConfig};
         use crate::db::{ResilientPool, ResilientPoolConfig};
         use crate::cache::{CacheManager, CacheConfig};
-        use crate::ml::model_loader::ModelLoader;
-        use crate::db::repositories::model_repository::ModelRepository;
+        use crate::db::repositories::model_repository::service::ModelRepository;
         use crate::circuit_breaker::CircuitBreakerRegistry;
         
         let resilience_metrics = Arc::new(ResilienceMetricsCollector::new(
@@ -141,7 +140,7 @@ impl ExecutionContext {
         ));
 
         let item_feature_service = Arc::new(ItemFeatureService::new(resilient_pool.clone(), resilience_metrics.clone()));
-        let feature_store = Arc::new(crate::ml::FeatureStore::new(
+        let feature_store = Arc::new(FeatureStore::new(
             resilient_pool.clone(),
             cache_manager.clone(),
             crate::config::MlConfig::default(),
