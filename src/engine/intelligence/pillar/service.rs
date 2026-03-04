@@ -1,17 +1,20 @@
-use std::sync::Arc;
-pub use crate::engine::intelligence::ai::suggestions_manager::service::SuggestionsManager;
-pub use crate::engine::intelligence::ai::hive_mind::service::HiveMindConnector;
-pub use crate::engine::intelligence::monitoring::analytics_sidecar::service::AnalyticsSidecar;
-pub use crate::engine::intelligence::monitoring::staleness_engine::service::StalenessEngine;
-pub use crate::engine::intelligence::workers::workers_manager::service::WorkersManager;
+//! Intelligence Pillar: AI, monitoring, and proactive coordination.
 
-/// 📈 THE PULSE: AI-driven insights and monitoring.
+use std::sync::Arc;
+use crate::engine::intelligence::ai::suggestions_manager::service::SuggestionsManager;
+use crate::engine::intelligence::ai::hive_mind::service::HiveMindConnector;
+use crate::engine::intelligence::monitoring::analytics_sidecar::service::AnalyticsSidecar;
+use crate::engine::intelligence::monitoring::staleness_engine::service::StalenessEngine;
+use crate::engine::intelligence::workers::workers_manager::service::WorkersManager;
+use crate::engine::intelligence::ai::simulator::service::SafetySimulator;
+
 pub struct IntelligencePillar {
     pub suggestions: Arc<SuggestionsManager>,
     pub hive_mind: Arc<HiveMindConnector>,
     pub monitoring: Arc<AnalyticsSidecar>,
     pub staleness: Arc<StalenessEngine>,
     pub workers: Arc<WorkersManager>,
+    pub simulator: Arc<SafetySimulator>,
 }
 
 impl IntelligencePillar {
@@ -28,6 +31,7 @@ impl IntelligencePillar {
             monitoring,
             staleness,
             workers,
+            simulator: Arc::new(SafetySimulator::new()),
         }
     }
 }

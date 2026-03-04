@@ -2,9 +2,9 @@
 
 use anyhow::{Result, Context};
 use std::sync::Arc;
-use tracing::info;
-use crate::engine::coordination::service::BongasEngine;
-use crate::pipeline::context::service::ExecutionContext;
+use tracing::{info, warn};
+use crate::engine::coordination::service::{BongasEngine, RecommendationItem};
+use crate::pipeline::ExecutionContext;
 
 /// 🤖 AI: Strategic rule generation and optimization.
 pub struct SuggestionsManager;
@@ -68,7 +68,7 @@ impl BongasEngine {
             sqlx::query(
                 r#"
                 INSERT INTO scenario_rules (scenario_id, pipeline_id, condition, priority, is_active, description)
-                VALUES ($1, $2, $3, 150, true, 'AI Suggested & Human Approved')
+                VALUES ($1, $2, $3, 150, true, 'AI Suggested & Autonomous Promoted')
                 "#
             )
             .bind(suggestion.0)
@@ -89,6 +89,64 @@ impl BongasEngine {
 
         self.reload_scenarios().await?;
         Ok(())
+    }
+
+    /// CLOSED-LOOP: Simulate and promote if safe (Confidence > 0.95)
+    pub async fn simulate_and_promote(&self, suggestion_id: i32) -> Result<bool> {
+        info!(id = suggestion_id, "🎼 Starting Autonomous Strategy Promotion cycle...");
+
+        let impact = self.simulate_suggestion(suggestion_id).await?;
+        
+        // Extract comparison results
+        let comparisons = impact.get("impact_comparison").and_then(|v| v.as_array())
+            .context("Failed to parse simulation impact")?;
+
+        let mut total_confidence = 0.0;
+        let mut samples = 0;
+
+        for comp in comparisons {
+            // Note: simulate_suggestion returns IDs, we need RecommendationItems for full drift analysis
+            // But for now, we'll implement a simplified ID-based version of drift confidence
+            let control_ids: Vec<i32> = comp.get("control_ids").and_then(|v| v.as_array())
+                .map(|a| a.iter().filter_map(|v| v.as_i64().map(|i| i as i32)).collect())
+                .unwrap_or_default();
+            
+            let suggested_ids: Vec<i32> = comp.get("suggested_ids").and_then(|v| v.as_array())
+                .map(|a| a.iter().filter_map(|v| v.as_i64().map(|i| i as i32)).collect())
+                .unwrap_or_default();
+
+            // Simplified RecommendationItems for the simulator
+            let control_items: Vec<RecommendationItem> = control_ids.into_iter().map(|id| RecommendationItem {
+                item_id: id, score: 1.0, metadata: serde_json::Value::Null, reasoning: vec![]
+            }).collect();
+
+            let suggested_items: Vec<RecommendationItem> = suggested_ids.into_iter().map(|id| RecommendationItem {
+                item_id: id, score: 1.0, metadata: serde_json::Value::Null, reasoning: vec![]
+            }).collect();
+
+            let confidence = self.intelligence.simulator.calculate_drift_confidence(&control_items, &suggested_items);
+            
+            // Integrity Check: Nano-validation of model outputs
+            if !self.intelligence.simulator.validate_model_integrity(&suggested_items)? {
+                warn!(id = suggestion_id, "Autonomous Promotion REJECTED: Model integrity check failed (Structural Instability)");
+                return Ok(false);
+            }
+
+            total_confidence += confidence;
+            samples += 1;
+        }
+
+        let average_confidence = total_confidence / samples.max(1) as f64;
+        info!(id = suggestion_id, confidence = format!("{:.2}%", average_confidence * 100.0), "Simulation complete");
+
+        if average_confidence > 0.95 {
+            info!(id = suggestion_id, "🚀 High Confidence detected. Promoting strategy autonomously.");
+            self.approve_suggestion(suggestion_id).await?;
+            Ok(true)
+        } else {
+            warn!(id = suggestion_id, confidence = format!("{:.2}%", average_confidence * 100.0), "Autonomous Promotion SKIPPED: Drift too high for auto-approval");
+            Ok(false)
+        }
     }
 
     /// Simulate a rule suggestion before approval to see its impact.
@@ -116,7 +174,8 @@ impl BongasEngine {
                 .await
         }).await?;
         
-        let suggested_pipeline = Arc::new(self.execution.pipeline_executor.link(&serde_json::from_value::<crate::db::PipelineDefinition>(p_def_json)?)?);
+        let p_def: crate::db::PipelineDefinition = serde_json::from_value(p_def_json)?;
+        let suggested_pipeline = Arc::new(self.execution.pipeline_executor.link(&p_def)?);
         let control_pipeline = self.governance.scenarios.linked_scenarios.load().get(&scenario_slug).cloned();
 
         let sample_users: Vec<i32> = self.governance.scenarios.scenario_factory.repo().pool().execute(|pool| async move {
@@ -137,10 +196,6 @@ impl BongasEngine {
                 self.execution.feature_store.clone(),
                 request_id,
             ).with_hot_registry(self.execution.manager.hot_registry.clone());
-
-            if let Some(ref ch) = self.execution.manager.clickhouse {
-                context = context.with_clickhouse_client(ch.clone());
-            }
 
             if let Some(obj) = condition.as_object() {
                 if let Some(pid) = obj.get("context.profile_id").and_then(|v| v.as_str()) {

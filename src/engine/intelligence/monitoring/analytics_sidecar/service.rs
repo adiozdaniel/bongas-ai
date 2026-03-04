@@ -70,7 +70,6 @@ impl AnalyticsSidecar {
     async fn run_analysis_cycle(&self) -> Result<()> {
         debug!("Running hourly self-performance analysis...");
 
-        // Use the engine reference to list scenarios (Phase 16: Use Weak Engine)
         let engine_arc: Option<Arc<BongasEngine>> = {
             let guard = self.engine.lock().unwrap();
             guard.as_ref().and_then(|w: &Weak<BongasEngine>| w.upgrade())
@@ -83,35 +82,37 @@ impl AnalyticsSidecar {
                 return Ok(());
             }
 
-            // Target scenarios based on popularity or just take the first few
-            // For now, we prioritize 'home_feed' but fall back to others
             let target_slug = if scenario_slugs.contains(&"home_feed".to_string()) {
                 "home_feed".to_string()
             } else {
                 scenario_slugs[0].clone()
             };
 
-            // 1. Analyze Catalog Coverage (Blindness)
-            // Fetch total active items from Postgres first
+            // 1. Analyze Catalog Coverage
             let total_active_items = engine.execution.manager.item_feature_service.get_active_item_count().await?;
             let blindness = self.get_catalog_blindness(total_active_items).await?;
             if blindness > 0.6 { 
-                self.suggest_discovery_boost(&target_slug, blindness).await?;
+                let suggestion_id = self.suggest_discovery_boost(&target_slug, blindness).await?;
+                if let Some(id) = suggestion_id {
+                    // CLOSED-LOOP: Attempt autonomous promotion
+                    let _ = engine.simulate_and_promote(id).await;
+                }
             }
 
-            // 2. Analyze Persona Churn (Drop in engagement)
+            // 2. Analyze Persona Churn
             let churned_users = self.get_user_churn().await?;
             for user_id in churned_users {
-                self.suggest_retention_strategy(&target_slug, user_id).await?;
+                let suggestion_id = self.suggest_retention_strategy(&target_slug, user_id).await?;
+                if let Some(id) = suggestion_id {
+                    // CLOSED-LOOP: Attempt autonomous promotion
+                    let _ = engine.simulate_and_promote(id).await;
+                }
             }
-        } else {
-            warn!("Analytics sidecar lost engine reference");
         }
 
         Ok(())
     }
 
-    /// Calculate the percentage of items with 0 impressions in the last 24h.
     async fn get_catalog_blindness(&self, total_active_items: i64) -> Result<f64> {
         let query = format!(
             "SELECT (1 - (count(DISTINCT item_id) / {})) as blindness \
@@ -128,7 +129,6 @@ impl AnalyticsSidecar {
         Ok(res)
     }
 
-    /// Identify users with >20% drop in session duration compared to last week's baseline.
     async fn get_user_churn(&self) -> Result<Vec<i32>> {
         let query = r#"
             SELECT user_id
@@ -142,31 +142,20 @@ impl AnalyticsSidecar {
         let results: Vec<i32> = self.clickhouse.query(query).fetch_all().await
             .context("Failed to fetch user churn from ClickHouse")?;
 
-        if !results.is_empty() {
-            info!(count = results.len(), "Engagement drop detected for multiple users");
-        }
         Ok(results)
     }
 
-    /// Insert a suggestion to switch to a retention-heavy pipeline for a specific user.
-    async fn suggest_retention_strategy(&self, scenario_slug: &str, user_id: i32) -> Result<()> {
-        let reasoning = format!(
-            "Engagement Churn Detected for user_id '{}' in scenario '{}'. Duration dropped by >20%. Suggesting Personalized Retention strategy.",
-            user_id, scenario_slug
-        );
-
-        let condition = serde_json::json!({
-            "user_id": user_id
-        });
-
+    async fn suggest_retention_strategy(&self, scenario_slug: &str, user_id: i32) -> Result<Option<i32>> {
+        let reasoning = format!("Engagement Churn Detected for user_id '{}'. Suggesting Retention strategy.", user_id);
+        let condition = serde_json::json!({ "user_id": user_id });
         let s_slug = scenario_slug.to_string();
 
-        let rows_affected = self.pool.execute(move |pool| {
+        let res: Option<i32> = self.pool.execute(move |pool| {
             let reason = reasoning.clone();
             let cond = condition.clone();
             let s = s_slug.clone();
             async move {
-                sqlx::query(
+                sqlx::query_scalar(
                     r#"
                     INSERT INTO rule_suggestions (
                         scenario_id, suggested_pipeline_id, suggested_condition, 
@@ -175,42 +164,29 @@ impl AnalyticsSidecar {
                     SELECT s.id, p.id, $2, $3, 0.85, 'pending'
                     FROM scenarios s, pipelines p
                     WHERE s.slug = $1 
-                      AND (p.slug LIKE '%retention%' OR p.slug LIKE '%personalized%' OR p.slug = 'retention_v1')
-                    ORDER BY p.id ASC
+                      AND (p.slug LIKE '%retention%' OR p.slug = 'retention_v1')
                     LIMIT 1
                     ON CONFLICT (scenario_id, suggested_pipeline_id, md5(suggested_condition::text)) WHERE status = 'pending' DO NOTHING
+                    RETURNING id
                     "#
                 )
-                .bind(s)
-                .bind(cond)
-                .bind(reason)
-                .execute(&pool)
-                .await
+                .bind(s).bind(cond).bind(reason)
+                .fetch_optional(&pool).await
             }
-        }).await?.rows_affected();
+        }).await?;
 
-        if rows_affected == 0 {
-            warn!(user_id = %user_id, scenario = %scenario_slug, "Retention strategy suggestion SKIPPED (No suitable pipeline found or duplicate exists)");
-        } else {
-            info!(user_id = %user_id, scenario = %scenario_slug, "Retention gap detected: Strategy suggestion pushed");
-        }
-        Ok(())
+        Ok(res)
     }
 
-    /// Insert a suggestion to switch to a discovery-heavy pipeline.
-    async fn suggest_discovery_boost(&self, scenario_slug: &str, blindness: f64) -> Result<()> {
-        let reasoning = format!(
-            "Catalog Blindness is at {:.2}% in scenario '{}'. Discovery is currently suboptimal. Suggesting switch to Discovery-Heavy strategy.",
-            blindness * 100.0, scenario_slug
-        );
-
+    async fn suggest_discovery_boost(&self, scenario_slug: &str, blindness: f64) -> Result<Option<i32>> {
+        let reasoning = format!("Catalog Blindness at {:.2}%. Suggesting Discovery-Heavy strategy.", blindness * 100.0);
         let s_slug = scenario_slug.to_string();
 
-        let rows_affected = self.pool.execute(move |pool| {
+        let res: Option<i32> = self.pool.execute(move |pool| {
             let reason = reasoning.clone();
             let s = s_slug.clone();
             async move {
-                sqlx::query(
+                sqlx::query_scalar(
                     r#"
                     INSERT INTO rule_suggestions (
                         scenario_id, suggested_pipeline_id, suggested_condition, 
@@ -219,24 +195,17 @@ impl AnalyticsSidecar {
                     SELECT s.id, p.id, '{}'::jsonb, $2, 0.9, 'pending'
                     FROM scenarios s, pipelines p
                     WHERE s.slug = $1 
-                      AND (p.slug LIKE '%discovery%' OR p.slug LIKE '%coverage%' OR p.slug = 'discovery_v1')
-                    ORDER BY p.id ASC
+                      AND (p.slug LIKE '%discovery%' OR p.slug = 'discovery_v1')
                     LIMIT 1
                     ON CONFLICT (scenario_id, suggested_pipeline_id, md5(suggested_condition::text)) WHERE status = 'pending' DO NOTHING
+                    RETURNING id
                     "#
                 )
-                .bind(s)
-                .bind(reason)
-                .execute(&pool)
-                .await
+                .bind(s).bind(reason)
+                .fetch_optional(&pool).await
             }
-        }).await?.rows_affected();
+        }).await?;
 
-        if rows_affected == 0 {
-            warn!(scenario = %scenario_slug, "Discovery strategy suggestion SKIPPED (No suitable pipeline found or duplicate exists)");
-        } else {
-            info!(scenario = %scenario_slug, "Performance Gap Detected: Discovery suggestion pushed to admin queue");
-        }
-        Ok(())
+        Ok(res)
     }
 }
