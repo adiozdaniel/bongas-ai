@@ -1,30 +1,62 @@
-# 🧠 ML: Machine Learning Infrastructure
+# 🧬 The Cortex: Intelligence Layer
 
-> **High-performance inference, feature management, and online learning.**
-
-The ML module provides a resilient stack for deploying and managing machine learning models in production. It is designed to handle high-throughput inference requests while maintaining system stability through circuit breaking and graceful degradation.
+The Cortex module is the machine learning backbone of BONGAS-AI. It follows an audience-based functional pillar architecture, strictly separating real-time inference from heavy training workloads and asset management.
 
 ---
 
-## 🏗️ Architecture
+## 🏗️ Architecture Overview
 
-The ML infrastructure is composed of several specialized layers that work together to deliver real-time recommendations.
+The Cortex is organized into three primary pillars, orchestrated by **The Conductor**.
+
+```mermaid
+graph TD
+    Engine[Engine Request] --> Conductor[🎼 Coordination: Cortex]
+    
+    subgraph Execution [🎯 THE STAGE]
+        Conductor --> Inference[Inference Pillar]
+        Inference --> ONNX[ONNX: Real-time]
+        Inference --> Vector[Embeddings: Vector Search]
+        Inference --> Features[Feature Store: Retrieval]
+    end
+    
+    subgraph Management [🏗️ THE BACKSTAGE]
+        Conductor --> Training[Training Pillar]
+        Training --> Learning[Online Learning]
+        Training --> Orchestrate[Training Orchestration]
+        Training --> Compute[Worker Queues]
+    end
+    
+    subgraph Operations [📦 THE PULSE]
+        Conductor --> Assets[Assets Pillar]
+        Assets --> Registry[Model Registry]
+        Assets --> Loader[Model Loader]
+    end
+```
 
 ---
 
-## 🧩 Sub-Modules
+## 🏛️ Functional Pillars
 
-| Module | Description |
-| :--- | :--- |
-| [**🤖 ONNX Runtime**](./onnx_runtime/README.md) | The core inference engine with hardware acceleration. |
-| [**📥 Model Loader**](./model_loader/README.md) | Resilient model fetching and hot-reloading logic. |
-| [**💎 Feature Store**](./feature_store/README.md) | Real-time feature retrieval with low-latency caching. |
-| [**🔍 Embeddings**](./embeddings/README.md) | High-performance embedding lookups and management. |
-| [**🗄️ Model Registry**](./model_registry/README.md) | Versioned model management and shadow deployment. |
-| [**🧵 Worker Queue**](./worker_queue/README.md) | Async task orchestration and backpressure management. |
-| [**📈 Online Learning**](./online_learning/README.md) | Real-time model updates based on user feedback. |
-| [**🏗️ Orchestrator**](./training_orchestrator/README.md) | Coordination of training and export workflows. |
-| [**🛠️ Utils**](./utils/README.md) | Shared ML utilities and mathematical operations. |
+### [🎯 THE STAGE (Inference)](./inference/README.md)
+The latency-sensitive fast path for real-time model execution and feature retrieval.
+- **ONNX**: Real-time runtime with hardware acceleration.
+- **Embeddings**: High-performance vector resolution and lookups.
+- **Features**: Low-latency feature store fetching.
+
+### [🏗️ THE BACKSTAGE (Training)](./training/README.md)
+The heavy-lifting domain for model refinement, feedback loops, and compute-intensive tasks.
+- **Online Learning**: Incremental model updates from real-time feedback.
+- **Orchestration**: Management of training and export pipelines.
+- **Workers**: Asynchronous heavy-compute worker orchestration.
+
+### [📦 THE PULSE (Assets)](./assets/README.md)
+The ML infrastructure layer managing model lifecycles, health, and swapping.
+- **Registry**: Versioned model storage and deployment governance.
+- **Loader**: Hot-swapping logic and memory management.
+- **Utils**: Shared mathematical and data utilities.
+
+### [🎼 THE CONDUCTOR (Coordination)](./coordination/README.md)
+The assembly point that wires the three pillars into a unified `DiscoveryCortex`.
 
 ---
-[🏠 Back to Project Root](../../README.md)
+[🏠 Back to Project Root](../README.md)

@@ -1,22 +1,7 @@
-//! Netflix-grade ML module with resilience patterns.
+//! The Cortex: Machine Learning Sub-system for BONGAS-AI.
+//! The Symphony 2.0: Audience-based functional pillars for ML.
 
-pub mod onnx_runtime;
-pub mod model_loader;
-pub mod feature_store;
-pub mod embeddings;
-pub mod model_registry;
-pub mod worker_queue;
-pub mod online_learning;
-pub mod training_orchestrator;
-pub mod utils;
-
-// Re-export key types for public API stability
-pub use onnx_runtime::*;
-pub use model_loader::*;
-pub use feature_store::*;
-pub use embeddings::*;
-pub use model_registry::*;
-pub use worker_queue::*;
-pub use online_learning::*;
-pub use training_orchestrator::*;
-pub use utils::*;
+pub mod inference;
+pub mod training;
+pub mod assets;
+pub mod coordination;
