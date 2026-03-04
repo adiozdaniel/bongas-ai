@@ -5,329 +5,224 @@ use tokio::sync::RwLock;
 use lru::LruCache;
 use std::num::NonZeroUsize;
 use tracing::info;
-use dashmap::DashMap;
 use std::collections::HashMap;
 
-use crate::engine::governance::orchestration::types::{PageLayout, PageSlug, SavePageLayoutRequest, PageCompositionItem, NavType};
-use crate::db::repositories::page_layout_repository::PageLayoutRepository;
+use crate::engine::governance::orchestration::types::models::{PageLayout, PageSlug, SavePageLayoutRequest, NavType};
+use crate::db::repositories::page_layout_repository::service::PageLayoutRepository;
 use crate::error::AppResult;
 use crate::ingestion::types::UserActivity;
 
 /// Represents the assembled application structure.
-#[derive(Debug, Clone, serde::Serialize)]
-pub struct NavigationMesh {
-    pub main: Vec<PageLayout>,
-    pub sub: Vec<PageLayout>,
-}
-
-/// The central manager for UI orchestration, layout resolution, and feedback ranking.
+/// Orchestrates the relationship between navigation mesh and page compositions.
 pub struct PagesManager {
     repo: Arc<PageLayoutRepository>,
-    /// Cache for frequently accessed page layouts to avoid DB roundtrips.
+    /// High-performance L1 cache for resolved layouts (target-aware)
     cache: Arc<RwLock<LruCache<(PageSlug, Option<String>, Option<String>), PageLayout>>>,
-    /// Optimized map for landing page resolution: (Device, Maturity) -> PageLayout
+    /// In-memory landing page registry for ultra-fast genesis resolution
     landing_pages: Arc<RwLock<HashMap<(String, String), PageLayout>>>,
-    /// Pre-calculated navigation mesh (Main + Sub pages)
-    nav_mesh: Arc<RwLock<NavigationMesh>>,
-    /// Real-time engagement scores for (Visitor/User, Scenario Slug or Page Slug) to drive ranking.
-    engagement_scores: Arc<DashMap<(String, String), f32>>,
+    /// Shared navigation mesh (cached globally)
+    nav_mesh: Arc<RwLock<Vec<PageLayout>>>,
 }
 
 impl PagesManager {
-    /// Create a new PagesManager with a default cache size.
-    pub fn new(repo: Arc<PageLayoutRepository>) -> Self {
+    pub fn new(repo: Arc<PageLayoutRepository>, cache_size: usize) -> Self {
         Self {
             repo,
-            cache: Arc::new(RwLock::new(LruCache::new(NonZeroUsize::new(200).unwrap()))),
+            cache: Arc::new(RwLock::new(LruCache::new(NonZeroUsize::new(cache_size).unwrap()))),
             landing_pages: Arc::new(RwLock::new(HashMap::new())),
-            nav_mesh: Arc::new(RwLock::new(NavigationMesh { main: vec![], sub: vec![] })),
-            engagement_scores: Arc::new(DashMap::new()),
+            nav_mesh: Arc::new(RwLock::new(Vec::new())),
         }
     }
 
-    /// Process incoming user activities to update internal engagement scores (Feedback Loop).
-    pub async fn process_activity(&self, activity: &UserActivity) {
-        let identity = if let Some(vid) = activity.visitor_id() {
-            vid.to_string()
-        } else {
-            activity.user_id().to_string()
-        };
-
-        if let Some(slug) = activity.scenario_slug() {
-            let score_delta = match activity {
-                UserActivity::Click { .. } => 1.0,
-                UserActivity::Playback { watch_percentage, .. } => *watch_percentage,
-                UserActivity::Reaction { reaction_type, .. } => {
-                    if reaction_type == "like" { 2.0 } else { -2.0 }
-                }
-                UserActivity::Impression { .. } => -0.05,
-                _ => 0.0,
-            };
-
-            let key = (identity, slug.to_string());
-            self.engagement_scores.entry(key)
-                .and_modify(|old| *old += score_delta)
-                .or_insert(score_delta);
-        }
-    }
-
-    /// HOT-RELOAD: Load all active pages and pre-calculate the Navigation Mesh.
-    pub async fn load_all_active(&self) -> AppResult<usize> {
-        info!("Hydrating Navigation Mesh and Page layouts...");
-        let db_layouts = self.repo.find_all_active().await?;
-        let count = db_layouts.len();
-
-        let mut main_nav = Vec::new();
-        let mut sub_nav = Vec::new();
-        let mut landings = HashMap::new();
-        let mut page_cache = LruCache::new(NonZeroUsize::new(200).unwrap());
-
-        for db_row in db_layouts {
-            let page_slug = PageSlug(db_row.page_slug.clone());
-            let composition: Vec<PageCompositionItem> = serde_json::from_value(db_row.composition)
-                .unwrap_or_default();
-            
-            let nav_type = match db_row.nav_type.as_str() {
+    fn map_db_to_domain(db: crate::db::models::PageLayout) -> PageLayout {
+        PageLayout {
+            page_slug: PageSlug(db.page_slug),
+            is_landing: db.is_landing,
+            nav_type: match db.nav_type.as_str() {
                 "main" => NavType::Main,
                 "sub" => NavType::Sub,
                 _ => NavType::Hidden,
-            };
+            },
+            device_type: db.device_type,
+            maturity_rating: db.maturity_rating,
+            priority: db.priority,
+            composition: serde_json::from_value(db.composition).unwrap_or_default(),
+            is_active: db.is_active,
+            updated_at: db.updated_at,
+        }
+    }
 
-            let layout = PageLayout {
-                page_slug: page_slug.clone(),
-                is_landing: db_row.is_landing,
-                nav_type: nav_type.clone(),
-                device_type: db_row.device_type.clone(),
-                maturity_rating: db_row.maturity_rating.clone(),
-                priority: db_row.priority,
-                composition,
-                is_active: db_row.is_active,
-                updated_at: db_row.updated_at,
-            };
+    /// Load all active layouts into memory for genesis and nav-mesh resolution.
+    pub async fn load_all_active(&self) -> AppResult<usize> {
+        info!("Hydrating PagesManager: Loading all active layouts into memory...");
+        
+        let layouts = self.repo.find_all_active().await?;
+        let count = layouts.len();
 
-            // 1. Update Global Page Cache
-            page_cache.put((page_slug, db_row.device_type.clone(), db_row.maturity_rating.clone()), layout.clone());
+        let mut landing_map = HashMap::new();
+        let mut nav_list = Vec::new();
 
-            // 2. Track Landing Pages
-            if db_row.is_landing {
-                let device = db_row.device_type.clone().unwrap_or_else(|| "all".to_string());
-                let maturity = db_row.maturity_rating.clone().unwrap_or_else(|| "all".to_string());
-                landings.insert((device, maturity), layout.clone());
+        for db_layout in layouts {
+            let layout = Self::map_db_to_domain(db_layout);
+            
+            if layout.is_landing {
+                let device = layout.device_type.clone().unwrap_or_else(|| "all".to_string());
+                let maturity = layout.maturity_rating.clone().unwrap_or_else(|| "all".to_string());
+                landing_map.insert((device, maturity), layout.clone());
             }
-
-            // 3. Assemble Nav-Mesh
-            match nav_type {
-                NavType::Main => main_nav.push(layout),
-                NavType::Sub => sub_nav.push(layout),
-                _ => {}
+            
+            if layout.nav_type != NavType::Hidden {
+                nav_list.push(layout);
             }
         }
 
         // Atomic Swaps
         {
-            let mut cache: tokio::sync::RwLockWriteGuard<'_, lru::LruCache<(PageSlug, Option<String>, Option<String>), PageLayout>> = self.cache.write().await;
-            *cache = page_cache;
+            let mut landings = self.landing_pages.write().await;
+            *landings = landing_map;
         }
         {
-            let mut l_cache = self.landing_pages.write().await;
-            *l_cache = landings;
-        }
-        {
-            let mut mesh = self.nav_mesh.write().await;
-            *mesh = NavigationMesh { main: main_nav, sub: sub_nav };
+            let mut nav = self.nav_mesh.write().await;
+            *nav = nav_list;
         }
 
-        info!(count, "Symphony Navigation Mesh hydrated successfully");
+        // Clear L1 cache on full reload to ensure consistency
+        {
+            let mut cache = self.cache.write().await;
+            cache.clear();
+        }
+
+        info!(count, "PagesManager hydration complete");
         Ok(count)
     }
 
-    /// Retrieve the personalized Navigation Mesh for a user context.
-    pub async fn get_nav_mesh_contextual(&self, identity_key: Option<&str>) -> NavigationMesh {
-        let mut mesh = self.nav_mesh.read().await.clone();
+    /// Resolve the navigation mesh for a specific context.
+    pub async fn get_nav_mesh_contextual(&self, _identity_key: Option<&str>) -> Vec<crate::api::models::recommendation::SymphonyNavigation> {
+        let nav = self.nav_mesh.read().await;
         
-        if let Some(id) = identity_key {
-            // Rank Sub-Navigation Hubs based on engagement
-            mesh.sub.sort_by(|a, b| {
-                let score_a = self.engagement_scores.get(&(id.to_string(), a.page_slug.0.clone()))
-                    .map(|v| *v).unwrap_or(0.0);
-                let score_b = self.engagement_scores.get(&(id.to_string(), b.page_slug.0.clone()))
-                    .map(|v| *v).unwrap_or(0.0);
-                
-                score_b.partial_cmp(&score_a).unwrap_or(std::cmp::Ordering::Equal)
-            });
-        }
-        
-        mesh
+        nav.iter().map(|l| crate::api::models::recommendation::SymphonyNavigation {
+            slug: l.page_slug.0.clone(),
+            title: l.page_slug.0.replace('_', " "), 
+            nav_type: match l.nav_type {
+                NavType::Main => "main".to_string(),
+                NavType::Sub => "sub".to_string(),
+                NavType::Hidden => "hidden".to_string(),
+            },
+            nav_mesh: vec![],
+            landing_slug: "".to_string(),
+            total_rows: 0,
+            request_id: "".to_string(),
+        }).collect()
     }
 
-    /// Resolve the best landing page for a user's context (Zero-DB path).
+    /// Resolve the landing page for a device/maturity context.
     pub async fn get_landing_page_contextual(
         &self,
         device_type: Option<&str>,
         maturity_rating: Option<&str>,
-        identity_key: Option<&str>
+        _identity_key: Option<&str>
     ) -> AppResult<Option<PageLayout>> {
         let device = device_type.unwrap_or("all");
         let maturity = maturity_rating.unwrap_or("all");
 
         let landing = {
-            let landings: tokio::sync::RwLockReadGuard<'_, std::collections::HashMap<(String, String), PageLayout>> = self.landing_pages.read().await;
+            let landings: tokio::sync::RwLockReadGuard<'_, HashMap<(String, String), PageLayout>> = self.landing_pages.read().await;
             
-            // Hierarchical resolution:
-            // 1. Exact match
-            // 2. Device match + global maturity
-            // 3. Global default
             landings.get(&(device.to_string(), maturity.to_string()))
                 .or_else(|| landings.get(&(device.to_string(), "all".to_string())))
                 .or_else(|| landings.get(&("all".to_string(), "all".to_string())))
                 .cloned()
         };
 
-        if let (Some(mut l), Some(id)) = (landing.clone(), identity_key) {
-            self.reorder_composition(&mut l.composition, id);
-            return Ok(Some(l));
-        }
-        
         Ok(landing)
     }
 
-    /// Retrieve the best matching layout for a specific page and context.
+    /// Resolve a full page layout by slug and context (with L1 caching).
     pub async fn get_layout_contextual(
-        &self, 
-        slug: &str, 
-        device_type: Option<&str>, 
+        &self,
+        page_slug: &str,
+        device_type: Option<&str>,
         maturity_rating: Option<&str>,
-        identity_key: Option<&str>
+        _identity_key: Option<&str>
     ) -> AppResult<Option<PageLayout>> {
-        let page_slug = PageSlug(slug.to_string());
+        let slug = PageSlug(page_slug.to_string());
         let device = device_type.map(|s| s.to_string());
         let maturity = maturity_rating.map(|s| s.to_string());
 
         // 1. Try cache first
         let layout_from_cache = {
-            let mut cache: tokio::sync::RwLockWriteGuard<'_, lru::LruCache<(PageSlug, Option<String>, Option<String>), PageLayout>> = self.cache.write().await;
-            cache.get(&(page_slug.clone(), device.clone(), maturity.clone())).cloned()
+            let mut cache: tokio::sync::RwLockWriteGuard<'_, LruCache<(PageSlug, Option<String>, Option<String>), PageLayout>> = self.cache.write().await;
+            cache.get(&(slug.clone(), device.clone(), maturity.clone())).cloned()
         };
 
-        // 2. Fetch from repository if cache miss (and hydrate)
-        let layout = if let Some(l) = layout_from_cache {
-            Some(l)
-        } else {
-            if let Some(db_layout) = self.repo.find_best_match(slug, device_type, maturity_rating).await? {
-                let composition: Vec<PageCompositionItem> = serde_json::from_value(db_layout.composition)
-                    .unwrap_or_default();
-                
-                let nav_type = match db_layout.nav_type.as_str() {
-                    "main" => NavType::Main,
-                    "sub" => NavType::Sub,
-                    _ => NavType::Hidden,
-                };
-
-                let resolved = PageLayout {
-                    page_slug: page_slug.clone(),
-                    is_landing: db_layout.is_landing,
-                    nav_type,
-                    device_type: db_layout.device_type.clone(),
-                    maturity_rating: db_layout.maturity_rating.clone(),
-                    priority: db_layout.priority,
-                    composition,
-                    is_active: db_layout.is_active,
-                    updated_at: db_layout.updated_at,
-                };
-
-                let mut cache: tokio::sync::RwLockWriteGuard<'_, lru::LruCache<(PageSlug, Option<String>, Option<String>), PageLayout>> = self.cache.write().await;
-                cache.put((page_slug, device, maturity), resolved.clone());
-                Some(resolved)
-            } else {
-                None
-            }
-        };
-
-        // 3. Algorithmic Reordering (The Brain)
-        if let (Some(mut l), Some(id)) = (layout.clone(), identity_key) {
-            self.reorder_composition(&mut l.composition, id);
-            return Ok(Some(l));
+        if let Some(cached) = layout_from_cache {
+            return Ok(Some(cached));
         }
+
+        // 2. Fallback to DB
+        if let Some(db_row) = self.repo.find_best_match(page_slug, device_type, maturity_rating).await? {
+            let resolved = Self::map_db_to_domain(db_row);
+            // Update cache
+            {
+                let mut cache: tokio::sync::RwLockWriteGuard<'_, LruCache<(PageSlug, Option<String>, Option<String>), PageLayout>> = self.cache.write().await;
+                cache.put((slug, device, maturity), resolved.clone());
+            }
+            return Ok(Some(resolved));
+        }
+
+        Ok(None)
+    }
+
+    /// Administrative: Save or update a layout.
+    pub async fn save_layout(&self, req: SavePageLayoutRequest) -> AppResult<PageLayout> {
+        let db_row = self.repo.upsert(
+            &req.page_slug,
+            req.is_landing.unwrap_or(false),
+            &match req.nav_type.unwrap_or_default() {
+                NavType::Main => "main".to_string(),
+                NavType::Sub => "sub".to_string(),
+                NavType::Hidden => "hidden".to_string(),
+            },
+            serde_json::to_value(&req.composition).unwrap_or_default(),
+            req.device_type,
+            req.maturity_rating,
+            req.priority.unwrap_or(0),
+            req.is_active.unwrap_or(true),
+        ).await?;
+        
+        let layout = Self::map_db_to_domain(db_row);
+        self.load_all_active().await?; 
 
         Ok(layout)
     }
 
-    pub async fn list_active_pages(&self) -> AppResult<Vec<PageLayout>> {
-        let db_layouts = self.repo.find_all_active().await?;
-        Ok(db_layouts.into_iter().map(|r| {
-            let composition: Vec<PageCompositionItem> = serde_json::from_value(r.composition).unwrap_or_default();
-            let nav_type = match r.nav_type.as_str() {
-                "main" => NavType::Main,
-                "sub" => NavType::Sub,
-                _ => NavType::Hidden,
-            };
-            PageLayout {
-                page_slug: PageSlug(r.page_slug),
-                is_landing: r.is_landing,
-                nav_type,
-                device_type: r.device_type,
-                maturity_rating: r.maturity_rating,
-                priority: r.priority,
-                composition,
-                is_active: r.is_active,
-                updated_at: r.updated_at,
-            }
-        }).collect())
-    }
-
-    fn reorder_composition(&self, composition: &mut Vec<PageCompositionItem>, identity: &str) {
-        if composition.len() < 2 { return; }
-        composition.sort_by(|a, b| {
-            let score_a = self.engagement_scores.get(&(identity.to_string(), a.slug.clone())).map(|v| *v).unwrap_or(0.0);
-            let score_b = self.engagement_scores.get(&(identity.to_string(), b.slug.clone())).map(|v| *v).unwrap_or(0.0);
-            score_b.partial_cmp(&score_a).unwrap_or(std::cmp::Ordering::Equal)
-        });
-    }
-
-    pub async fn invalidate_cache(&self, slug: &str) {
-        let mut cache: tokio::sync::RwLockWriteGuard<'_, lru::LruCache<(PageSlug, Option<String>, Option<String>), PageLayout>> = self.cache.write().await;
-        let keys: Vec<(PageSlug, Option<String>, Option<String>)> = cache.iter().filter(|((s, _, _), _)| s.0 == slug).map(|(k, _)| k.clone()).collect();
-        for k in keys { cache.pop(&k); }
-    }
-
+    /// Administrative: Soft-delete a layout.
     pub async fn delete_layout(&self, slug: &str) -> AppResult<bool> {
         let success = self.repo.soft_delete(slug).await?;
-        if success { 
-            self.load_all_active().await?; // Full refresh for Nav-Mesh integrity
+        if success {
+            self.invalidate_cache(slug).await;
+            self.load_all_active().await?;
         }
         Ok(success)
     }
 
-    pub async fn save_layout(&self, req: SavePageLayoutRequest) -> AppResult<PageLayout> {
-        let composition_json = serde_json::to_value(&req.composition).unwrap_or_default();
-        let nav_type_str = serde_json::to_value(&req.nav_type.clone().unwrap_or_default())
-            .unwrap_or_default().as_str().unwrap_or("hidden").to_string();
+    pub async fn list_active_pages(&self) -> AppResult<Vec<PageLayout>> {
+        let layouts = self.repo.find_all_active().await?;
+        Ok(layouts.into_iter().map(Self::map_db_to_domain).collect())
+    }
 
-        let db_row = self.repo.upsert(
-            &req.page_slug, 
-            req.is_landing.unwrap_or(false),
-            &nav_type_str,
-            composition_json, 
-            req.device_type.clone(), 
-            req.maturity_rating.clone(), 
-            req.priority.unwrap_or(0), 
-            req.is_active.unwrap_or(true)
-        ).await?;
+    pub async fn handle_activity(&self, _activity: &UserActivity) -> AppResult<()> {
+        Ok(())
+    }
 
-        let layout = PageLayout {
-            page_slug: PageSlug(req.page_slug.clone()),
-            is_landing: db_row.is_landing,
-            nav_type: req.nav_type.unwrap_or_default(),
-            device_type: db_row.device_type,
-            maturity_rating: db_row.maturity_rating,
-            priority: db_row.priority,
-            composition: req.composition,
-            is_active: db_row.is_active,
-            updated_at: db_row.updated_at,
-        };
-        
-        self.load_all_active().await?; // Full refresh for Nav-Mesh integrity
-
-        Ok(layout)
+    pub async fn invalidate_cache(&self, slug: &str) {
+        let mut cache: tokio::sync::RwLockWriteGuard<'_, LruCache<(PageSlug, Option<String>, Option<String>), PageLayout>> = self.cache.write().await;
+        let keys: Vec<(PageSlug, Option<String>, Option<String>)> = cache.iter()
+            .filter(|((s, _, _), _)| s.0 == slug)
+            .map(|(k, _)| k.clone())
+            .collect();
+        for k in keys {
+            cache.pop(&k);
+        }
     }
 }

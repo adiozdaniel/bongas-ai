@@ -9,10 +9,10 @@ use arc_swap::ArcSwap;
 use tracing::{info, warn};
 
 use crate::pipeline::{ExecutablePipeline, executor::PipelineExecutor};
-use crate::engine::coordination::ScenarioDefinition;
-use crate::engine::governance::factory::scenario_factory::ScenarioFactory;
-use crate::engine::execution::cache::staging_manager::StagingManager;
-use crate::engine::governance::strategy::resolver::StrategyResolver;
+use crate::engine::coordination::service::ScenarioDefinition;
+use crate::engine::governance::factory::scenario_factory::service::ScenarioFactory;
+use crate::engine::execution::cache::staging_manager::service::StagingManager;
+use crate::engine::governance::strategy::resolver::service::{StrategyResolver, ActiveRule};
 
 pub struct ScenariosManager {
     pub(crate) scenarios: Arc<RwLock<HashMap<String, ScenarioDefinition>>>,
@@ -61,7 +61,7 @@ impl ScenariosManager {
             new_scenarios.retain(|k, _| keys.contains(k));
         }
         
-        let mut rule_map: HashMap<String, Vec<crate::engine::governance::strategy::resolver::ActiveRule>> = self.scenario_factory.load_all_rules().await?;
+        let mut rule_map: HashMap<String, Vec<ActiveRule>> = self.scenario_factory.load_all_rules().await?;
         let mut linked_map: HashMap<String, Arc<ExecutablePipeline>> = HashMap::new();
 
         // Link pipelines

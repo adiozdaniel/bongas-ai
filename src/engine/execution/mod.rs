@@ -3,30 +3,12 @@
 pub mod core;
 pub mod cache;
 pub mod runtime;
+pub mod pillar;
 
-use std::sync::Arc;
-pub use core::execution_manager::ExecutionManager;
-pub use crate::engine::governance::strategy::resolver::StrategyResolver;
-pub use cache::predictive_warmer::PredictiveWarmer;
-pub use cache::staging_manager::StagingManager;
+pub use core::execution_manager::service::ExecutionManager;
+pub use crate::engine::governance::strategy::resolver::service::StrategyResolver;
+pub use cache::predictive_warmer::service::PredictiveWarmer;
+pub use cache::staging_manager::service::StagingManager;
 pub use crate::pipeline::context::ExecutionContext;
-pub use runtime::runtime::BongasRuntime;
-
-/// ⚡ THE STAGE: High-performance discovery execution.
-pub struct ExecutionPillar {
-    pub manager: Arc<ExecutionManager>,
-    pub resolver: Arc<StrategyResolver>,
-    pub warmer: Arc<PredictiveWarmer>,
-    pub staging: Arc<StagingManager>,
-}
-
-impl ExecutionPillar {
-    pub fn new(
-        manager: Arc<ExecutionManager>,
-        resolver: Arc<StrategyResolver>,
-        warmer: Arc<PredictiveWarmer>,
-        staging: Arc<StagingManager>,
-    ) -> Self {
-        Self { manager, resolver, warmer, staging }
-    }
-}
+pub use runtime::runtime::service::BongasRuntime;
+pub use pillar::service::ExecutionPillar;

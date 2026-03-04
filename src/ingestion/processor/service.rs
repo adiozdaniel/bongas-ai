@@ -1,493 +1,148 @@
-//! Activity processor — single consumer of the ingestion channel.
-//!
-//! Normalizes `UserActivity` from any source into:
-//! 1. Database writes (via `InteractionRepository` / direct SQL for profiles)
-//! 2. `UserEvent`s fed to the `StalenessEngine` for cache invalidation
-//!
-//! All DB access goes through existing resilient infrastructure
-//! (circuit breakers, bulkhead, metrics).
+//! High-performance activity processing orchestration.
 
-use anyhow::Result;
 use std::sync::Arc;
 use tokio::sync::{mpsc, Semaphore};
-use tracing::{info, warn, error};
+use tracing::{info, error};
 
 use crate::db::ResilientPool;
 use crate::db::repositories::interaction_repository::InteractionRepository;
-use crate::engine::intelligence::monitoring::staleness_engine::{StalenessEngine, UserEvent};
+use crate::engine::intelligence::monitoring::staleness_engine::service::{StalenessEngine, UserEvent};
 use crate::resilience::ResilienceMetricsCollector;
 
 use crate::ingestion::types::UserActivity;
 use clickhouse::Row;
 use serde::{Serialize, Deserialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize, Row)]
+#[derive(Debug, Serialize, Deserialize, Row)]
 pub struct ClickHouseInteraction {
     pub user_id: i32,
     pub item_id: i32,
     pub interaction_type: String,
     pub scenario_slug: String,
-    pub visitor_id: Option<String>,
-    pub device_hash: Option<String>,
-    pub device_type: Option<String>,
-    pub rating: f32,
+    pub weight: f32,
     pub watch_duration_seconds: i32,
     pub created_at: u64, 
 }
 
 use tokio::task::JoinSet;
-use crate::engine::governance::orchestration::PagesManager;
+use crate::engine::governance::orchestration::manager::service::PagesManager;
 
 /// Processes activities from any source and routes them to DB + staleness engine + PagesManager.
 pub struct ActivityProcessor {
     interaction_repo: Arc<InteractionRepository>,
-    pool: Arc<ResilientPool>,
+    _pool: Arc<ResilientPool>,
+    clickhouse: Option<Arc<clickhouse::Client>>,
     staleness_engine: Arc<StalenessEngine>,
     pages_manager: Arc<PagesManager>,
-    clickhouse: Option<Arc<clickhouse::Client>>,
-    flush_semaphore: Arc<Semaphore>,
+    metrics: Arc<ResilienceMetricsCollector>,
+    concurrency_limit: Arc<Semaphore>,
 }
 
 impl ActivityProcessor {
     pub fn new(
-        resilient_pool: Arc<ResilientPool>,
-        metrics_collector: Arc<ResilienceMetricsCollector>,
+        interaction_repo: Arc<InteractionRepository>,
+        pool: Arc<ResilientPool>,
+        clickhouse: Option<Arc<clickhouse::Client>>,
         staleness_engine: Arc<StalenessEngine>,
         pages_manager: Arc<PagesManager>,
-        clickhouse: Option<Arc<clickhouse::Client>>,
+        metrics: Arc<ResilienceMetricsCollector>,
+        max_concurrency: usize,
     ) -> Self {
         Self {
-            interaction_repo: Arc::new(InteractionRepository::new(resilient_pool.clone(), metrics_collector)),
-            pool: resilient_pool,
+            interaction_repo,
+            _pool: pool,
+            clickhouse,
             staleness_engine,
             pages_manager,
-            clickhouse,
-            flush_semaphore: Arc::new(Semaphore::new(5)), // Max 5 concurrent flushes
+            metrics,
+            concurrency_limit: Arc::new(Semaphore::new(max_concurrency)),
         }
     }
 
-    /// Run the processor loop, consuming activities from the channel.
-    pub async fn run(self: Arc<Self>, mut receiver: mpsc::Receiver<UserActivity>) {
-        info!("Activity processor started (batched + async flush)");
-
-        let mut buffer = Vec::with_capacity(100);
-        let flush_interval = std::time::Duration::from_millis(500);
-        let mut interval = tokio::time::interval(flush_interval);
+    /// Start processing loop from a receiver channel.
+    pub async fn start(self: Arc<Self>, mut receiver: mpsc::Receiver<UserActivity>) {
+        info!("Activity Processor started. Ready for event stream.");
         
-        let mut flush_tasks = JoinSet::new();
+        let mut join_set = JoinSet::new();
 
-        loop {
-            tokio::select! {
-                maybe_activity = receiver.recv() => {
-                    match maybe_activity {
-                        Some(activity) => {
-                            // Notify PagesManager for real-time layout optimization (The Brain)
-                            self.pages_manager.process_activity(&activity).await;
+        while let Some(activity) = receiver.recv().await {
+            let processor = self.clone();
+            
+            // Limit concurrency
+            let permit = match self.concurrency_limit.clone().acquire_owned().await {
+                Ok(p) => p,
+                Err(_) => break,
+            };
 
-                            buffer.push(activity);
-                            if buffer.len() >= 100 {
-                                let batch = std::mem::replace(&mut buffer, Vec::with_capacity(100));
-                                let processor = self.clone();
-                                
-                                match self.flush_semaphore.clone().acquire_owned().await {
-                                    Ok(permit) => {
-                                        flush_tasks.spawn(async move {
-                                            let _permit = permit;
-                                            if let Err(e) = processor.flush_batch(batch).await {
-                                                error!("Failed to flush batch: {}", e);
-                                            }
-                                        });
-                                    }
-                                    Err(_) => {
-                                        error!("Flush semaphore closed unexpectedly, dropping batch");
-                                    }
-                                }
-                            }
-                        }
-                        None => {
-                            if !buffer.is_empty() {
-                                let batch = std::mem::take(&mut buffer);
-                                let processor = self.clone();
-                                if let Ok(permit) = self.flush_semaphore.clone().acquire_owned().await {
-                                    flush_tasks.spawn(async move {
-                                        let _permit = permit;
-                                        if let Err(e) = processor.flush_batch(batch).await {
-                                            error!("Failed to flush final batch: {}", e);
-                                        }
-                                    });
-                                }
-                            }
-                            break;
-                        }
-                    }
+            join_set.spawn(async move {
+                let _permit = permit;
+                if let Err(e) = processor.process_single(activity).await {
+                    error!(error = %e, "Failed to process user activity");
                 }
-                _ = interval.tick() => {
-                    if !buffer.is_empty() {
-                        let batch = std::mem::replace(&mut buffer, Vec::with_capacity(100));
-                        let processor = self.clone();
-                        if let Ok(permit) = self.flush_semaphore.clone().acquire_owned().await {
-                            flush_tasks.spawn(async move {
-                                let _permit = permit;
-                                if let Err(e) = processor.flush_batch(batch).await {
-                                    error!("Failed to flush batch on interval: {}", e);
-                                }
-                            });
-                        }
-                    }
-                }
-                _ = flush_tasks.join_next(), if !flush_tasks.is_empty() => {}
-            }
-        }
+            });
 
-        info!("Awaiting {} remaining flush tasks...", flush_tasks.len());
-        while let Some(res) = flush_tasks.join_next().await {
-            if let Err(e) = res {
-                error!("Shutdown flush task failed: {:?}", e);
-            }
+            // Cleanup completed tasks
+            while join_set.try_join_next().is_some() {}
         }
-
-        warn!("Activity processor channel closed — shutting down");
     }
 
-    /// Flush the buffered activities to DB and staleness engine
-    async fn flush_batch(&self, buffer: Vec<UserActivity>) -> Result<()> {
-        if buffer.is_empty() {
-            return Ok(());
-        }
+    /// Process a single activity through all required sinks.
+    async fn process_single(&self, activity: UserActivity) -> anyhow::Result<()> {
+        let start = std::time::Instant::now();
 
-        let mut user_ids = Vec::with_capacity(buffer.len());
-        let mut item_ids = Vec::with_capacity(buffer.len());
-        let mut types = Vec::with_capacity(buffer.len());
-        let mut ratings = Vec::with_capacity(buffer.len());
-        let mut durations = Vec::with_capacity(buffer.len());
-        let mut visitor_ids = Vec::with_capacity(buffer.len());
-        let mut device_hashes = Vec::with_capacity(buffer.len());
-        let mut device_types = Vec::with_capacity(buffer.len());
-        let mut timestamps = Vec::with_capacity(buffer.len());
-
-        let mut clickhouse_rows = Vec::with_capacity(buffer.len());
-
-        for activity in buffer.iter() {
-            let event_timestamp = match activity {
-                UserActivity::Playback { timestamp, .. } => *timestamp,
-                UserActivity::Reaction { timestamp, .. } => *timestamp,
-                UserActivity::ProfileUpdate { timestamp, .. } => *timestamp,
-                UserActivity::Notification { timestamp, .. } => *timestamp,
-                UserActivity::Click { timestamp, .. } => *timestamp,
-                UserActivity::Impression { timestamp, .. } => *timestamp,
-            };
-            let ts_secs = event_timestamp.timestamp() as u64;
-
+        // 1. Sink to Postgres (Interaction Repo)
+        self.interaction_repo.record_interaction(
+            activity.user_id(),
             match activity {
-                UserActivity::Playback { user_id, item_id, watch_percentage, watch_duration_seconds, completed, scenario_slug, visitor_id, device_hash, device_type, .. } => {
-                    let mut rating = match watch_percentage {
-                        p if *p < 0.25 => 1.0,
-                        p if *p < 0.50 => 2.0,
-                        p if *p < 0.75 => 3.5,
-                        _ => 5.0,
-                    };
-                    if *completed {
-                        rating = (rating + 0.5_f32).min(5.0_f32);
-                    }
+                UserActivity::Playback { item_id, .. } | UserActivity::Reaction { item_id, .. } | UserActivity::Click { item_id, .. } | UserActivity::Impression { item_id, .. } => item_id,
+                _ => 0,
+            },
+            activity.kind(),
+            activity.scenario_slug().unwrap_or("unknown"),
+            match activity {
+                UserActivity::Playback { watch_percentage, .. } => watch_percentage,
+                _ => 1.0,
+            },
+        ).await?;
 
-                    user_ids.push(*user_id);
-                    item_ids.push(*item_id);
-                    types.push("implicit_rating".to_string());
-                    ratings.push(Some(rating));
-                    durations.push(Some(*watch_duration_seconds));
-                    visitor_ids.push(visitor_id.clone());
-                    device_hashes.push(device_hash.clone());
-                    device_types.push(device_type.clone());
-                    timestamps.push(event_timestamp);
-
-                    clickhouse_rows.push(ClickHouseInteraction {
-                        user_id: *user_id,
-                        item_id: *item_id,
-                        interaction_type: "playback".to_string(),
-                        scenario_slug: scenario_slug.clone().unwrap_or_else(|| "unknown".to_string()),
-                        visitor_id: visitor_id.clone(),
-                        device_hash: device_hash.clone(),
-                        device_type: device_type.clone(),
-                        rating,
-                        watch_duration_seconds: *watch_duration_seconds,
-                        created_at: ts_secs,
-                    });
-                }
-                UserActivity::Reaction { user_id, item_id, reaction_type, scenario_slug, visitor_id, device_hash, device_type, .. } => {
-                    let rating = match reaction_type.as_str() {
-                        "like" => 5.0,
-                        "dislike" => 1.0,
-                        _ => 3.0,
-                    };
-
-                    user_ids.push(*user_id);
-                    item_ids.push(*item_id);
-                    types.push(format!("explicit_{}", reaction_type));
-                    ratings.push(Some(rating));
-                    durations.push(None);
-                    visitor_ids.push(visitor_id.clone());
-                    device_hashes.push(device_hash.clone());
-                    device_types.push(device_type.clone());
-                    timestamps.push(event_timestamp);
-
-                    clickhouse_rows.push(ClickHouseInteraction {
-                        user_id: *user_id,
-                        item_id: *item_id,
-                        interaction_type: reaction_type.clone(),
-                        scenario_slug: scenario_slug.clone().unwrap_or_else(|| "unknown".to_string()),
-                        visitor_id: visitor_id.clone(),
-                        device_hash: device_hash.clone(),
-                        device_type: device_type.clone(),
-                        rating,
-                        watch_duration_seconds: 0,
-                        created_at: ts_secs,
-                    });
-                }
-                UserActivity::Click { user_id, item_id, scenario_slug, visitor_id, device_hash, device_type, .. } => {
-                    user_ids.push(*user_id);
-                    item_ids.push(*item_id);
-                    types.push("click".to_string());
-                    ratings.push(None);
-                    durations.push(None);
-                    visitor_ids.push(visitor_id.clone());
-                    device_hashes.push(device_hash.clone());
-                    device_types.push(device_type.clone());
-                    timestamps.push(event_timestamp);
-
-                    clickhouse_rows.push(ClickHouseInteraction {
-                        user_id: *user_id,
-                        item_id: *item_id,
-                        interaction_type: "click".to_string(),
-                        scenario_slug: scenario_slug.clone().unwrap_or_else(|| "unknown".to_string()),
-                        visitor_id: visitor_id.clone(),
-                        device_hash: device_hash.clone(),
-                        device_type: device_type.clone(),
-                        rating: 0.0,
-                        watch_duration_seconds: 0,
-                        created_at: ts_secs,
-                    });
-                }
-                UserActivity::Impression { user_id, item_id, scenario_slug, visitor_id, device_hash, device_type, .. } => {
-                    user_ids.push(*user_id);
-                    item_ids.push(*item_id);
-                    types.push("impression".to_string());
-                    ratings.push(None);
-                    durations.push(None);
-                    visitor_ids.push(visitor_id.clone());
-                    device_hashes.push(device_hash.clone());
-                    device_types.push(device_type.clone());
-                    timestamps.push(event_timestamp);
-
-                    clickhouse_rows.push(ClickHouseInteraction {
-                        user_id: *user_id,
-                        item_id: *item_id,
-                        interaction_type: "impression".to_string(),
-                        scenario_slug: scenario_slug.clone().unwrap_or_else(|| "unknown".to_string()),
-                        visitor_id: visitor_id.clone(),
-                        device_hash: device_hash.clone(),
-                        device_type: device_type.clone(),
-                        rating: 0.0,
-                        watch_duration_seconds: 0,
-                        created_at: ts_secs,
-                    });
-                }
-                // Handle complex types individually
-                UserActivity::ProfileUpdate { user_id, update_type, data, .. } => {
-                    if let Err(e) = self.process_profile_update(*user_id, update_type, data).await {
-                        error!(user_id, error = %e, "Failed to process profile update in batch");
-                    }
-                }
-                UserActivity::Notification { user_id, notification_type, .. } => {
-                    if let Err(e) = self.process_notification(*user_id, notification_type).await {
-                        error!(user_id, error = %e, "Failed to process notification in batch");
-                    }
-                }
-            }
-        }
-
-        // Batch insert interactions into Postgres
-        if !user_ids.is_empty() {
-            if let Err(e) = self.interaction_repo.create_interactions_batch(
-                user_ids.clone(), item_ids, types, ratings, durations, visitor_ids, device_hashes, device_types, timestamps
-            ).await {
-                error!("Failed to batch insert interactions: {}", e);
-            }
-
-            let unique_users: std::collections::HashSet<i32> = user_ids.into_iter().collect();
-            for uid in unique_users {
-                let _ = self.interaction_repo.update_arrival_pattern(uid).await;
-            }
-        }
-
-        // Batch insert into ClickHouse
-        if !clickhouse_rows.is_empty() {
-            if let Some(ref ch) = self.clickhouse {
-                let ch_res = async {
-                    let mut inserter = ch.insert::<ClickHouseInteraction>("user_interactions").await?;
-                    for row in clickhouse_rows {
-                        inserter.write(&row).await?;
-                    }
-                    inserter.end().await
-                }.await;
-
-                if let Err(e) = ch_res {
-                    error!(error = %e, "ClickHouse batch insert failed");
-                }
-            }
-        }
-
-        // Update staleness engine for all events
-        for activity in buffer.iter() {
-            let event = match activity {
-                UserActivity::Playback { user_id, item_id, watch_percentage, watch_duration_seconds, .. } => {
-                    if *watch_duration_seconds < 5 {
-                        Some(UserEvent::NegativeSignal { user_id: *user_id, item_id: *item_id })
-                    } else {
-                        Some(UserEvent::WatchEvent { user_id: *user_id, item_id: *item_id, completion_rate: *watch_percentage })
-                    }
+        // 2. Sink to ClickHouse (for Analytics & Sidecar)
+        if let Some(ref ch) = self.clickhouse {
+            let ch_row = ClickHouseInteraction {
+                user_id: activity.user_id(),
+                item_id: match activity {
+                    UserActivity::Playback { item_id, .. } | UserActivity::Reaction { item_id, .. } | UserActivity::Click { item_id, .. } | UserActivity::Impression { item_id, .. } => item_id,
+                    _ => 0,
                 },
-                UserActivity::Reaction { user_id, item_id, reaction_type, .. } => {
-                    let rating = match reaction_type.as_str() { "like" => 5.0, "dislike" => 1.0, _ => 3.0 };
-                    Some(UserEvent::ExplicitFeedback { user_id: *user_id, item_id: *item_id, rating })
-                }
-                UserActivity::ProfileUpdate { user_id, .. } => Some(UserEvent::ExplicitFeedback { user_id: *user_id, item_id: 0, rating: 0.0 }),
-                UserActivity::Notification { notification_type, .. } if notification_type == "new_content" => Some(UserEvent::NewContentInGenre { genre: "all".to_string() }),
-                UserActivity::Notification { user_id, notification_type, .. } if notification_type == "recommendation" => Some(UserEvent::ExplicitFeedback { user_id: *user_id, item_id: 0, rating: 0.0 }),
-                _ => None,
+                interaction_type: activity.kind().to_string(),
+                scenario_slug: activity.scenario_slug().unwrap_or("unknown").to_string(),
+                weight: 1.0,
+                watch_duration_seconds: match activity {
+                    UserActivity::Playback { watch_duration_seconds, .. } => watch_duration_seconds,
+                    _ => 0,
+                },
+                created_at: chrono::Utc::now().timestamp() as u64,
             };
-
-            if let Some(ev) = event {
-                let _ = self.staleness_engine.process_event(&ev).await;
-            }
+            
+            let mut insert = ch.insert::<ClickHouseInteraction>("user_interactions").await?;
+            insert.write(&ch_row).await?;
+            insert.end().await?;
         }
 
-        Ok(())
-    }
+        // 3. Notify Staleness Engine (Real-time cache invalidation)
+        let event = match activity {
+            UserActivity::Playback { user_id, item_id, watch_percentage, .. } => Some(UserEvent::WatchEvent { user_id, item_id, completion_rate: watch_percentage }),
+            UserActivity::Reaction { user_id, item_id, ref reaction_type, .. } => Some(UserEvent::ExplicitFeedback { user_id, item_id, rating: if reaction_type == "like" { 1.0 } else { -1.0 } }),
+            _ => None,
+        };
 
-    async fn process_profile_update(&self, user_id: i32, update_type: &str, data: &serde_json::Value) -> Result<()> {
-        match update_type {
-            "preferences" => self.update_preferences(user_id, data).await?,
-            "settings" => self.update_settings(user_id, data).await?,
-            "demographics" => self.update_demographics(user_id, data).await?,
-            "subscription" => self.update_subscription(user_id, data).await?,
-            other => {
-                warn!(user_id, update_type = other, "Unknown profile update type");
-                return Ok(());
-            }
+        if let Some(ev) = event {
+            self.staleness_engine.process_event(&ev).await?;
         }
-        self.staleness_engine.process_event(&UserEvent::ExplicitFeedback { user_id, item_id: 0, rating: 0.0 }).await?;
-        info!(user_id, update_type, "Processed profile update");
-        Ok(())
-    }
 
-    async fn update_preferences(&self, user_id: i32, data: &serde_json::Value) -> Result<()> {
-        let preferred_genres = data.get("preferred_genres").and_then(|v| v.as_array().cloned());
-        let preferred_languages = data.get("preferred_languages").and_then(|v| v.as_array().cloned());
-        let content_maturity = data.get("content_maturity").and_then(|v| v.as_str().map(|s| s.to_string()));
+        // 4. Notify Pages Manager (Real-time SDUI updates if needed)
+        self.pages_manager.handle_activity(&activity).await?;
 
-        self.pool.execute(|pool| {
-            let preferred_genres = preferred_genres.clone();
-            let preferred_languages = preferred_languages.clone();
-            let content_maturity = content_maturity.clone();
-            async move {
-                sqlx::query(
-                    r#"
-                    INSERT INTO user_preferences (user_id, preferred_genres, preferred_languages, content_maturity, updated_at)
-                    VALUES ($1, $2, $3, $4, NOW())
-                    ON CONFLICT (user_id) DO UPDATE SET
-                        preferred_genres = COALESCE($2, user_preferences.preferred_genres),
-                        preferred_languages = COALESCE($3, user_preferences.preferred_languages),
-                        content_maturity = COALESCE($4, user_preferences.content_maturity),
-                        updated_at = NOW()
-                    "#
-                )
-                .bind(user_id).bind(preferred_genres.map(|v| serde_json::Value::Array(v))).bind(preferred_languages.map(|v| serde_json::Value::Array(v))).bind(content_maturity).execute(&pool).await
-            }
-        }).await?;
-        Ok(())
-    }
-
-    async fn update_settings(&self, user_id: i32, data: &serde_json::Value) -> Result<()> {
-        let notifications_enabled = data.get("notifications_enabled").and_then(|v| v.as_bool());
-        let autoplay_enabled = data.get("autoplay_enabled").and_then(|v| v.as_bool());
-        let video_quality = data.get("video_quality").and_then(|v| v.as_str().map(|s| s.to_string()));
-
-        self.pool.execute(|pool| {
-            let video_quality = video_quality.clone();
-            async move {
-                sqlx::query(
-                    r#"
-                    INSERT INTO user_settings (user_id, notifications_enabled, autoplay_enabled, video_quality, updated_at)
-                    VALUES ($1, $2, $3, $4, NOW())
-                    ON CONFLICT (user_id) DO UPDATE SET
-                        notifications_enabled = COALESCE($2, user_settings.notifications_enabled),
-                        autoplay_enabled = COALESCE($3, user_settings.autoplay_enabled),
-                        video_quality = COALESCE($4, user_settings.video_quality),
-                        updated_at = NOW()
-                    "#
-                ).bind(user_id).bind(notifications_enabled).bind(autoplay_enabled).bind(video_quality).execute(&pool).await
-            }
-        }).await?;
-        Ok(())
-    }
-
-    async fn update_demographics(&self, user_id: i32, data: &serde_json::Value) -> Result<()> {
-        let age_group = data.get("age_group").and_then(|v| v.as_str().map(|s| s.to_string()));
-        let country = data.get("country").and_then(|v| v.as_str().map(|s| s.to_string()));
-        let timezone = data.get("timezone").and_then(|v| v.as_str().map(|s| s.to_string()));
-
-        self.pool.execute(|pool| {
-            let age_group = age_group.clone();
-            let country = country.clone();
-            let timezone = timezone.clone();
-            async move {
-                sqlx::query(
-                    r#"
-                    INSERT INTO user_demographics (user_id, age_group, country, timezone, updated_at)
-                    VALUES ($1, $2, $3, $4, NOW())
-                    ON CONFLICT (user_id) DO UPDATE SET
-                        age_group = COALESCE($2, user_demographics.age_group),
-                        country = COALESCE($3, user_demographics.country),
-                        timezone = COALESCE($4, user_demographics.timezone),
-                        updated_at = NOW()
-                    "#
-                ).bind(user_id).bind(age_group).bind(country).bind(timezone).execute(&pool).await
-            }
-        }).await?;
-        Ok(())
-    }
-
-    async fn update_subscription(&self, user_id: i32, data: &serde_json::Value) -> Result<()> {
-        let tier = data.get("tier").and_then(|v| v.as_str().map(|s| s.to_string()));
-        let is_active = data.get("is_active").and_then(|v| v.as_bool());
-        let expires_at = data.get("expires_at").and_then(|v| v.as_str()).and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok()).map(|dt| dt.with_timezone(&chrono::Utc));
-
-        self.pool.execute(|pool| {
-            let tier = tier.clone();
-            async move {
-                sqlx::query(
-                    r#"
-                    INSERT INTO user_subscriptions (user_id, tier, is_active, expires_at, updated_at)
-                    VALUES ($1, $2, $3, $4, NOW())
-                    ON CONFLICT (user_id) DO UPDATE SET
-                        tier = COALESCE($2, user_subscriptions.tier),
-                        is_active = COALESCE($3, user_subscriptions.is_active),
-                        expires_at = COALESCE($4, user_subscriptions.expires_at),
-                        updated_at = NOW()
-                    "#
-                ).bind(user_id).bind(tier).bind(is_active).bind(expires_at).execute(&pool).await
-            }
-        }).await?;
-        Ok(())
-    }
-
-    async fn process_notification(&self, user_id: i32, notification_type: &str) -> Result<()> {
-        match notification_type {
-            "new_content" => self.staleness_engine.process_event(&UserEvent::NewContentInGenre { genre: "all".to_string() }).await?,
-            "recommendation" => self.staleness_engine.process_event(&UserEvent::ExplicitFeedback { user_id, item_id: 0, rating: 0.0 }).await?,
-            _ => {}
-        }
-        info!(user_id, notification_type, "Processed notification");
+        self.metrics.record_ingestion_success(activity.kind(), start.elapsed()).await;
         Ok(())
     }
 }

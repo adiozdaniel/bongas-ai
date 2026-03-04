@@ -5,22 +5,21 @@ use axum::{
     extract::{Path, Extension, Query},
     response::sse::{Event, Sse, KeepAlive},
     body::Body,
-    http::{Request, HeaderMap},
-    Json,
 };
-use std::time::Duration;
 use futures::stream::{self, Stream, StreamExt};
 use std::convert::Infallible;
 use std::sync::Arc;
 use tracing::warn;
 
-use crate::engine::BongasEngine;
+use crate::engine::coordination::service::{BongasEngine, ScenarioDefinition};
 use crate::api::models::{ContextParams, StandardResponse};
 use crate::api::models::recommendation::{FeedRow, SymphonyNavigation, RecommendationItem};
-use crate::api::middleware::service::{extract_request_id, extract_request_id_from_headers};
+use crate::api::middleware::service::extract_request_id;
 use crate::api::middleware::identity::IdentityContext;
-use crate::engine::governance::orchestration::types::PageCompositionItem;
+use crate::engine::governance::orchestration::types::models::{PageCompositionItem, PageLayout};
 use crate::api::v1::stage::service::execute_and_map;
+
+use axum::extract::Request;
 
 // ─── Genesis Orchestrator ──────────────────────────────────────────────────
 
@@ -48,7 +47,7 @@ pub async fn genesis(
     let nav_mesh = engine.governance.orchestration.get_nav_mesh_contextual(identity_key.as_deref()).await;
     
     // 2. Resolve Landing Page
-    let landing_layout: Option<crate::engine::governance::orchestration::types::PageLayout> = engine.governance.orchestration.get_landing_page_contextual(
+    let landing_layout: Option<PageLayout> = engine.governance.orchestration.get_landing_page_contextual(
         cp_base.device_type.as_deref(),
         cp_base.maturity_rating.as_deref(),
         identity_key.as_deref()
@@ -72,75 +71,58 @@ pub async fn genesis(
     // 3. Assemble Genesis Stream
     let nav_event = Event::default()
         .event("navigation")
-        .json_data(nav_mesh.main.iter().map(|p| SymphonyNavigation {
-            slug: p.page_slug.0.clone(),
-            title: p.page_slug.0.replace('_', " ").to_uppercase(),
+        .json_data(&SymphonyNavigation {
+            slug: landing_slug.clone(),
+            title: "Bongas Discovery".to_string(),
             nav_type: "main".to_string(),
-        }).collect::<Vec<_>>())
-        .unwrap_or_else(|_| Event::default().comment("nav_error"));
-
-    let sub_nav_event = Event::default()
-        .event("sub_navigation")
-        .json_data(nav_mesh.sub.iter().map(|p| SymphonyNavigation {
-            slug: p.page_slug.0.clone(),
-            title: p.page_slug.0.replace('_', " "),
-            nav_type: "sub".to_string(),
-        }).collect::<Vec<_>>())
-        .unwrap_or_else(|_| Event::default().comment("sub_nav_error"));
-
-    let manifest_event = Event::default()
-        .event("manifest")
-        .json_data(serde_json::json!({ 
-            "expected_rows": total_count,
-            "request_id": rid.clone(),
-            "page": landing_slug,
-            "prewarm_scenarios": composition.iter().skip(batch_size).map(|c| &c.slug).collect::<Vec<_>>()
-        }))
-        .unwrap_or_else(|_| Event::default().comment("manifest_error"));
-
-    let initial_stream = stream::iter(vec![Ok(nav_event), Ok(sub_nav_event), Ok(manifest_event)]);
-
-    let scenario_stream = stream::iter(initial_batch)
-        .map(move |comp_item| {
-            let engine = engine_clone.clone();
-            let cp = cp_base.clone();
-            let rid_inner = rid.clone();
-            let uid = user_id;
-            async move {
-                execute_row(engine, cp, rid_inner, comp_item, uid).await
-            }
+            nav_mesh: nav_mesh.into_iter().map(|n| SymphonyNavigation {
+                slug: n.slug,
+                title: n.title,
+                nav_type: n.nav_type,
+                nav_mesh: vec![],
+                landing_slug: "".to_string(),
+                total_rows: 0,
+                request_id: "".to_string(),
+            }).collect(),
+            landing_slug,
+            total_rows: total_count,
+            request_id: rid.clone(),
         })
-        .buffered(5);
+        .unwrap_or_else(|_| Event::default().comment("serial_error"));
 
-    // 4. Continuation Logic
-    let mut continuation_stream = vec![];
-    if total_count > batch_size {
-        let cont_event = Event::default()
-            .event("continuation")
-            .json_data(serde_json::json!({
-                "next_url": format!("/api/v1/recommendation/page/{}?offset={}&batch={}", landing_slug, batch_size, batch_size)
-            }))
-            .unwrap_or_else(|_| Event::default().comment("cont_error"));
-        continuation_stream.push(Ok(cont_event));
-    }
+    // Spawn stream
+    let stream = stream::unfold(
+        (0, initial_batch, engine_clone, cp_base, rid, user_id),
+        |(idx, mut batch, engine, cp, rid, uid): (usize, Vec<PageCompositionItem>, Arc<BongasEngine>, ContextParams, String, Option<i32>)| async move {
+            if batch.is_empty() {
+                return None;
+            }
+            
+            let item = batch.remove(0);
+            let event = execute_row(engine.clone(), cp.clone(), rid.clone(), item, uid).await;
+            
+            Some((event, (idx + 1, batch, engine, cp, rid, uid)))
+        },
+    );
 
-    let full_stream = initial_stream.chain(scenario_stream).chain(stream::iter(continuation_stream));
+    let full_stream = stream::once(async move { Ok(nav_event) })
+        .chain(stream);
 
-    Sse::new(full_stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(15)))
+    Sse::new(full_stream).keep_alive(KeepAlive::default())
 }
 
-// ─── Page Orchestrator ─────────────────────────────────────────────────────
+// ─── Page Orchestrator (Paginated) ─────────────────────────────────────────
 
 #[derive(serde::Deserialize)]
 pub struct PageParams {
+    pub slug: String,
     pub offset: Option<usize>,
     pub batch: Option<usize>,
 }
 
-/// GET /api/v1/recommendation/page/{slug}
-/// Fetches a specific batch of rows for a page.
+/// GET /api/v1/recommendation/page
+/// Streams a specific batch of rows for a given page.
 pub async fn get_page_recommendations(
-    Path(page_slug): Path<String>,
     Query(page_params): Query<PageParams>,
     Query(mut context_params): Query<ContextParams>,
     Extension(engine): Extension<Arc<BongasEngine>>,
@@ -154,7 +136,7 @@ pub async fn get_page_recommendations(
     }
 
     let user_id = context_params.user_id;
-    let engine_clone = engine.clone();
+    let page_slug = page_params.slug.clone();
     let cp_base = context_params.clone();
     let rid = request_id.clone();
     let identity_key = cp_base.visitor_id.as_deref().map(|s| s.to_string());
@@ -175,123 +157,64 @@ pub async fn get_page_recommendations(
         _ => vec![]
     };
 
-    let total_count = composition.len();
-    let batch_items: Vec<_> = composition.iter().skip(offset).take(batch_size).cloned().collect();
+    // Slice batch
+    let batch: Vec<PageCompositionItem> = composition.into_iter()
+        .skip(offset)
+        .take(batch_size)
+        .collect();
 
-    // 2. Initial Manifest
-    let manifest_event = Event::default()
-        .event("manifest")
-        .json_data(serde_json::json!({ 
-            "offset": offset,
-            "batch_size": batch_items.len(),
-            "total_rows": total_count,
-            "request_id": rid.clone()
-        }))
-        .unwrap_or_else(|_| Event::default().comment("manifest_error"));
-
-    let initial_stream = stream::iter(vec![Ok(manifest_event)]);
-
-    // 3. Scenario Stream
-    let scenario_stream = stream::iter(batch_items)
-        .map(move |comp_item| {
-            let engine = engine_clone.clone();
-            let cp = cp_base.clone();
-            let rid_inner = rid.clone();
-            let uid = user_id;
-            async move {
-                execute_row(engine, cp, rid_inner, comp_item, uid).await
+    // 2. Stream Batch
+    let stream = stream::unfold(
+        (batch, engine, cp_base, rid, user_id),
+        |(mut items, engine, cp, rid, uid): (Vec<PageCompositionItem>, Arc<BongasEngine>, ContextParams, String, Option<i32>)| async move {
+            if items.is_empty() {
+                return None;
             }
-        })
-        .buffered(5);
+            
+            let item = items.remove(0);
+            let event = execute_row(engine.clone(), cp.clone(), rid.clone(), item, uid).await;
+            
+            Some((event, (items, engine, cp, rid, uid)))
+        },
+    );
 
-    // 4. Continuation
-    let mut continuation_stream = vec![];
-    if offset + batch_size < total_count {
-        let cont_event = Event::default()
-            .event("continuation")
-            .json_data(serde_json::json!({
-                "next_url": format!("/api/v1/recommendation/page/{}?offset={}&batch={}", page_slug, offset + batch_size, batch_size)
-            }))
-            .unwrap_or_else(|_| Event::default().comment("cont_error"));
-        continuation_stream.push(Ok(cont_event));
+    Sse::new(stream).keep_alive(KeepAlive::default())
+}
+
+// ─── Scenario Detail (JSON) ────────────────────────────────────────────────
+
+/// GET /api/v1/recommendation/scenario/:slug
+/// Direct single-scenario discovery.
+pub async fn get_scenario_recommendations(
+    Path(slug): Path<String>,
+    Query(mut context_params): Query<ContextParams>,
+    Extension(engine): Extension<Arc<BongasEngine>>,
+    req: Request<Body>,
+) -> Result<axum::Json<StandardResponse<Vec<RecommendationItem>>>, crate::error::AppError> {
+    let request_id = extract_request_id(&req);
+    let identity = req.extensions().get::<IdentityContext>().cloned();
+    
+    if let Some(ref id) = identity {
+        context_params.merge_identity(id);
     }
 
-    let full_stream = initial_stream.chain(scenario_stream).chain(stream::iter(continuation_stream));
-
-    Sse::new(full_stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(15)))
-}
-
-// ─── Scenario Detail (See All) ─────────────────────────────────────────────
-
-#[derive(serde::Deserialize)]
-pub struct ScenarioParams {
-    pub limit: Option<usize>,
-    pub offset: Option<usize>,
-}
-
-/// GET /api/v1/recommendation/scenario/{slug}
-pub async fn get_scenario_detail(
-    Path(slug): Path<String>,
-    Query(params): Query<ScenarioParams>,
-    Query(context_params): Query<ContextParams>,
-    Extension(engine): Extension<Arc<BongasEngine>>,
-    headers: HeaderMap,
-) -> Result<Json<StandardResponse<Vec<RecommendationItem>>>, crate::error::AppError> {
-    let request_id = extract_request_id_from_headers(&headers);
+    let user_id = context_params.user_id;
     
     let items = execute_and_map(
         engine,
         &slug,
-        context_params.user_id, 
+        user_id,
         Some(context_params),
         serde_json::json!({}),
-        params.offset.unwrap_or(0),
-        params.limit.unwrap_or(20),
+        0,
+        20,
         request_id.clone(),
     ).await?;
 
-    Ok(Json(StandardResponse::success(items).with_request_id(request_id)))
+    Ok(axum::Json(StandardResponse::success(items).with_request_id(request_id)))
 }
 
-// ─── Predictive Pre-warming ───────────────────────────────────────────────
-
-#[derive(serde::Deserialize)]
-pub struct PrewarmRequest {
-    pub slugs: Vec<String>,
-    pub user_id: i32,
-}
-
-/// POST /api/v1/recommendation/admin/system/prewarm
-pub async fn prewarm_scenarios(
-    Extension(engine): Extension<Arc<BongasEngine>>,
-    headers: HeaderMap,
-    Json(payload): Json<PrewarmRequest>,
-) -> Json<StandardResponse<()>> {
-    let request_id = extract_request_id_from_headers(&headers);
-    
-    for slug in payload.slugs {
-        let engine = engine.clone();
-        let uid = payload.user_id;
-        let rid = request_id.clone();
-        
-        tokio::spawn(async move {
-            let _ = execute_and_map(
-                engine,
-                &slug,
-                Some(uid),
-                None,
-                serde_json::json!({}),
-                0,
-                50,
-                rid,
-            ).await;
-        });
-    }
-
-    Json(StandardResponse::success(()).with_request_id(request_id))
-}
-
-// ─── Private Helpers ───────────────────────────────────────────────────────
+// ─── Internal Row Execution Helper ─────────────────────────────────────────
 
 async fn execute_row(
     engine: Arc<BongasEngine>,
@@ -305,7 +228,7 @@ async fn execute_row(
     
     // Safety check
     let is_safe = {
-        let s_map: tokio::sync::RwLockReadGuard<'_, std::collections::HashMap<String, crate::engine::ScenarioDefinition>> = engine.governance.scenarios.scenarios.read().await;
+        let s_map: tokio::sync::RwLockReadGuard<'_, std::collections::HashMap<String, ScenarioDefinition>> = engine.governance.scenarios.scenarios.read().await;
         s_map.get(&slug).map(|s| {
             if s.maturity_rating == "18" {
                 cp.maturity_rating.as_deref() == Some("18")
@@ -314,10 +237,10 @@ async fn execute_row(
     };
 
     if !is_safe {
-        return Ok(Event::default().comment(format!("safety: restricted:{}", slug)));
+        return Ok(Event::default().comment(format!("skip: restricted:{}", slug)));
     }
 
-    let mut result: Result<Vec<RecommendationItem>, crate::error::AppError> = execute_and_map(
+    let mut result = execute_and_map(
         engine.clone(),
         &slug,
         user_id,
@@ -334,7 +257,7 @@ async fn execute_row(
                 engine.clone(),
                 f_slug,
                 user_id,
-                Some(cp),
+                Some(cp.clone()),
                 serde_json::json!({}),
                 0,
                 20,
@@ -346,14 +269,15 @@ async fn execute_row(
     match result {
         Ok(items) => {
             let title = {
-                let s_map: tokio::sync::RwLockReadGuard<'_, std::collections::HashMap<String, crate::engine::ScenarioDefinition>> = engine.governance.scenarios.scenarios.read().await;
+                let s_map: tokio::sync::RwLockReadGuard<'_, std::collections::HashMap<String, ScenarioDefinition>> = engine.governance.scenarios.scenarios.read().await;
                 s_map.get(&slug).map(|s| s.name.clone()).unwrap_or_else(|| slug.replace('_', " "))
             };
             let row = FeedRow {
                 title,
                 row_type: comp_item.row_type,
                 row_style: comp_item.row_style,
-                scenario: slug,
+                scenario: slug.clone(),
+                scenario_slug: slug,
                 items,
             };
             Ok(Event::default().event("row").json_data(&row).unwrap_or_else(|_| Event::default().comment("serial_error")))

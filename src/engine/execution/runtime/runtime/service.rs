@@ -2,12 +2,12 @@ use anyhow::{Result, Context};
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::net::TcpListener;
-use tracing::{info, error};
+use tracing::{info, warn};
 
 use crate::{ConfigLoader, AppConfig, initialize_telemetry, TelemetryConfig};
-use crate::circuit_breaker::{CircuitBreakerRegistry, CompositeObserver, TracingObserver};
-use crate::engine::BongasEngine;
-use crate::engine::config::EngineDependencies;
+use crate::circuit_breaker::CircuitBreakerRegistry;
+use crate::engine::coordination::service::BongasEngine;
+use crate::engine::config::models::EngineDependencies;
 use crate::api::create_router;
 use crate::middlewares::metrics::MetricsCollector;
 
@@ -15,146 +15,102 @@ use crate::middlewares::metrics::MetricsCollector;
 pub struct BongasRuntime {
     config: Arc<AppConfig>,
     engine: Arc<BongasEngine>,
-    circuit_breaker_registry: Arc<CircuitBreakerRegistry>,
-    metrics_collector: Arc<MetricsCollector>,
-    start_time: Arc<Instant>,
+    start_time: Instant,
 }
 
 impl BongasRuntime {
-    /// Initialize the application and all its components
+    /// Initialize and bootstrap the application.
     pub async fn init() -> Result<Self> {
-        let start_time = Arc::new(Instant::now());
-        
-        // 1. Load config (Sequential - foundational)
-        info!("Loading configuration...");
-        let config = Arc::new(
-            ConfigLoader::new()
-                .with_defaults()
-                .with_env()
-                .load()
-                .context("Failed to load configuration")?
-        );
+        let start_time = Instant::now();
 
-        // 2. Initialize telemetry (Sequential - foundational for logs)
-        initialize_telemetry(&TelemetryConfig::default())
-            .context("Failed to initialize telemetry")?;
-        info!("Telemetry initialized");
+        // 1. Load Configuration
+        let config = Arc::new(ConfigLoader::new().load()?);
 
-        // 3. Concurrently initialize independent resources
-        info!("Initializing core resources concurrently...");
-        
-        let cb_observer = Arc::new(CompositeObserver::new(vec![Arc::new(TracingObserver)]));
-        let circuit_breaker_registry = Arc::new(CircuitBreakerRegistry::with_observer(cb_observer));
+        // 2. Initialize Telemetry
+        let telemetry_config = TelemetryConfig::builder()
+            .service_name("bongas-ai".to_string())
+            .environment(config.server.environment.clone())
+            .default_level(crate::telemetry::LogLevel::Info)
+            .build()
+            .map_err(|e| anyhow::anyhow!("Telemetry config error: {}", e))?;
+
+        if let Err(e) = initialize_telemetry(&telemetry_config) {
+            warn!("Telemetry initialization warning: {}", e);
+        }
+
+        info!("Bongas-AI Symphony 2.0 initializing...");
+
+        // 3. Initialize Resilience Layer
+        let breaker_registry = Arc::new(CircuitBreakerRegistry::new());
         let metrics_collector = Arc::new(MetricsCollector::new());
 
-        let db_config = config.database.clone();
-        let redis_url = config.redis.url.clone();
-
-        // Fire off connections in parallel
-        let db_pool_fut = tokio::spawn(async move {
-            info!("Establishing connection to PostgreSQL...");
-            sqlx::postgres::PgPoolOptions::new()
-                .max_connections(db_config.max_connections)
-                .acquire_timeout(std::time::Duration::from_secs(db_config.connection_timeout))
-                .after_connect(|conn, _meta| Box::pin(async move {
-                    sqlx::query("SET search_path TO bongas, public")
-                        .execute(conn)
-                        .await?;
-                    Ok(())
-                }))
-                .connect(db_config.url.as_ref().unwrap())
-                .await
-                .map_err(|e| {
-                    error!(error = %e, "Failed to connect to PostgreSQL");
-                    e
-                })
-        });
-
-        let redis_client_fut = tokio::spawn(async move {
-            info!("Establishing connection to Redis...");
-            let client = redis::Client::open(redis_url.as_str())
-                .map_err(|e| {
-                    error!(error = %e, "Failed to connect to Redis");
-                    e
-                });
-            client
-        });
-
-        // wait for foundational connections
-        let (db_pool_res, redis_client_res) = tokio::join!(db_pool_fut, redis_client_fut);
-        
-        let db_pool = db_pool_res.context("Postgres join error")?
+        // 4. Initialize Database
+        let db_url = config.database.url.as_deref()
+            .ok_or_else(|| anyhow::anyhow!("DATABASE_URL not configured"))?;
+            
+        let db_pool = sqlx::PgPool::connect(db_url).await
             .context("Failed to connect to database")?;
-        info!("Established PostgreSQL connection pool");
 
-        let _redis_client = Arc::new(redis_client_res.context("Redis join error")?
-            .context("Failed to create Redis client")?);
-        info!("Established Redis connection");
-
-        // 4. Bootstrap engine
-        info!("Bootstrapping BongasEngine...");
-        let deps = EngineDependencies::new(
-            config.clone(),
+        // 5. Initialize Core Engine (The Brain)
+        let deps = EngineDependencies {
+            config: config.clone(),
             db_pool,
-            circuit_breaker_registry.clone(),
-            metrics_collector.clone(),
-        );
-        let engine = BongasEngine::bootstrap(deps).await?;
+            circuit_breaker_registry: breaker_registry.clone(),
+            metrics_collector: metrics_collector.clone(),
+        };
+
+        let engine = BongasEngine::bootstrap(deps).await
+            .context("Failed to bootstrap BongasEngine")?;
 
         Ok(Self {
             config,
             engine,
-            circuit_breaker_registry,
-            metrics_collector,
             start_time,
         })
     }
 
-    /// Run the application HTTP server
+    /// Run the application and start the HTTP server.
     pub async fn run(self) -> Result<()> {
-        let redis_client = Arc::new(
-            redis::Client::open(self.config.redis.url.as_str())
-                .context("Failed to create Redis client")?
-        );
+        let addr = format!("{}:{}", self.config.server.host, self.config.server.port);
+        let listener = TcpListener::bind(&addr).await
+            .context(format!("Failed to bind to {}", addr))?;
 
-        info!("Setting up API router...");
-        let router = create_router(
+        let metrics_collector = Arc::new(MetricsCollector::new());
+        let breaker_registry = Arc::new(CircuitBreakerRegistry::new());
+        
+        // We need a redis client for the router
+        let redis_client = Arc::new(redis::Client::open(self.config.redis.url.clone())?);
+
+        let app = create_router(
             self.engine.clone(),
             self.config.clone(),
             redis_client,
-            self.metrics_collector.clone(),
-            self.circuit_breaker_registry.clone(),
-            self.start_time.clone(),
+            metrics_collector,
+            breaker_registry,
+            Arc::new(self.start_time),
         );
 
-        let bind_addr = format!("{}:{}", self.config.server.host, self.config.server.port);
-        let listener = TcpListener::bind(&bind_addr)
-            .await
-            .context(format!("Failed to bind to {}", bind_addr))?;
-
-        info!(address = %bind_addr, "BongasRuntime ready! HTTP server starting");
-
-        axum::serve(listener, router)
+        info!("🎼 Symphony 2.0 serving at http://{}", addr);
+        
+        axum::serve(listener, app)
             .with_graceful_shutdown(Self::shutdown_signal())
             .await
-            .context("HTTP server error")?;
+            .context("Server execution failed")?;
 
-        info!("Server shutdown complete");
         Ok(())
     }
 
     async fn shutdown_signal() {
-        use tokio::signal;
         let ctrl_c = async {
-            signal::ctrl_c()
+            tokio::signal::ctrl_c()
                 .await
-                .expect("Failed to install Ctrl+C handler");
+                .expect("failed to install Ctrl+C handler");
         };
 
         #[cfg(unix)]
         let terminate = async {
-            signal::unix::signal(signal::unix::SignalKind::terminate())
-                .expect("Failed to install SIGTERM handler")
+            tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+                .expect("failed to install signal handler")
                 .recv()
                 .await;
         };

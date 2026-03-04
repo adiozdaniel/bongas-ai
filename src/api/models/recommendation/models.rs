@@ -27,14 +27,19 @@ pub struct SymphonyNavigation {
     pub slug: String,
     pub title: String,
     pub nav_type: String,
+    pub nav_mesh: Vec<SymphonyNavigation>,
+    pub landing_slug: String,
+    pub total_rows: usize,
+    pub request_id: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FeedRow {
     pub title: String,
-    pub row_type: String, // e.g., "horizontal_list", "hero_carousel", "feature_grid"
-    pub row_style: Option<String>, // e.g., "promotional", "compact", "tall_cards"
+    pub row_type: String,
+    pub row_style: Option<String>,
     pub scenario: String,
+    pub scenario_slug: String,
     pub items: Vec<RecommendationItem>,
 }
 

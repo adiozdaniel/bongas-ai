@@ -1,60 +1,114 @@
 //! Ingestion sub-module for the Symphony Stage.
-//! Handles frictionless behavior tracking and context enrichment.
+//! Handles frictionless behavior tracking and real-time event streaming.
 
 use axum::{
     extract::Extension,
-    http::HeaderMap,
     Json,
+    http::HeaderMap,
 };
 use std::sync::Arc;
 use tokio::spawn;
 
-use crate::engine::BongasEngine;
-use crate::api::models::StandardResponse;
-use crate::api::models::recommendation::IngestEvent;
+use crate::engine::coordination::service::BongasEngine;
+use crate::api::models::{StandardResponse, recommendation::IngestEvent};
 use crate::api::middleware::service::extract_request_id_from_headers;
 use crate::api::middleware::identity::IdentityContext;
 use crate::ingestion::types::UserActivity;
 
 /// POST /api/v1/recommendation/ingest
-/// Frictionless entry point for client-side behavior tracking.
+/// Frictionless feedback loop. Ingests user interactions (clicks, playbacks, reactions).
+pub async fn ingest_activity(
+    Extension(engine): Extension<Arc<BongasEngine>>,
+    Extension(identity): Extension<IdentityContext>,
+    headers: HeaderMap,
+    Json(payload): Json<IngestEvent>,
+) -> Json<StandardResponse<()>> {
+    let request_id = extract_request_id_from_headers(&headers);
+    
+    // Convert to internal activity enum
+    let activity = match payload.event.as_str() {
+        "click" => UserActivity::Click {
+            user_id: payload.user_id.unwrap_or(0),
+            item_id: payload.item_id,
+            visitor_id: Some(identity.visitor_id.clone()),
+            device_hash: Some(identity.device_hash.clone()),
+            device_type: Some(identity.device_type.clone()),
+            scenario_slug: payload.scenario.clone(),
+            timestamp: chrono::Utc::now(),
+        },
+        "playback" => UserActivity::Playback {
+            user_id: payload.user_id.unwrap_or(0),
+            item_id: payload.item_id,
+            session_id: uuid::Uuid::new_v4().to_string(),
+            visitor_id: Some(identity.visitor_id.clone()),
+            device_hash: Some(identity.device_hash.clone()),
+            device_type: Some(identity.device_type.clone()),
+            watch_duration_seconds: payload.watch_percentage.map(|p| (p * 60.0) as i32).unwrap_or(0),
+            total_duration_seconds: 60,
+            watch_percentage: payload.watch_percentage.unwrap_or(0.0),
+            completed: payload.watch_percentage.map(|p| p > 0.9).unwrap_or(false),
+            scenario_slug: payload.scenario.clone(),
+            timestamp: chrono::Utc::now(),
+        },
+        "reaction" => UserActivity::Reaction {
+            user_id: payload.user_id.unwrap_or(0),
+            item_id: payload.item_id,
+            visitor_id: Some(identity.visitor_id.clone()),
+            device_hash: Some(identity.device_hash.clone()),
+            device_type: Some(identity.device_type.clone()),
+            reaction_type: payload.reaction_type.unwrap_or_else(|| "like".to_string()),
+            scenario_slug: payload.scenario.clone(),
+            timestamp: chrono::Utc::now(),
+        },
+        _ => UserActivity::Impression {
+            user_id: payload.user_id.unwrap_or(0),
+            item_id: payload.item_id,
+            visitor_id: Some(identity.visitor_id.clone()),
+            device_hash: Some(identity.device_hash.clone()),
+            device_type: Some(identity.device_type.clone()),
+            scenario_slug: payload.scenario.clone(),
+            timestamp: chrono::Utc::now(),
+        },
+    };
+
+    let engine_inner = engine.clone();
+    spawn(async move {
+        let manager = engine_inner.ingestion.read().await;
+        manager.api_source().ingest(activity).await;
+    });
+
+    Json(StandardResponse::success(()).with_request_id(request_id))
+}
+
+/// POST /api/v1/recommendation/ingest/batch
 pub async fn ingest_activities(
     Extension(engine): Extension<Arc<BongasEngine>>,
     Extension(identity): Extension<IdentityContext>,
     headers: HeaderMap,
-    Json(events): Json<Vec<IngestEvent>>,
+    Json(payload): Json<Vec<IngestEvent>>,
 ) -> Json<StandardResponse<()>> {
     let request_id = extract_request_id_from_headers(&headers);
-    let vid = Some(identity.visitor_id.clone());
-    let dhash = Some(identity.device_hash.clone());
-    let dtype = Some(identity.device_type.clone());
 
-    for ev in events {
-        let activity = match ev.event.as_str() {
+    for event in payload {
+        let activity = match event.event.as_str() {
             "click" => UserActivity::Click {
-                user_id: ev.user_id.unwrap_or(0),
-                item_id: ev.item_id,
-                visitor_id: vid.clone(),
-                device_hash: dhash.clone(),
-                device_type: dtype.clone(),
-                scenario_slug: ev.scenario.clone(),
+                user_id: event.user_id.unwrap_or(0),
+                item_id: event.item_id,
+                visitor_id: Some(identity.visitor_id.clone()),
+                device_hash: Some(identity.device_hash.clone()),
+                device_type: Some(identity.device_type.clone()),
+                scenario_slug: event.scenario.clone(),
                 timestamp: chrono::Utc::now(),
             },
-            "playback" => UserActivity::Playback {
-                user_id: ev.user_id.unwrap_or(0),
-                item_id: ev.item_id,
-                session_id: "api_ingest".to_string(),
-                visitor_id: vid.clone(),
-                device_hash: dhash.clone(),
-                device_type: dtype.clone(),
-                watch_duration_seconds: 0,
-                total_duration_seconds: 0,
-                watch_percentage: ev.watch_percentage.unwrap_or(0.0),
-                completed: ev.watch_percentage.unwrap_or(0.0) > 0.9,
-                scenario_slug: ev.scenario.clone(),
+            _ => UserActivity::Impression {
+                user_id: event.user_id.unwrap_or(0),
+                item_id: event.item_id,
+                visitor_id: Some(identity.visitor_id.clone()),
+                device_hash: Some(identity.device_hash.clone()),
+                device_type: Some(identity.device_type.clone()),
+                scenario_slug: event.scenario.clone(),
                 timestamp: chrono::Utc::now(),
             },
-            _ => continue,
         };
 
         let engine_inner = engine.clone();

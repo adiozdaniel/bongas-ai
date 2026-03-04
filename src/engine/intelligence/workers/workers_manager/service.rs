@@ -2,7 +2,16 @@
 
 use std::sync::Arc;
 use tracing::{info, warn};
-use crate::engine::BongasEngine;
+use crate::engine::coordination::service::BongasEngine;
+
+/// 💓 Workers: Background maintenance and task orchestration.
+pub struct WorkersManager;
+
+impl WorkersManager {
+    pub fn new() -> Self {
+        Self
+    }
+}
 
 impl BongasEngine {
     /// Identify low-performing scenarios based on ClickThrough Rate (CTR) from ClickHouse.
@@ -13,28 +22,25 @@ impl BongasEngine {
             let query = r#"
                 SELECT 
                     scenario_slug,
-                    countIf(interaction_type = 'click') / GREATEST(countIf(interaction_type = 'impression'), 1) as ctr
+                    countIf(interaction_type = 'click') / countIf(interaction_type = 'impression') as ctr
                 FROM user_interactions
-                WHERE created_at >= (now() - INTERVAL 7 DAY)
-                  AND scenario_slug != 'unknown'
+                WHERE created_at > (toUnixTimestamp(now()) - 86400)
                 GROUP BY scenario_slug
-                HAVING countIf(interaction_type = 'impression') > 100
+                HAVING ctr < 0.02
                 ORDER BY ctr ASC
-                LIMIT 3
             "#;
 
-            match ch.query(query).fetch_all::<(String, f64)>().await {
-                Ok(results) => {
-                    results.into_iter().map(|(slug, _)| slug).collect()
-                }
+            let results: Vec<(String, f64)> = match ch.query(query).fetch_all().await {
+                Ok(res) => res,
                 Err(e) => {
-                    warn!(error = %e, "Failed to fetch scenario CTR from ClickHouse user_interactions table");
-                    Vec::new()
+                    warn!(error = %e, "Failed to fetch low-performing scenarios from ClickHouse");
+                    return vec![];
                 }
-            }
+            };
+
+            results.into_iter().map(|(slug, _)| slug).collect()
         } else {
-            warn!("ClickHouse not available for performance pruning");
-            Vec::new()
+            vec![]
         }
     }
 

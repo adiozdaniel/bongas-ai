@@ -19,3 +19,6 @@ The Intelligence pillar provides the continuous feedback loops and AI-driven ins
 - **Isolated Loops**: Intelligence tasks must never block the execution path.
 - **Continuous Learning**: Real-time feedback feeds into strategy suggestions.
 - **Self-Healing**: Automated maintenance routines for cache health.
+
+---
+[🏠 Engine Root](../README.md)

@@ -7,8 +7,8 @@ use crate::resilience::ResilienceMetricsCollector;
 use crate::db::ResilientPool;
 use crate::db::repositories::scenario_repository::ScenarioRepository;
 use crate::db::models::{PipelineDefinition, ScenarioWithStrategy};
-use crate::engine::governance::strategy::resolver::ActiveRule;
-use crate::engine::ScenarioDefinition;
+use crate::engine::governance::strategy::resolver::service::ActiveRule;
+use crate::engine::coordination::service::ScenarioDefinition;
 
 pub struct ScenarioFactory {
     repo: ScenarioRepository

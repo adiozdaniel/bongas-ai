@@ -6,9 +6,9 @@ use std::sync::Arc;
 use tracing::warn;
 use crate::pipeline::context::ExecutionContext;
 use crate::pipeline::executor::PipelineExecutor;
-use crate::engine::execution::cache::staging_manager::StagingManager;
-use crate::engine::governance::strategy::resolver::StrategyResolver;
-use crate::engine::coordination::{RecommendationItem, ScenarioExecutionStats, ScenarioDefinition};
+use crate::engine::execution::cache::staging_manager::service::StagingManager;
+use crate::engine::governance::strategy::resolver::service::StrategyResolver;
+use crate::engine::coordination::service::{RecommendationItem, ScenarioExecutionStats, ScenarioDefinition};
 use crate::cache::CacheManager;
 use crate::ml::model_loader::ModelLoader;
 use crate::db::repositories::item_feature_service::ItemFeatureService;
@@ -36,9 +36,9 @@ pub struct ExecutionManager {
     pub(crate) metrics_collector: Arc<MetricsCollector>,
     pub(crate) clickhouse: Option<Arc<clickhouse::Client>>,
     pub(crate) hot_registry: Arc<crate::cache::HotRegistry>,
-    pub(crate) feature_repo: Arc<FeatureRepository>,
-    pub(crate) cache_repo: Arc<CacheRepository>,
-    pub(crate) circuit_breaker_registry: Arc<CircuitBreakerRegistry>,
+    pub(crate) _feature_repo: Arc<FeatureRepository>,
+    pub(crate) _cache_repo: Arc<CacheRepository>,
+    pub(crate) _circuit_breaker_registry: Arc<CircuitBreakerRegistry>,
     
     // Coordination with Scenarios
     pub(crate) scenarios: Arc<RwLock<HashMap<String, ScenarioDefinition>>>,
@@ -81,9 +81,9 @@ impl ExecutionManager {
             metrics_collector,
             clickhouse,
             hot_registry,
-            feature_repo,
-            cache_repo,
-            circuit_breaker_registry,
+            _feature_repo: feature_repo,
+            _cache_repo: cache_repo,
+            _circuit_breaker_registry: circuit_breaker_registry,
             scenarios,
             linked_scenarios,
             request_consolidation: Arc::new(dashmap::DashMap::new()),

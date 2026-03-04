@@ -7,7 +7,7 @@ use std::time::Instant;
 
 use crate::api::models::{HealthResponse, StandardResponse};
 use crate::api::middleware::service::extract_request_id_from_headers;
-use crate::engine::BongasEngine;
+use crate::engine::coordination::service::BongasEngine;
 use axum::http::HeaderMap;
 
 /// Liveness probe - determines if the process is alive.

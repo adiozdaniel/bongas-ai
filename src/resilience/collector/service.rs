@@ -7,6 +7,7 @@
 //! - **Degraded Response Tracking**: Tracks degraded/partial failures separately
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use crate::circuit_breaker::{CircuitBreakerEvent, ResilienceObserver};
 use crate::error::ErrorClassification;
@@ -38,6 +39,19 @@ impl ResilienceMetricsCollector {
         if classification == ErrorClassification::Degraded {
             metrics.degraded_calls.increment();
         }
+    }
+
+    pub async fn record_ingestion_success(&self, activity_kind: &str, duration: Duration) {
+        let label = format!("ingestion_{}", activity_kind);
+        let metrics = self.registry.get_or_create(&label);
+        metrics.successes.increment();
+        metrics.latency.record_duration(duration);
+    }
+
+    pub async fn record_interaction_processed(&self, duration: Duration) {
+        let metrics = self.registry.get_or_create("interaction_processed");
+        metrics.successes.increment();
+        metrics.latency.record_duration(duration);
     }
 }
 

@@ -11,67 +11,65 @@ use crate::middlewares::{
     platform_security::system_security_middleware,
 };
 use crate::config::{AppConfig, CompressionConfig};
-use crate::engine::BongasEngine;
+use crate::engine::coordination::service::BongasEngine;
 use crate::api::v1::{stage, backstage, pulse};
 
 /// Build the complete v1 API router with context-aware infrastructure logic.
-pub fn routes(_config: Arc<AppConfig>, _engine: Arc<BongasEngine>) -> Router {
-    
-    // ─── THE PULSE (Operations & Observability) ──────────────────────────
-    let pulse_router = Router::new()
-        .route("/health/live", get(pulse::health::liveness_check))
-        .route("/health/ready", get(pulse::health::readiness_check))
-        .route("/system/metrics", get(pulse::metrics::get_resilience_metrics))
-        .route("/system/cache/stats", get(pulse::metrics::get_cache_stats))
-        .route("/system/ingestion/health", get(pulse::metrics::get_ingestion_health));
-
-    // ─── THE STAGE (Public Discovery) ────────────────────────────────────
-    
-    // 1. Streaming Layer (No Compression to prevent buffering latency)
-    let stage_streaming = Router::new()
+pub fn routes(_engine: Arc<BongasEngine>, _config: Arc<AppConfig>) -> Router {
+    // ─── THE STAGE: Public Discovery Pillar ───────────────────────────────
+    // Optimized for SSE and high-throughput discovery streams.
+    let stage_router = Router::new()
         .route("/", get(stage::discovery::genesis))
-        .route("/page/{slug}", get(stage::discovery::get_page_recommendations));
+        .route("/page", get(stage::discovery::get_page_recommendations))
+        .route("/scenario/{slug}", get(stage::discovery::get_scenario_recommendations))
+        .route("/ingest", post(stage::ingestion::ingest_activity))
+        .route("/ingest/batch", post(stage::ingestion::ingest_activities));
 
-    // 2. Data Layer (JSON-heavy, Compression enabled)
-    let stage_data = Router::new()
-        .route("/scenario/{slug}", get(stage::discovery::get_scenario_detail))
-        .route("/ingest", post(stage::ingestion::ingest_activities))
-        .layer(CompressionConfig::new().build());
-
-    let stage_router = stage_streaming.merge(stage_data);
-
-    // ─── THE BACKSTAGE (Admin Control) ──────────────────────────────────
-    
+    // ─── THE BACKSTAGE: Administrative Pillar ─────────────────────────────
+    // Shielded with System-Key Authorization and heavy compression for data.
     let backstage_router = Router::new()
-        .nest("/pages", Router::new()
-            .route("/", post(backstage::orchestration::save_page_layout))
-            .route("/active", get(backstage::orchestration::list_active_pages))
-            .route("/{slug}", get(backstage::orchestration::get_page_layout).delete(backstage::orchestration::delete_page_layout)))
+        // Orchestration (Pages & Layouts)
+        .route("/pages/active", get(backstage::orchestration::list_active_pages))
+        .route("/pages/{slug}", get(backstage::orchestration::get_page_layout))
+        .route("/pages", post(backstage::orchestration::save_page_layout))
+        .route("/pages/{slug}", axum::routing::delete(backstage::orchestration::delete_page_layout))
         
-        .nest("/scenarios", Router::new()
-            .route("/", post(backstage::strategy::create_scenario).get(backstage::strategy::list_scenarios))
-            .route("/{slug}", get(backstage::strategy::get_scenario).put(backstage::strategy::update_scenario).delete(backstage::strategy::delete_scenario))
-            .route("/{slug}/reload", post(backstage::strategy::reload_scenario))
-            .route("/reload-all", post(backstage::strategy::reload_all_scenarios)))
+        // Strategy (Scenarios & Reloading)
+        .route("/scenarios", post(backstage::strategy::create_scenario))
+        .route("/scenarios/active", get(backstage::strategy::list_active_scenarios))
+        .route("/scenarios/{slug}", get(backstage::strategy::get_scenario_config))
+        .route("/scenarios/{slug}", axum::routing::patch(backstage::strategy::update_scenario))
+        .route("/scenarios/{slug}", axum::routing::delete(backstage::strategy::delete_scenario))
+        .route("/reload", post(backstage::strategy::reload_all_scenarios))
         
-        .nest("/intelligence", Router::new()
-            .route("/features/user/{user_id}", get(backstage::intelligence::get_user_features))
-            .route("/features/item/{item_id}", get(backstage::intelligence::get_item_features))
-            .route("/features/trending", get(backstage::intelligence::get_trending_items))
-            .route("/suggestions", get(backstage::intelligence::list_suggestions))
-            .route("/suggestions/{id}/approve", post(backstage::intelligence::approve_suggestion))
-            .route("/chatbot/ask", post(backstage::intelligence::chatbot_ask)))
-        
-        .nest("/system", Router::new()
-            .route("/reload", post(pulse::metrics::reload_engine_atomic))
-            .route("/models/reload", post(pulse::metrics::reload_models))
-            .route("/models/stats", get(pulse::metrics::get_model_stats))
-            .route("/security/status", get(pulse::metrics::get_security_status))
-            .route("/prewarm", post(stage::discovery::prewarm_scenarios)))
+        // Intelligence (ML Suggestions & Chat)
+        .route("/features/user/{user_id}", get(backstage::intelligence::get_user_features))
+        .route("/features/item/{item_id}", get(backstage::intelligence::get_item_features))
+        .route("/features/trending", get(backstage::intelligence::get_trending_items))
+        .route("/suggestions", get(backstage::intelligence::list_suggestions))
+        .route("/suggestions/{id}/approve", post(backstage::intelligence::approve_suggestion))
+        .route("/suggestions/{id}/simulate", post(backstage::intelligence::simulate_suggestion))
+        .route("/suggestions/{id}", axum::routing::delete(backstage::intelligence::reject_suggestion))
+        .route("/chat", post(backstage::intelligence::ai_chat_process))
         
         // GLOBAL BACKSTAGE SHIELD: Apply strict system auth to all admin routes
         .layer(from_fn(system_security_middleware))
         .layer(CompressionConfig::new().build());
+
+    // ─── THE PULSE: Operational Pillar ───────────────────────────────────
+    // Fast paths for health probes and real-time observability.
+    let pulse_router = Router::new()
+        .route("/health", get(pulse::health::liveness_check))
+        .route("/ready", get(pulse::health::readiness_check))
+        .nest("/metrics", Router::new()
+            .route("/system", get(pulse::metrics::get_system_stats))
+            .route("/cache", get(pulse::metrics::get_cache_performance))
+            .route("/ingestion", get(pulse::metrics::get_ingestion_health))
+            .route("/kafka", get(pulse::metrics::get_kafka_metrics))
+            .route("/reload-atomic", post(pulse::metrics::reload_engine_atomic))
+            .route("/models/reload", post(pulse::metrics::reload_models))
+            .route("/models/stats", get(pulse::metrics::get_model_stats))
+            .route("/security/status", get(pulse::metrics::get_security_status)));
 
     // ─── COMPOSE THE SYMPHONY ────────────────────────────────────────────
 

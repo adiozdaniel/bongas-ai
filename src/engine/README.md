@@ -1,83 +1,72 @@
-# 🧠 Engine Layer Module
+# 🧠 Engine: The Discovery Brain
 
-> **The central intelligence and coordination backbone of BONGAS-AI.**
-
-The Engine module is the heart of the recommendation system. It orchestrates the entire request lifecycle—from strategic rule resolution and high-performance execution to real-time cache invalidation and AI-driven rule suggestions.
+The Engine module is the central intelligence and coordination backbone of BONGAS-AI. It follows an audience-based functional pillar architecture, strictly separating real-time execution from system governance and asynchronous intelligence.
 
 ---
 
 ## 🏗️ Architecture Overview
 
+The Engine is organized into three primary pillars, orchestrated by **The Conductor**.
+
 ```mermaid
 graph TD
-    API[API Request] --> Coord[Engine Coordinator]
+    API[API Request] --> Conductor[🎼 Coordination: Conductor]
     
-    subgraph Management [Domain Managers]
-        Coord --> Exec[Execution Manager]
-        Coord --> Scen[Scenarios Manager]
-        Coord --> Sugg[Suggestions Manager]
-        Coord --> Work[Workers Manager]
+    subgraph Discovery [⚡ THE STAGE]
+        Conductor --> Execution[Execution Pillar]
+        Execution --> Core[Core: Fast Path]
+        Execution --> Cache[Cache: Staging & Warming]
     end
     
-    subgraph Core [Logic Engines]
-        Exec --> Strat[Strategy Resolver]
-        Exec --> Pipe[Pipeline Factory]
-        Exec --> Stage[Staging Manager]
+    subgraph Governance [🔐 THE BACKSTAGE]
+        Conductor --> Control[Governance Pillar]
+        Control --> Orchestration[Orchestration: Pages]
+        Control --> Strategy[Strategy: Scenarios]
     end
     
-    Stage --> L1[LRU Cache]
-    Stage --> L2[Redis Cache]
+    subgraph Optimization [📈 THE PULSE]
+        Conductor --> Intelligence[Intelligence Pillar]
+        Intelligence --> AI[AI: Rule Suggestions]
+        Intelligence --> Monitor[Monitoring: Sidecars]
+    end
 ```
 
 ---
 
-## 🧩 Sub-Modules
+## 🏛️ Functional Pillars
 
-### 🏛️ Coordination & Lifecycle
+### [⚡ THE STAGE (Execution)](./execution/README.md)
+The high-performance discovery path optimized for zero-latency scenario resolution and parallel streaming.
+- **Core**: Real-time execution loop and strategy resolver.
+- **Cache**: Predictive warming and tiered staging (L1/L2).
+- **Runtime**: Context management and request-scoped state.
 
-| Module | Description |
-| :--- | :--- |
-| [**🏛️ Engine**](./engine/README.md) | The grand coordinator and system runtime state. |
-| [**🚀 Runtime**](./runtime/README.md) | Top-level application bootstrap and run-loop. |
-| [**⚙️ Config**](./config/README.md) | Engine dependency injection and boot parameters. |
+### [🔐 THE BACKSTAGE (Governance)](./governance/README.md)
+The administrative control plane for discovery rules, layouts, and orchestration.
+- **Orchestration**: Page layouts and navigation mesh.
+- **Strategy**: Scenario definitions and rule matching.
+- **Factory**: Dynamic pipeline compilation and lifecycle.
 
-### 🛠️ Domain Managers
+### [📈 THE PULSE (Intelligence)](./intelligence/README.md)
+Self-optimizing feedback loops and AI-driven insights that refine the engine's behavior.
+- **AI**: Strategic rule generation and Hive Mind synchronization.
+- **Monitoring**: Performance sidecars and staleness tracking.
+- **Workers**: Background maintenance and orchestrated pulse.
 
-| Module | Description |
-| :--- | :--- |
-| [**⚡ Execution**](./execution_manager/README.md) | High-performance recommendation execution loop. |
-| [**🎬 Scenarios**](./scenarios_manager/README.md) | Lifecycle management and governance for pipelines. |
-| [**🤖 Suggestions**](./suggestions_manager/README.md) | AI Assistant and strategic rule generation. |
-| [**💓 Workers**](./workers_manager/README.md) | Background pulse and maintenance orchestration. |
-
-### 🧠 Core Engines
-
-| Module | Description |
-| :--- | :--- |
-| [**🌲 Strategy Resolver**](./strategy_resolver/README.md) | Dynamic contextual routing and rule matching. |
-| [**🏭 Scenario Factory**](./scenario_factory/README.md) | Pipeline compilation and assembly logic. |
-| [**🗄️ Staging Manager**](./staging_manager/README.md) | L2 Cache orchestration and thundering herd protection. |
-| [**🔄 Staleness Engine**](./staleness_engine/README.md) | Real-time event-driven cache invalidation. |
-
-### 📡 Intelligence & Connectivity
-
-| Module | Description |
-| :--- | :--- |
-| [**🏎️ Analytics Sidecar**](./analytics_sidecar/README.md) | Real-time performance optimization unit. |
-| [**🐝 Hive Mind**](./hive_mind/README.md) | Global intelligence synchronization layer. |
-| [**☀️ Predictive Warmer**](./predictive_warmer/README.md) | Proactive cache hydration service. |
-| [**🧬 Context**](./context/README.md) | Shared request-scoped execution state. |
+### [🎼 THE CONDUCTOR (Coordination)](./coordination/README.md)
+The assembly point that wires the three pillars into a unified `BongasEngine`.
 
 ---
 
-## 🚀 Quick Start
+## 🚀 Usage
 
 ```rust
-let engine = engine::BongasEngine::bootstrap(deps).await?;
+// The Conductor provides a simplified facade over the pillars
+let engine = BongasEngine::bootstrap(deps).await?;
 
-// Execute a recommendation scenario
-let recommendations = engine.execute_scenario("home_feed", user_id, context).await?;
+// Execute high-throughput discovery
+let items = engine.execute_scenario("home_feed", user_id, context).await?;
 ```
 
 ---
-[🏠 Back to Project Root](../../README.md)
+[🏠 Back to Project Root](../README.md)

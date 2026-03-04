@@ -11,7 +11,7 @@ use anyhow::Result;
 use reqwest::Client;
 use serde::Deserialize;
 
-use crate::engine::BongasEngine;
+use crate::engine::coordination::service::BongasEngine;
 use crate::config::types::HiveMindConfig;
 use crate::db::ResilientPool;
 
@@ -178,18 +178,18 @@ impl HiveMindConnector {
     }
 
     async fn evaluate_and_approve(&self, suggestion_id: i32) -> Result<()> {
-        let engine_arc = {
+        let engine_arc: Option<Arc<BongasEngine>> = {
             let guard = self.engine.lock().unwrap();
-            guard.as_ref().and_then(|w| w.upgrade())
+            guard.as_ref().and_then(|w: &Weak<BongasEngine>| w.upgrade())
         };
 
         if let Some(engine) = engine_arc {
             // Run Simulation
-            let simulation = engine.simulate_suggestion(suggestion_id).await?;
+            let simulation: serde_json::Value = engine.simulate_suggestion(suggestion_id).await?;
             
             // Safety Check: Ensure we don't return 0 items
             if let Some(results) = simulation.get("impact_comparison").and_then(|v| v.as_array()) {
-                let safe = results.iter().all(|r| {
+                let safe = results.iter().all(|r: &serde_json::Value| {
                     r.get("suggested_ids").and_then(|v| v.as_array()).map(|arr| !arr.is_empty()).unwrap_or(false)
                 });
 

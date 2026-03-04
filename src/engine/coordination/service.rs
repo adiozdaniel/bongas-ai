@@ -10,9 +10,9 @@ use crate::cache::CacheManager;
 use crate::ingestion::IngestionManager;
 use crate::resilience::ResilienceMetricsCollector;
 
-use crate::engine::execution::ExecutionPillar;
-use crate::engine::governance::GovernancePillar;
-use crate::engine::intelligence::IntelligencePillar;
+use crate::engine::execution::pillar::service::ExecutionPillar;
+use crate::engine::governance::pillar::service::GovernancePillar;
+use crate::engine::intelligence::pillar::service::IntelligencePillar;
 
 #[derive(Debug, Clone)]
 pub struct ScenarioDefinition {
@@ -73,22 +73,18 @@ pub struct BongasEngine {
     pub shutdown_tx: broadcast::Sender<()>,
 }
 
-// Logic migration from src/engine/engine/service.rs
 use crate::error::{AppResult, AppError, ScenarioError};
 use crate::ingestion::metrics::IngestionHealth;
-use crate::db::repositories::feature_repository::FeatureRepository;
-use crate::db::repositories::cache_repository::CacheRepository;
-use crate::circuit_breaker::CircuitBreakerRegistry;
-use crate::engine::intelligence::monitoring::staleness_engine::StalenessEngine;
 use crate::cache::metrics::CacheMetricsSnapshot;
-use crate::engine::governance::factory::scenario_factory::ScenarioFactory;
+use crate::db::repositories::feature_repository::service::FeatureRepository;
+use crate::db::repositories::cache_repository::service::CacheRepository;
+use crate::circuit_breaker::CircuitBreakerRegistry;
+use crate::engine::intelligence::monitoring::staleness_engine::service::StalenessEngine;
+use crate::engine::governance::factory::scenario_factory::service::ScenarioFactory;
 
 impl BongasEngine {
     /// Bootstrap the complete engine symphony.
     pub async fn bootstrap(_deps: crate::engine::config::models::EngineDependencies) -> AppResult<Arc<Self>> {
-        // Implementation would go here - for now, we're just adding the signature
-        // to satisfy current compilation needs. In a real scenario, this would
-        // initialize all three pillars.
         Err(AppError::Internal("Bootstrap implementation moved to dedicated builder".to_string()))
     }
 
@@ -163,7 +159,7 @@ impl BongasEngine {
     }
 
     pub fn get_hit_rate(&self) -> f64 {
-        self.execution.staging.get_hit_rate()
+        self.execution.staging_manager.get_hit_rate()
     }
 
     pub fn get_cache_stats(&self) -> CacheMetricsSnapshot {
@@ -171,12 +167,12 @@ impl BongasEngine {
     }
 
     pub async fn reload_models(&self) -> AppResult<usize> {
-        self.execution.manager.model_loader.reload_all().await
+        self.execution.model_loader.reload_all().await
             .map_err(|e| AppError::Model(crate::error::ModelError::LoadFailed(format!("Reload failed: {}", e))))
     }
 
     pub async fn model_count(&self) -> usize {
-        self.execution.manager.model_loader.loaded_count().await
+        self.execution.model_loader.loaded_count().await
     }
 
     pub async fn get_security_status(&self) -> SecurityStatus {
@@ -188,19 +184,19 @@ impl BongasEngine {
     }
 
     pub fn feature_repo(&self) -> Arc<FeatureRepository> {
-        self.execution.manager.feature_repo.clone()
+        self.execution.feature_repo.clone()
     }
 
     pub fn cache_repo(&self) -> Arc<CacheRepository> {
-        self.execution.manager.cache_repo.clone()
+        self.execution.cache_repo.clone()
     }
 
     pub fn scenario_factory(&self) -> Arc<ScenarioFactory> {
-        self.governance.scenarios.scenario_factory.clone()
+        self.governance.scenario_factory.clone()
     }
 
     pub fn circuit_breaker_registry(&self) -> Arc<CircuitBreakerRegistry> {
-        self.execution.manager.circuit_breaker_registry.clone()
+        self.execution.circuit_breaker_registry.clone()
     }
 
     pub fn staleness_engine(&self) -> Arc<StalenessEngine> {

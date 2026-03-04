@@ -24,6 +24,50 @@ impl InteractionRepository {
         }
     }
 
+    /// Primary entry point for recording any user interaction.
+    pub async fn record_interaction(
+        &self,
+        user_id: i32,
+        item_id: i32,
+        interaction_type: &str,
+        scenario_slug: &str,
+        weight: f32,
+    ) -> AppResult<()> {
+        let start_time = std::time::Instant::now();
+        
+        let result = self.pool.execute(|pool| {
+            let i_type = interaction_type.to_string();
+            let s_slug = scenario_slug.to_string();
+            async move {
+                sqlx::query(
+                    r#"
+                    INSERT INTO user_interactions
+                        (user_id, item_id, interaction_type, rating, scenario_slug, created_at)
+                    VALUES ($1, $2, $3, $4, $5, NOW())
+                    "#,
+                )
+                .bind(user_id)
+                .bind(item_id)
+                .bind(i_type)
+                .bind(weight)
+                .bind(s_slug)
+                .execute(&pool)
+                .await
+                .map(|_| ())
+            }
+        }).await;
+
+        let duration = start_time.elapsed();
+        let metrics = self.metrics_collector.registry().get_or_create(&format!("interaction_{}", interaction_type));
+        metrics.latency.record_duration(duration);
+        if result.is_ok() { metrics.successes.increment(); } else { metrics.failures.increment(); }
+
+        result.map_err(|e| AppError::Postgres(PostgresError::Query {
+            message: format!("Failed to record interaction: {}", e),
+            source: None,
+        }))
+    }
+
     pub async fn create_implicit_rating(
         &self,
         user_id: i32,

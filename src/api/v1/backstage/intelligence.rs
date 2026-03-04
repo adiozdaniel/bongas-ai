@@ -8,7 +8,7 @@ use axum::{
 };
 use std::sync::Arc;
 
-use crate::engine::BongasEngine;
+use crate::engine::coordination::service::BongasEngine;
 use crate::api::models::StandardResponse;
 use crate::error::AppError;
 use crate::api::middleware::service::extract_request_id_from_headers;
@@ -17,7 +17,6 @@ use crate::api::middleware::service::extract_request_id_from_headers;
 
 #[derive(serde::Deserialize)]
 pub struct TrendingQuery {
-    pub category: Option<String>,
     pub limit: Option<usize>,
 }
 
@@ -57,26 +56,30 @@ pub async fn get_trending_items(
     Ok(Json(StandardResponse::success(serde_json::to_value(items).unwrap_or_default()).with_request_id(request_id)))
 }
 
-// ─── ML Suggestions & LLM ───────────────────────────────────────────────────
+// ─── ML Rule Suggestions ───────────────────────────────────────────────────
 
-#[derive(serde::Deserialize)]
-pub struct ChatbotQuery {
-    pub message: String,
-}
-
-pub async fn chatbot_ask(
+/// GET /api/v1/recommendation/admin/suggestions
+pub async fn list_suggestions(
     headers: HeaderMap,
     Extension(engine): Extension<Arc<BongasEngine>>,
-    Json(payload): Json<ChatbotQuery>,
-) -> Result<Json<StandardResponse<serde_json::Value>>, AppError> {
+) -> Result<Json<StandardResponse<Vec<serde_json::Value>>>, AppError> {
     let request_id = extract_request_id_from_headers(&headers);
-    let suggestion_id = engine.chatbot_process_query(&payload.message).await?;
-    Ok(Json(StandardResponse::success(serde_json::json!({ 
-        "suggestion_id": suggestion_id,
-        "message": "I've analyzed your request and created a rule suggestion. You can now simulate it or approve it." 
-    })).with_request_id(request_id)))
+    let suggestions = engine.list_suggestions().await?;
+    Ok(Json(StandardResponse::success(suggestions).with_request_id(request_id)))
 }
 
+/// POST /api/v1/recommendation/admin/suggestions/:id/approve
+pub async fn approve_suggestion(
+    headers: HeaderMap,
+    Path(id): Path<i32>,
+    Extension(engine): Extension<Arc<BongasEngine>>,
+) -> Result<Json<StandardResponse<serde_json::Value>>, AppError> {
+    let request_id = extract_request_id_from_headers(&headers);
+    engine.approve_suggestion(id).await?;
+    Ok(Json(StandardResponse::success(serde_json::json!({ "message": "Suggestion approved and promoted to active rule" })).with_request_id(request_id)))
+}
+
+/// POST /api/v1/recommendation/admin/suggestions/:id/simulate
 pub async fn simulate_suggestion(
     headers: HeaderMap,
     Path(id): Path<i32>,
@@ -87,25 +90,31 @@ pub async fn simulate_suggestion(
     Ok(Json(StandardResponse::success(impact).with_request_id(request_id)))
 }
 
-pub async fn list_suggestions(
-    headers: HeaderMap,
-    Extension(engine): Extension<Arc<BongasEngine>>,
-) -> Result<Json<StandardResponse<Vec<serde_json::Value>>>, AppError> {
-    let request_id = extract_request_id_from_headers(&headers);
-    let suggestions = engine.list_suggestions().await?;
-    Ok(Json(StandardResponse::success(suggestions).with_request_id(request_id)))
+// ─── AI Assistant (LLM Interface) ──────────────────────────────────────────
+
+#[derive(serde::Deserialize)]
+pub struct ChatQuery {
+    pub prompt: String,
 }
 
-pub async fn approve_suggestion(
+/// POST /api/v1/recommendation/admin/chat
+/// Natural language interface for strategy management.
+pub async fn ai_chat_process(
     headers: HeaderMap,
-    Path(id): Path<i32>,
     Extension(engine): Extension<Arc<BongasEngine>>,
+    Json(payload): Json<ChatQuery>,
 ) -> Result<Json<StandardResponse<serde_json::Value>>, AppError> {
     let request_id = extract_request_id_from_headers(&headers);
-    engine.approve_suggestion(id).await?;
-    Ok(Json(StandardResponse::success(serde_json::json!({ "message": "Suggestion approved and rule activated" })).with_request_id(request_id)))
+    let suggestion_id = engine.chatbot_process_query(&payload.prompt).await?;
+    
+    Ok(Json(StandardResponse::success(serde_json::json!({
+        "message": "I've analyzed your request and generated a strategic rule suggestion.",
+        "suggestion_id": suggestion_id,
+        "action_required": "Please review and approve the suggestion in the queue."
+    })).with_request_id(request_id)))
 }
 
+/// DELETE /api/v1/recommendation/admin/suggestions/:id
 pub async fn reject_suggestion(
     headers: HeaderMap,
     Path(id): Path<i32>,

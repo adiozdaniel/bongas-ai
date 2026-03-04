@@ -4,7 +4,7 @@ use axum::Router;
 use std::sync::Arc;
 use std::time::Instant;
 
-use crate::engine::BongasEngine;
+use crate::engine::coordination::service::BongasEngine;
 use crate::config::AppConfig;
 use crate::middlewares::metrics::MetricsCollector;
 use crate::middlewares::rate_limit::RateLimiter;
@@ -36,7 +36,7 @@ pub fn create_router(
     let connection_tracker = Arc::new(ConnectionTracker::new(3));
 
     let routes = Router::new()
-        .nest("/api/v1", v1::routes(config.clone(), engine.clone()))
+        .nest("/api/v1", v1::routes(engine.clone(), config.clone()))
         .route("/health/live", get(v1::pulse::health::liveness_check))
         .route("/health/ready", get(v1::pulse::health::readiness_check));
 

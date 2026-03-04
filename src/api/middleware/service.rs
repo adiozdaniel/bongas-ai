@@ -33,7 +33,7 @@ use crate::config::{CompressionConfig, CorsConfig};
 use crate::circuit_breaker::CircuitBreakerRegistry;
 
 use crate::middlewares::metrics::MetricsCollector;
-use crate::engine::BongasEngine;
+use crate::engine::coordination::service::BongasEngine;
 use crate::config::AppConfig;
 use std::time::Instant;
 

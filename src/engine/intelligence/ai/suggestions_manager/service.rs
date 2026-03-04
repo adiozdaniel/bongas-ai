@@ -3,8 +3,17 @@
 use anyhow::{Result, Context};
 use std::sync::Arc;
 use tracing::info;
-use crate::engine::BongasEngine;
+use crate::engine::coordination::service::BongasEngine;
 use crate::pipeline::context::ExecutionContext;
+
+/// 🤖 AI: Strategic rule generation and optimization.
+pub struct SuggestionsManager;
+
+impl SuggestionsManager {
+    pub fn new() -> Self {
+        Self
+    }
+}
 
 impl BongasEngine {
     /// List all pending rule suggestions from the Analytics Sidecar.
@@ -107,7 +116,7 @@ impl BongasEngine {
                 .await
         }).await?;
         
-        let suggested_pipeline = Arc::new(self.execution.manager.pipeline_executor.link(&serde_json::from_value::<crate::db::models::PipelineDefinition>(p_def_json)?)?);
+        let suggested_pipeline = Arc::new(self.execution.pipeline_executor.link(&serde_json::from_value::<crate::db::models::PipelineDefinition>(p_def_json)?)?);
         let control_pipeline = self.governance.scenarios.linked_scenarios.load().get(&scenario_slug).cloned();
 
         let sample_users: Vec<i32> = self.governance.scenarios.scenario_factory.repo().pool().execute(|pool| async move {
@@ -122,10 +131,10 @@ impl BongasEngine {
             let request_id = uuid::Uuid::new_v4().to_string();
             let mut context = ExecutionContext::new(
                 Some(uid),
-                self.execution.manager.cache_manager.clone(),
-                self.execution.manager.model_loader.clone(),
-                self.execution.manager.item_feature_service.clone(),
-                self.execution.manager.feature_store.clone(),
+                self.execution.cache_manager.clone(),
+                self.execution.model_loader.clone(),
+                self.execution.item_feature_service.clone(),
+                self.execution.feature_store.clone(),
                 request_id,
             ).with_hot_registry(self.execution.manager.hot_registry.clone());
 
@@ -145,8 +154,8 @@ impl BongasEngine {
                 }
             }
 
-            let control_items = if let Some(ref cp) = control_pipeline {
-                self.execution.manager.pipeline_executor.execute_linked(cp, &context).await?.into_iter().map(|item| crate::engine::coordination::service::RecommendationItem {
+            let control_items: Vec<crate::engine::coordination::service::RecommendationItem> = if let Some(ref cp) = control_pipeline {
+                self.execution.pipeline_executor.execute_linked(cp, &context).await?.into_iter().map(|item| crate::engine::coordination::service::RecommendationItem {
                     item_id: item.item_id,
                     score: item.score,
                     metadata: item.metadata,
@@ -156,7 +165,7 @@ impl BongasEngine {
                 Vec::new()
             };
             
-            let suggested_items: Vec<crate::engine::coordination::service::RecommendationItem> = self.execution.manager.pipeline_executor.execute_linked(&suggested_pipeline, &context).await?.into_iter().map(|item| crate::engine::coordination::service::RecommendationItem {
+            let suggested_items: Vec<crate::engine::coordination::service::RecommendationItem> = self.execution.pipeline_executor.execute_linked(&suggested_pipeline, &context).await?.into_iter().map(|item| crate::engine::coordination::service::RecommendationItem {
                 item_id: item.item_id,
                 score: item.score,
                 metadata: item.metadata,
@@ -200,7 +209,7 @@ impl BongasEngine {
             }
         };
 
-        let suggested_pipeline_slug = self.governance.scenarios.scenario_factory.repo().pool().execute(|pool| async move {
+        let suggested_pipeline_slug: String = self.governance.scenarios.scenario_factory.repo().pool().execute(|pool| async move {
             let query_lower = query.to_lowercase();
             let target_slug = if query_lower.contains("diverse") || query_lower.contains("variety") {
                 "discovery"

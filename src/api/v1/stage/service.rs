@@ -1,7 +1,7 @@
 //! Service layer for recommendation orchestration and mapping.
 
 use std::sync::Arc;
-use crate::engine::BongasEngine;
+use crate::engine::coordination::service::{BongasEngine, ScenarioDefinition};
 use crate::api::models::{RecommendationItem, ContextParams};
 use crate::error::AppError;
 use crate::ingestion::types::UserActivity;
@@ -37,7 +37,7 @@ pub async fn execute_and_map(
     
     // 1. Get Scenario display limit
     let display_limit = {
-        let scenarios: tokio::sync::RwLockReadGuard<'_, std::collections::HashMap<String, crate::engine::ScenarioDefinition>> = engine_ref.governance.scenarios.scenarios.read().await;
+        let scenarios: tokio::sync::RwLockReadGuard<'_, std::collections::HashMap<String, ScenarioDefinition>> = engine_ref.governance.scenarios.scenarios.read().await;
         scenarios.get(scenario_slug)
             .map(|s| s.initial_display_limit as usize)
             .unwrap_or(5)

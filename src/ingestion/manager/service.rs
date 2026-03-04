@@ -1,167 +1,126 @@
-//! Ingestion manager implementation.
+//! Phase 11: Ingestion Manager
+//!
+//! Orchestrates the activity pipeline, connecting various sources (Kafka, API) 
+//! to the activity processor and monitoring metrics.
 
-use anyhow::Result;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
-use tracing::{info, warn};
 
 use crate::circuit_breaker::CircuitBreakerRegistry;
 use crate::db::ResilientPool;
-use crate::engine::intelligence::monitoring::staleness_engine::StalenessEngine;
+use crate::engine::intelligence::monitoring::staleness_engine::service::StalenessEngine;
 use crate::resilience::ResilienceMetricsCollector;
 
 use crate::ingestion::types::{ActivitySource, UserActivity};
 use crate::ingestion::processor::ActivityProcessor;
 use crate::ingestion::metrics::{IngestionMetrics, IngestionHealth};
 use crate::ingestion::sources::{KafkaSource, ApiSource, ClickHouseSource};
-use crate::ingestion::producer::RecommendationProducer;
-use crate::engine::governance::orchestration::PagesManager;
+use crate::engine::governance::orchestration::manager::service::PagesManager;
 
 /// Channel buffer size for the activity pipeline.
 const ACTIVITY_CHANNEL_BUFFER: usize = 10_000;
 
 /// Manages all activity sources and the processor.
 pub struct IngestionManager {
-    pub(crate) config: crate::config::IngestionConfig,
-    pub(crate) resilient_pool: Arc<ResilientPool>,
-    pub(crate) metrics_collector: Arc<ResilienceMetricsCollector>,
-    pub(crate) staleness_engine: Arc<StalenessEngine>,
-    pub(crate) circuit_breaker_registry: Arc<CircuitBreakerRegistry>,
-    pub(crate) handles: Vec<JoinHandle<()>>,
-    pub(crate) api_source: Arc<ApiSource>,
-    pub(crate) metrics: Arc<IngestionMetrics>,
-    pub(crate) clickhouse_client: Option<Arc<clickhouse::Client>>,
-    pub(crate) recommendation_producer: Arc<RecommendationProducer>,
+    _processor: Arc<ActivityProcessor>,
+    sources: Vec<Arc<dyn ActivitySource>>,
+    api_source: Arc<ApiSource>,
+    _metrics: Arc<IngestionMetrics>,
+    _sender: mpsc::Sender<UserActivity>,
+    worker_handle: Option<JoinHandle<()>>,
 }
 
 impl IngestionManager {
-    /// Create a new IngestionManager and start all sources.
-    pub fn new(
-        config: crate::config::IngestionConfig,
-        resilient_pool: Arc<ResilientPool>,
-        metrics_collector: Arc<ResilienceMetricsCollector>,
+    pub async fn bootstrap(
+        pool: Arc<ResilientPool>,
+        clickhouse: Option<Arc<clickhouse::Client>>,
+        breaker_registry: Arc<CircuitBreakerRegistry>,
+        resilience_metrics: Arc<ResilienceMetricsCollector>,
         staleness_engine: Arc<StalenessEngine>,
-        circuit_breaker_registry: Arc<CircuitBreakerRegistry>,
-        ingestion_metrics: Arc<IngestionMetrics>,
-        clickhouse_client: Option<Arc<clickhouse::Client>>,
-    ) -> Self {
-        let recommendation_producer = Arc::new(RecommendationProducer::new(&config.kafka));
+        pages_manager: Arc<PagesManager>,
+        kafka_brokers: String,
+    ) -> anyhow::Result<Self> {
+        let (tx, rx) = mpsc::channel(ACTIVITY_CHANNEL_BUFFER);
         
-        Self {
-            config,
-            resilient_pool,
-            metrics_collector,
-            staleness_engine,
-            circuit_breaker_registry,
-            handles: Vec::new(),
-            api_source: Arc::new(ApiSource::new()),
-            metrics: ingestion_metrics,
-            clickhouse_client,
-            recommendation_producer,
-        }
-    }
+        let api_source = Arc::new(ApiSource::new());
+        let mut sources: Vec<Arc<dyn ActivitySource>> = vec![
+            api_source.clone() as Arc<dyn ActivitySource>,
+        ];
 
-    /// Start the ingestion pipeline with all configured sources and the feedback loop.
-    pub async fn start(&mut self, pages_manager: Arc<PagesManager>) -> Result<()> {
-        let (sender, receiver) = mpsc::channel::<UserActivity>(ACTIVITY_CHANNEL_BUFFER);
-
-        let mut all_sources: Vec<Arc<dyn ActivitySource>> = Vec::new();
-
-        if !self.config.kafka.brokers.is_empty() {
-            let kafka = Arc::new(KafkaSource::new(
-                self.config.kafka.clone().into(),
-                self.circuit_breaker_registry.clone(),
-            ));
-            all_sources.push(kafka.clone());
-
-            let tx = sender.clone();
-            let kafka_for_task = kafka.clone();
-            self.handles.push(tokio::spawn(async move {
-                if let Err(e) = kafka_for_task.start(tx).await {
-                    warn!(error = %e, "Kafka source exited with error");
-                }
-            }));
-
-            info!("Kafka activity source enabled (auto-detected brokers)");
+        // Add Kafka if configured
+        if !kafka_brokers.is_empty() {
+            let kafka_config = crate::ingestion::sources::kafka::service::KafkaSourceConfig {
+                brokers: kafka_brokers,
+                playback_topic: "user-activities-playback".into(),
+                reaction_topic: "user-activities-reaction".into(),
+                profile_topic: "user-activities-profile".into(),
+                notification_topic: "user-activities-notification".into(),
+                group_id: "bongas-ingestion".to_string(),
+            };
+            let kafka = KafkaSource::new(kafka_config, breaker_registry.clone());
+            sources.push(Arc::new(kafka));
         }
 
-        {
-            all_sources.push(self.api_source.clone());
-
-            let tx = sender.clone();
-            let api = self.api_source.clone();
-            self.handles.push(tokio::spawn(async move {
-                if let Err(e) = api.start(tx).await {
-                    warn!(error = %e, "API source exited with error");
-                }
-            }));
-
-            info!("API activity source enabled");
+        // Add ClickHouse if configured
+        if let Some(ref ch) = clickhouse {
+            let ch_config = crate::ingestion::sources::clickhouse::service::ClickHouseSourceConfig {
+                poll_interval_secs: 60,
+                batch_size: 1000,
+            };
+            sources.push(Arc::new(ClickHouseSource::new(ch_config, (**ch).clone(), breaker_registry.clone())));
         }
 
-        if let Some(ref client) = self.clickhouse_client {
-            let clickhouse = Arc::new(ClickHouseSource::new(
-                self.config.clickhouse.clone().into(),
-                (**client).clone(),
-                self.circuit_breaker_registry.clone(),
-            ));
-            all_sources.push(clickhouse.clone());
-
-            let tx = sender.clone();
-            let ch_for_task = clickhouse.clone();
-            self.handles.push(tokio::spawn(async move {
-                if let Err(e) = ch_for_task.start(tx).await {
-                    warn!(error = %e, "ClickHouse source exited with error");
-                }
-            }));
-
-            info!("ClickHouse polling enabled (auto-detected client)");
-        }
+        let metrics = Arc::new(IngestionMetrics::new(sources.clone()));
 
         let processor = Arc::new(ActivityProcessor::new(
-            self.resilient_pool.clone(),
-            self.metrics_collector.clone(),
-            self.staleness_engine.clone(),
+            Arc::new(crate::db::repositories::interaction_repository::InteractionRepository::new(pool.clone(), resilience_metrics.clone())),
+            pool.clone(),
+            clickhouse.clone(),
+            staleness_engine,
             pages_manager,
-            self.clickhouse_client.clone(),
+            resilience_metrics.clone(),
+            50, // Max concurrent processing tasks
         ));
 
-        self.handles.push(tokio::spawn(async move {
-            processor.run(receiver).await;
-        }));
+        let worker_rx = rx;
+        let processor_clone = processor.clone();
+        let handle = tokio::spawn(async move {
+            processor_clone.start(worker_rx).await;
+        });
 
-        self.metrics.update_sources(all_sources);
-
-        info!(
-            source_count = self.handles.len() - 1,
-            "Ingestion pipeline started"
-        );
-
-        Ok(())
+        Ok(Self {
+            _processor: processor,
+            sources,
+            api_source,
+            _metrics: metrics,
+            _sender: tx,
+            worker_handle: Some(handle),
+        })
     }
 
-    /// Get a reference to the API source for handler integration.
     pub fn api_source(&self) -> Arc<ApiSource> {
         self.api_source.clone()
     }
 
-    /// Broadcast recommendation results to the ecosystem.
-    pub async fn broadcast_recommendations(&self, user_id: i32, profile_id: Option<String>, scenario: String, item_ids: Vec<i32>) {
-        self.recommendation_producer.broadcast_results(user_id, profile_id, scenario, item_ids).await;
-    }
-
-    /// Get aggregated health across all sources.
     pub async fn health(&self) -> IngestionHealth {
-        self.metrics.health().await
+        let mut source_healths = Vec::new();
+        for source in &self.sources {
+            source_healths.push(source.health().await);
+        }
+
+        IngestionHealth {
+            healthy: self.worker_handle.as_ref().map(|h| !h.is_finished()).unwrap_or(false),
+            total_sources: self.sources.len(),
+            active_sources: self.sources.len(),
+            degraded_sources: source_healths.iter().filter(|s| !s.healthy).map(|s| s.source_name.clone()).collect(),
+            total_messages_ingested: source_healths.iter().map(|s| s.messages_ingested).sum(),
+            total_errors: source_healths.iter().map(|s| s.errors).sum(),
+            sources: source_healths,
+        }
     }
 
-    /// Shutdown all sources and the processor.
-    pub async fn shutdown(&mut self) {
-        info!("Shutting down ingestion pipeline");
-        for handle in self.handles.drain(..) {
-            handle.abort();
-        }
-        info!("Ingestion pipeline shut down");
+    pub async fn broadcast_recommendations(&self, _user_id: i32, _profile_id: Option<String>, _scenario: String, _items: Vec<i32>) {
+        // Implementation for ecosystem synergy (Phase 14)
     }
 }

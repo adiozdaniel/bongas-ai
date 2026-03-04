@@ -5,7 +5,7 @@ use tokio::sync::Semaphore;
 use tracing::{info, warn, debug};
 use chrono::Timelike;
 
-use crate::engine::BongasEngine;
+use crate::engine::coordination::service::BongasEngine;
 
 /// Phase 6: Predictive Cache Warmer
 /// 

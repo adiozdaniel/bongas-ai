@@ -10,7 +10,7 @@ use tracing::{info, warn, error, debug};
 use anyhow::{Result, Context};
 use clickhouse::Client as ClickHouseClient;
 
-use crate::engine::BongasEngine;
+use crate::engine::coordination::service::BongasEngine;
 use crate::db::ResilientPool;
 
 /// The sidecar that gives the binary "eyes" on its own performance.
@@ -71,9 +71,9 @@ impl AnalyticsSidecar {
         debug!("Running hourly self-performance analysis...");
 
         // Use the engine reference to list scenarios (Phase 16: Use Weak Engine)
-        let engine_arc = {
+        let engine_arc: Option<Arc<BongasEngine>> = {
             let guard = self.engine.lock().unwrap();
-            guard.as_ref().and_then(|w| w.upgrade())
+            guard.as_ref().and_then(|w: &Weak<BongasEngine>| w.upgrade())
         };
 
         if let Some(engine) = engine_arc {

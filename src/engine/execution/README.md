@@ -19,3 +19,6 @@ The Execution pillar is the high-performance discovery path of the Bongas-AI eng
 - **Non-Blocking**: Every operation must be optimized for the Tokio runtime.
 - **Fast-Path**: Minimal allocation and zero-touch context propagation.
 - **Resilient**: Guarded by global circuit breakers at the repository layer.
+
+---
+[🏠 Engine Root](../README.md)
