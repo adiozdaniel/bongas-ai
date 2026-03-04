@@ -83,11 +83,6 @@ use crate::engine::intelligence::monitoring::staleness_engine::service::Stalenes
 use crate::engine::governance::factory::scenario_factory::service::ScenarioFactory;
 
 impl BongasEngine {
-    /// Bootstrap the complete engine symphony.
-    pub async fn bootstrap(_deps: crate::engine::config::models::EngineDependencies) -> AppResult<Arc<Self>> {
-        Err(AppError::Internal("Bootstrap implementation moved to dedicated builder".to_string()))
-    }
-
     /// Proxy: Execute scenario and return recommendations
     pub async fn execute_scenario(
         &self,

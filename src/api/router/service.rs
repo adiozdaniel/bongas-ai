@@ -1,53 +1,48 @@
-//! API router construction logic.
+//! Logic for creating and configuring the main application router.
 
-use axum::Router;
 use std::sync::Arc;
-use std::time::Instant;
+use tokio::time::Instant;
+use axum::{Router, routing::get};
+use tower_http::trace::TraceLayer;
 
+use crate::AppConfig;
 use crate::engine::coordination::service::BongasEngine;
-use crate::config::AppConfig;
-use crate::middlewares::metrics::MetricsCollector;
-use crate::middlewares::rate_limit::RateLimiter;
+use crate::resilience::ResilienceMetricsCollector;
 use crate::circuit_breaker::CircuitBreakerRegistry;
 use crate::api::v1;
 use crate::api::ConnectionTracker;
 
-use axum::routing::get;
-
-/// Build the complete API router with routes, shared state, and middleware.
+/// Create the main application router with all routes and middleware.
 pub fn create_router(
     engine: Arc<BongasEngine>,
     config: Arc<AppConfig>,
     redis: Arc<redis::Client>,
-    metrics_collector: Arc<MetricsCollector>,
+    resilience_metrics: Arc<ResilienceMetricsCollector>,
     circuit_breaker_registry: Arc<CircuitBreakerRegistry>,
     start_time: Arc<Instant>,
 ) -> Router {
-    let rate_limiter = RateLimiter::new(
-        redis.clone(),
-        circuit_breaker_registry.clone(),
-        100, // max requests per minute (L2 threshold)
-        60,  // window seconds
-        Some(engine.shutdown_tx.subscribe()),
-    );
+    // 1. Initialize Adaptive Rate Limiter
+    let tracker = Arc::new(ConnectionTracker::new(1000)); // Default max connections
 
-    // Adaptive Rate Limiter: Max 3 concurrent SSE connections per visitor (Shield)
-    let connection_tracker = Arc::new(ConnectionTracker::new(3));
+    // 2. Build V1 Routes
+    let v1_routes = v1::router::service::routes(engine.clone(), config.clone());
 
-    let routes = Router::new()
-        .nest("/api/v1", crate::api::routes(engine.clone(), config.clone()))
+    // 3. Build Global Router
+    let app = Router::new()
+        .nest("/api/v1", v1_routes)
         .route("/health/live", get(v1::pulse::health::service::liveness_check))
-        .route("/health/ready", get(v1::pulse::health::service::readiness_check));
+        .route("/health/ready", get(v1::pulse::health::service::readiness_check))
+        .layer(TraceLayer::new_for_http());
 
-    crate::api::apply_middleware(
-        routes, 
-        circuit_breaker_registry,
+    // 4. Apply Global Middleware
+    crate::api::middleware::service::apply_middleware(
+        app,
         engine,
         config,
         redis,
-        rate_limiter,
-        metrics_collector,
-        connection_tracker,
-        start_time
+        resilience_metrics,
+        circuit_breaker_registry,
+        tracker,
+        start_time,
     )
 }

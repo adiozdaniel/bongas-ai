@@ -36,24 +36,31 @@ graph TD
 ## 🏛️ Functional Pillars
 
 ### [⚡ THE STAGE (Execution)](./execution/README.md)
+
 The high-performance discovery path optimized for zero-latency scenario resolution and parallel streaming.
+
 - **Core**: Real-time execution loop and strategy resolver.
 - **Cache**: Predictive warming and tiered staging (L1/L2).
 - **Runtime**: Context management and request-scoped state.
 
 ### [🔐 THE BACKSTAGE (Governance)](./governance/README.md)
+
 The administrative control plane for discovery rules, layouts, and orchestration.
+
 - **Orchestration**: Page layouts and navigation mesh.
 - **Strategy**: Scenario definitions and rule matching.
 - **Factory**: Dynamic pipeline compilation and lifecycle.
 
 ### [📈 THE PULSE (Intelligence)](./intelligence/README.md)
+
 Self-optimizing feedback loops and AI-driven insights that refine the engine's behavior.
+
 - **AI**: Strategic rule generation and Hive Mind synchronization.
 - **Monitoring**: Performance sidecars and staleness tracking.
 - **Workers**: Background maintenance and orchestrated pulse.
 
 ### [🎼 THE CONDUCTOR (Coordination)](./coordination/README.md)
+
 The assembly point that wires the three pillars into a unified `BongasEngine`.
 
 ---
@@ -69,4 +76,5 @@ let items = engine.execute_scenario("home_feed", user_id, context).await?;
 ```
 
 ---
-[🏠 Back to Project Root](../README.md)
+
+[🏠 Hub](../../docs/HUB.md) | [🔝 Top](#-engine-the-discovery-brain)

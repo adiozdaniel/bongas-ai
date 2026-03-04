@@ -1,7 +1,7 @@
 use anyhow::Result;
 use std::sync::Arc;
 use tokio::time::{interval, Duration};
-use tokio::sync::Semaphore;
+use tokio::sync::{Semaphore, RwLock};
 use tracing::{info, warn, debug};
 use chrono::Timelike;
 
@@ -12,7 +12,7 @@ use crate::engine::coordination::service::BongasEngine;
 /// Predicts user arrival times based on historical interaction patterns
 /// and pre-warms their personalized recommendations.
 pub struct PredictiveWarmer {
-    engine: Arc<BongasEngine>,
+    engine: RwLock<Option<Arc<BongasEngine>>>,
     warm_scenarios: Vec<String>,
     concurrency_limit: Arc<Semaphore>,
     shutdown_rx: tokio::sync::broadcast::Receiver<()>,
@@ -20,16 +20,21 @@ pub struct PredictiveWarmer {
 
 impl PredictiveWarmer {
     pub fn new(
-        engine: Arc<BongasEngine>, 
         warm_scenarios: Vec<String>,
         shutdown_rx: tokio::sync::broadcast::Receiver<()>,
     ) -> Self {
         Self {
-            engine,
+            engine: RwLock::new(None),
             warm_scenarios,
             concurrency_limit: Arc::new(Semaphore::new(10)), // Limit to 10 concurrent warmings
             shutdown_rx,
         }
+    }
+
+    /// Set the engine instance after bootstrap.
+    pub async fn set_engine(&self, engine: Arc<BongasEngine>) {
+        let mut lock = self.engine.write().await;
+        *lock = Some(engine);
     }
 
     /// Start the predictive warming background task.
@@ -62,6 +67,17 @@ impl PredictiveWarmer {
     }
 
     async fn warm_next_arrivals(&self, target_hour: u32) -> Result<()> {
+        let engine = {
+            let lock = self.engine.read().await;
+            match &*lock {
+                Some(e) => e.clone(),
+                None => {
+                    debug!("Predictive warmer skipping cycle: Engine not yet initialized");
+                    return Ok(());
+                }
+            }
+        };
+
         use crate::resilience::{ResilienceMetricsCollector, MetricsRegistry, ResilienceMetricsConfig};
         
         // 1. Get users likely to arrive in the target hour
@@ -70,7 +86,7 @@ impl PredictiveWarmer {
         ));
 
         let interaction_repo = crate::db::InteractionRepository::new(
-            self.engine.execution.manager.item_feature_service.pool().clone(),
+            engine.execution.manager.item_feature_service.pool().clone(),
             resilience_metrics,
         );
 
@@ -96,7 +112,7 @@ impl PredictiveWarmer {
 
         for user_id in all_users {
             for scenario in &self.warm_scenarios {
-                let engine = self.engine.clone();
+                let engine_inner = engine.clone();
                 let scenario_slug = scenario.clone();
                 let permit = self.concurrency_limit.clone().acquire_owned().await;
                 
@@ -110,7 +126,7 @@ impl PredictiveWarmer {
                         "predictive_warm": true
                     });
                     
-                    if let Err(e) = engine.execute_scenario(&scenario_slug, Some(user_id), context_params).await {
+                    if let Err(e) = engine_inner.execute_scenario(&scenario_slug, Some(user_id), context_params).await {
                         warn!(user_id, scenario = %scenario_slug, error = %e, "Predictive warm execution failed");
                     }
                 });

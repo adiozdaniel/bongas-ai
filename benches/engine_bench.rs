@@ -8,7 +8,7 @@ fn bench_engine(c: &mut Criterion) {
     
     let config = bongas_ai::config::PipelineConfig::default();
     let breaker_registry = Arc::new(bongas_ai::circuit_breaker::CircuitBreakerRegistry::default());
-    let observer = Arc::new(bongas_ai::circuit_breaker::observer::NoOpResilienceObserver);
+    let observer = Arc::new(bongas_ai::circuit_breaker::observer::NoOpObserver);
     
     let executor = PipelineExecutor::new(config, breaker_registry, observer, None);
 

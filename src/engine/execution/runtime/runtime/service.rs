@@ -1,15 +1,12 @@
 use anyhow::{Result, Context};
 use std::sync::Arc;
-use std::time::Instant;
+use tokio::time::Instant;
 use tokio::net::TcpListener;
 use tracing::{info, warn};
 
 use crate::{ConfigLoader, AppConfig, initialize_telemetry, TelemetryConfig};
-use crate::circuit_breaker::CircuitBreakerRegistry;
-use crate::engine::coordination::service::BongasEngine;
-use crate::engine::config::models::EngineDependencies;
+use crate::engine::coordination::{BongasEngine, DiscoverySymphony};
 use crate::api::create_router;
-use crate::middlewares::metrics::MetricsCollector;
 
 /// High-level application orchestrator
 pub struct BongasRuntime {
@@ -19,7 +16,7 @@ pub struct BongasRuntime {
 }
 
 impl BongasRuntime {
-    /// Initialize and bootstrap the application.
+    /// Initialize and bootstrap the application using the DiscoverySymphony factory.
     pub async fn init() -> Result<Self> {
         let start_time = Instant::now();
 
@@ -38,29 +35,12 @@ impl BongasRuntime {
             warn!("Telemetry initialization warning: {}", e);
         }
 
-        info!("Bongas-AI Symphony 2.0 initializing...");
+        info!("🎼 Bongas-AI Symphony 2.0 Bootstrapping...");
 
-        // 3. Initialize Resilience Layer
-        let breaker_registry = Arc::new(CircuitBreakerRegistry::new());
-        let metrics_collector = Arc::new(MetricsCollector::new());
-
-        // 4. Initialize Database
-        let db_url = config.database.url.as_deref()
-            .ok_or_else(|| anyhow::anyhow!("DATABASE_URL not configured"))?;
-            
-        let db_pool = sqlx::PgPool::connect(db_url).await
-            .context("Failed to connect to database")?;
-
-        // 5. Initialize Core Engine (The Brain)
-        let deps = EngineDependencies {
-            config: config.clone(),
-            db_pool,
-            circuit_breaker_registry: breaker_registry.clone(),
-            metrics_collector: metrics_collector.clone(),
-        };
-
-        let engine = BongasEngine::bootstrap(deps).await
-            .context("Failed to bootstrap BongasEngine")?;
+        // 3. The Grand Factory: Unified Bootstrap & DI
+        let symphony = DiscoverySymphony::new(config.clone());
+        let engine = symphony.assemble().await
+            .context("Failed to assemble the Bongas-AI Engine Symphony")?;
 
         Ok(Self {
             config,
@@ -75,22 +55,19 @@ impl BongasRuntime {
         let listener = TcpListener::bind(&addr).await
             .context(format!("Failed to bind to {}", addr))?;
 
-        let metrics_collector = Arc::new(MetricsCollector::new());
-        let breaker_registry = Arc::new(CircuitBreakerRegistry::new());
-        
-        // We need a redis client for the router
+        // Extract shared state from engine for the router
         let redis_client = Arc::new(redis::Client::open(self.config.redis.url.clone())?);
 
         let app = create_router(
             self.engine.clone(),
             self.config.clone(),
             redis_client,
-            metrics_collector,
-            breaker_registry,
+            self.engine.resilience_metrics.clone(), 
+            self.engine.execution.circuit_breaker_registry.clone(),
             Arc::new(self.start_time),
         );
 
-        info!("🎼 Symphony 2.0 serving at http://{}", addr);
+        info!("🚀 Symphony 2.0 serving at http://{}", addr);
         
         axum::serve(listener, app)
             .with_graceful_shutdown(Self::shutdown_signal())
