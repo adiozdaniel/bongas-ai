@@ -11,7 +11,7 @@ use chrono::{Duration, Utc};
 use serde_json::Value as JsonValue;
 
 use crate::resilience::ResilienceMetricsCollector;
-use crate::db::models::RecommendationCacheL2;
+use crate::db::RecommendationCacheL2;
 use crate::db::ResilientPool;
 use crate::error::{AppError, AppResult, PostgresError};
 

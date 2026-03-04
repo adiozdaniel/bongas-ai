@@ -1,6 +1,6 @@
   //! No-op cache for testing.
 
-  use crate::cache::traits::{CacheStrategy, CacheTier};
+  use crate::cache::{CacheStrategy, CacheTier};
   use async_trait::async_trait;
   use serde::{Deserialize, Serialize};
   use std::time::Duration;

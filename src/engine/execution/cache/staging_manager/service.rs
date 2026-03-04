@@ -13,7 +13,7 @@ use std::time::Instant;
 use tracing::{info, debug};
 
 use crate::cache::CacheManager;
-use crate::db::repositories::cache_repository::CacheRepository;
+use crate::db::CacheRepository;
 use crate::db::ResilientPool;
 use crate::resilience::ResilienceMetricsCollector;
 use crate::pipeline::types::models::ScoredItem;

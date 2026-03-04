@@ -1,9 +1,9 @@
   //! Netflix-grade cache manager with L1 (LRU) + L2 (Redis) composite pattern.
 
-  use crate::cache::config::CacheConfig;
-  use crate::cache::metrics::{CacheMetrics, CacheMetricsSnapshot};
-  use crate::cache::strategies::{LruCache, RedisCache, CacheLayer};
-  use crate::cache::traits::CacheStrategy;
+  use crate::cache::CacheConfig;
+  use crate::cache::{CacheMetrics, CacheMetricsSnapshot};
+  use crate::cache::{LruCache, RedisCache, CacheLayer};
+  use crate::cache::CacheStrategy;
   use anyhow::Result;
   use serde::{Deserialize, Serialize};
   use std::sync::Arc;

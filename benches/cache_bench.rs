@@ -7,9 +7,9 @@
 //! - Concurrent access patterns
 
 use criterion::{criterion_group, criterion_main, Criterion, BenchmarkId, black_box};
-use bongas_ai::cache::strategies::LruCache;
-use bongas_ai::cache::traits::CacheStrategy;
-use bongas_ai::cache::metrics::CacheMetrics;
+use bongas_ai::cache::LruCache;
+use bongas_ai::cache::CacheStrategy;
+use bongas_ai::cache::CacheMetrics;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::runtime::Runtime;
@@ -28,7 +28,7 @@ fn bench_lru_cache_basic(c: &mut Criterion) {
 
         group.bench_with_input(BenchmarkId::new("set", size), &size, |b, _| {
             b.to_async(&rt).iter(|| async {
-                cache.set(black_box(&key), black_box(&value), black_box(ttl)).await.unwrap()
+                cache.set::<Vec<f32>>(black_box(&key), black_box(&value), black_box(ttl)).await.unwrap()
             })
         });
 
@@ -62,7 +62,7 @@ fn bench_concurrent_cache_access(c: &mut Criterion) {
         for i in 0..10000 {
             let key = format!("item_{}", i);
             let value = vec![i as f32; 100];
-            cache.set(&key, &value, ttl).await.unwrap();
+            cache.set::<Vec<f32>>(&key, &value, ttl).await.unwrap();
         }
     });
 
@@ -120,7 +120,7 @@ fn bench_cache_eviction(c: &mut Criterion) {
                     for i in 0..(size * 2) {
                         let key = format!("item_{}", i);
                         let value = vec![i as f32; 100];
-                        cache.set(&key, &value, ttl).await.unwrap();
+                        cache.set::<Vec<f32>>(&key, &value, ttl).await.unwrap();
                     }
                 })
             },
@@ -141,7 +141,7 @@ fn bench_mixed_workload(c: &mut Criterion) {
         for i in 0..500 {
             let key = format!("item_{}", i);
             let value = vec![i as f32; 100];
-            cache.set(&key, &value, ttl).await.unwrap();
+            cache.set::<Vec<f32>>(&key, &value, ttl).await.unwrap();
         }
     });
 
@@ -162,7 +162,7 @@ fn bench_mixed_workload(c: &mut Criterion) {
                     // Write
                     let key = format!("new_item_{}", i);
                     let value = vec![i as f32; 100];
-                    cache.set(&key, &value, ttl).await.unwrap();
+                    cache.set::<Vec<f32>>(&key, &value, ttl).await.unwrap();
                 }
             }
         })

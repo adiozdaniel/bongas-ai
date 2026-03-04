@@ -5,9 +5,9 @@ use async_trait::async_trait;
 use std::time::Duration;
 use serde::{Deserialize, Serialize};
 
-use crate::cache::traits::{CacheStrategy, CacheTier};
-use super::lru::LruCache;
-use super::redis::RedisCache;
+use crate::cache::{CacheStrategy, CacheTier};
+use super::lru::service::LruCache;
+use super::redis::service::RedisCache;
 
 /// Represents a composite cache layer that can be either LRU or Redis.
 pub enum CacheLayer {

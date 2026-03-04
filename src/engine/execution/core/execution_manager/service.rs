@@ -11,7 +11,7 @@ use crate::engine::governance::strategy::resolver::service::StrategyResolver;
 use crate::engine::coordination::service::{RecommendationItem, ScenarioExecutionStats, ScenarioDefinition};
 use crate::cache::CacheManager;
 use crate::ml::assets::loader::service::ModelLoader;
-use crate::db::repositories::item_feature_service::ItemFeatureService;
+use crate::db::ItemFeatureService;
 use crate::ml::inference::features::service::FeatureStore;
 use crate::analytics::types::PerformanceStats;
 use crate::experiments::ExperimentCoordinator;

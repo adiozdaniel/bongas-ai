@@ -5,7 +5,7 @@ use serde::Deserialize;
 use crate::pipeline::{PipelineStage, ScoredItem, StageDataKind};
 use crate::pipeline::context::service::ExecutionContext;
 use chrono::{Utc, Datelike};
-use crate::db::repositories::item_feature_service::SeasonalItemRowExtended;
+use crate::db::SeasonalItemRowExtended;
 
 #[derive(Deserialize)]
 struct Params {

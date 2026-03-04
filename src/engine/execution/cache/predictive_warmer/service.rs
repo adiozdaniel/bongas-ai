@@ -69,7 +69,7 @@ impl PredictiveWarmer {
             Arc::new(MetricsRegistry::new(ResilienceMetricsConfig::default())),
         ));
 
-        let interaction_repo = crate::db::repositories::interaction_repository::InteractionRepository::new(
+        let interaction_repo = crate::db::InteractionRepository::new(
             self.engine.execution.manager.item_feature_service.pool().clone(),
             resilience_metrics,
         );

@@ -1,7 +1,7 @@
 //! L2 Redis cache with circuit breaker protection.
 
-  use crate::cache::traits::{CacheStrategy, CacheTier};
-  use crate::cache::metrics::CacheMetrics;
+  use crate::cache::{CacheStrategy, CacheTier};
+  use crate::cache::CacheMetrics;
   use crate::circuit_breaker::{CircuitBreaker, CircuitBreakerConfig, CircuitBreakerId};
   use crate::circuit_breaker::observer::NoOpObserver;
   use crate::error::RedisError;

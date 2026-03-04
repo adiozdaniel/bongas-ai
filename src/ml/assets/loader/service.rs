@@ -18,8 +18,8 @@ use tracing::{info, warn};
 
 use crate::circuit_breaker::observer::ResilienceObserver;
 use crate::config::MlConfig;
-use crate::db::models::ModelRegistry;
-use crate::db::repositories::model_repository::ModelRepository;
+use crate::db::ModelRegistry;
+use crate::db::ModelRepository;
 use crate::error::ModelError;
 use crate::ml::inference::onnx::service::OnnxInferenceEngine;
 

@@ -3,7 +3,7 @@ use tokio::sync::{broadcast, RwLock};
 use serde::{Serialize, Deserialize};
 
 use crate::AppConfig;
-use crate::db::models::PipelineDefinition;
+use crate::db::PipelineDefinition;
 use crate::pipeline::types::models::ExecutablePipeline;
 use crate::security::SecurityManager;
 use crate::cache::CacheManager;
@@ -75,7 +75,7 @@ pub struct BongasEngine {
 
 use crate::error::{AppResult, AppError, ScenarioError};
 use crate::ingestion::IngestionHealth;
-use crate::cache::metrics::CacheMetricsSnapshot;
+use crate::cache::CacheMetricsSnapshot;
 use crate::db::repositories::feature_repository::service::FeatureRepository;
 use crate::db::repositories::cache_repository::service::CacheRepository;
 use crate::circuit_breaker::CircuitBreakerRegistry;

@@ -50,7 +50,7 @@ impl BongasEngine {
         let cache_manager = self.execution.manager.cache_manager.clone();
         let shutdown_rx = self.shutdown_tx.subscribe();
         
-        let cache_warmer = Arc::new(crate::cache::warming::CacheWarmer::new(
+        let cache_warmer = Arc::new(crate::cache::CacheWarmer::new(
             cache_manager,
             scenarios_clone,
             interval,

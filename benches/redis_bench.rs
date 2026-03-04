@@ -1,7 +1,7 @@
 use criterion::{criterion_group, criterion_main, Criterion, BenchmarkId, black_box};
-use bongas_ai::cache::strategies::RedisCache;
-use bongas_ai::cache::traits::CacheStrategy;
-use bongas_ai::cache::metrics::CacheMetrics;
+use bongas_ai::cache::RedisCache;
+use bongas_ai::cache::CacheStrategy;
+use bongas_ai::cache::CacheMetrics;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::runtime::Runtime;
@@ -30,7 +30,7 @@ fn bench_redis_serialization(c: &mut Criterion) {
 
         group.bench_with_input(BenchmarkId::new("set_bincode", item_count), &item_count, |b, _| {
             b.to_async(&rt).iter(|| async {
-                cache.set(black_box(&key), black_box(&items), black_box(ttl)).await.unwrap()
+                cache.set::<Vec<i32>>(black_box(&key), black_box(&items), black_box(ttl)).await.unwrap()
             })
         });
 

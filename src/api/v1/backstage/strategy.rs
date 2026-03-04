@@ -12,7 +12,7 @@ use tracing::info;
 use crate::engine::coordination::service::BongasEngine;
 use crate::api::models::StandardResponse;
 use crate::error::AppError;
-use crate::db::models::ScenarioWithStrategy;
+use crate::db::ScenarioWithStrategy;
 use crate::api::models::scenario::{CreateScenarioRequest, UpdateScenarioRequest};
 use crate::api::middleware::service::extract_request_id_from_headers;
 

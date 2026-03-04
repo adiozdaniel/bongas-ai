@@ -2,7 +2,7 @@ use criterion::{criterion_group, criterion_main, Criterion, black_box};
 use bongas_ai::pipeline::PipelineExecutor;
 use bongas_ai::pipeline::ExecutionContext;
 use bongas_ai::pipeline::{ScoredItem, PipelineStage, StageDataKind};
-use bongas_ai::db::models::{PipelineDefinition, PipelineStageConfig};
+use bongas_ai::db::{PipelineDefinition, PipelineStageConfig};
 use bongas_ai::cache::{HotRegistry, HotItem};
 use bongas_ai::circuit_breaker::CircuitBreakerRegistry;
 use bongas_ai::resilience::{ResilienceMetricsCollector, MetricsRegistry, ResilienceMetricsConfig};

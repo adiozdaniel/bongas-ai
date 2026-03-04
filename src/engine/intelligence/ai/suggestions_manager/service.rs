@@ -116,7 +116,7 @@ impl BongasEngine {
                 .await
         }).await?;
         
-        let suggested_pipeline = Arc::new(self.execution.pipeline_executor.link(&serde_json::from_value::<crate::db::models::PipelineDefinition>(p_def_json)?)?);
+        let suggested_pipeline = Arc::new(self.execution.pipeline_executor.link(&serde_json::from_value::<crate::db::PipelineDefinition>(p_def_json)?)?);
         let control_pipeline = self.governance.scenarios.linked_scenarios.load().get(&scenario_slug).cloned();
 
         let sample_users: Vec<i32> = self.governance.scenarios.scenario_factory.repo().pool().execute(|pool| async move {

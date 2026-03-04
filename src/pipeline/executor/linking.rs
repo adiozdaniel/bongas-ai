@@ -3,7 +3,7 @@ use std::time::Duration;
 use crate::config::PipelineConfig;
 use crate::pipeline::{BoundStage, ExecutionNode, ExecutablePipeline};
 use crate::pipeline::optimizer::service::PipelineOptimizer;
-use crate::db::models::{PipelineDefinition, PipelineStageConfig};
+use crate::db::{PipelineDefinition, PipelineStageConfig};
 use crate::pipeline::executor::service::PipelineExecutor;
 
 impl PipelineExecutor {

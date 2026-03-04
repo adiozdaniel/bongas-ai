@@ -1,6 +1,6 @@
   //! Cache warming strategies.
 
-  use crate::cache::manager::CacheManager;
+  use crate::cache::CacheManager;
   use anyhow::Result;
   use std::sync::Arc;
   use tokio::time::{interval, Duration};

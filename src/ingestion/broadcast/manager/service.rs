@@ -76,7 +76,7 @@ impl IngestionManager {
         let metrics = Arc::new(IngestionMetrics::new(sources.clone()));
 
         let processor = Arc::new(ActivityProcessor::new(
-            Arc::new(crate::db::repositories::interaction_repository::InteractionRepository::new(pool.clone(), resilience_metrics.clone())),
+            Arc::new(crate::db::InteractionRepository::new(pool.clone(), resilience_metrics.clone())),
             pool.clone(),
             clickhouse.clone(),
             staleness_engine,

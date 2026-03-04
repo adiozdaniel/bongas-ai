@@ -5,8 +5,8 @@ use tracing::{info, warn};
 
 use crate::resilience::ResilienceMetricsCollector;
 use crate::db::ResilientPool;
-use crate::db::repositories::scenario_repository::ScenarioRepository;
-use crate::db::models::{PipelineDefinition, ScenarioWithStrategy};
+use crate::db::ScenarioRepository;
+use crate::db::{PipelineDefinition, ScenarioWithStrategy};
 use crate::engine::governance::strategy::resolver::service::ActiveRule;
 use crate::engine::coordination::service::ScenarioDefinition;
 

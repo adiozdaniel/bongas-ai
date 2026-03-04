@@ -13,7 +13,7 @@ use chrono::Timelike;
 
 use crate::pipeline::types::models::ExecutablePipeline;
 use crate::pipeline::context::service::ExecutionContext;
-use crate::db::models::PipelineDefinition;
+use crate::db::PipelineDefinition;
 
 /// Represents an active rule for strategy selection.
 #[derive(Debug, Clone)]

@@ -5,7 +5,7 @@ use std::collections::HashMap;
 
 use crate::pipeline::{StageDataKind, PipelineError, ExecutablePipeline, ExecutionNode};
 use crate::pipeline::registry::service::PipelineRegistry;
-use crate::db::models::{PipelineDefinition, PipelineStageConfig};
+use crate::db::{PipelineDefinition, PipelineStageConfig};
 
 /// Validates the structural integrity and type safety of a pipeline.
 pub struct PipelineValidator {

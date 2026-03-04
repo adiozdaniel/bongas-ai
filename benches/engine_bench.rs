@@ -1,15 +1,29 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use bongas_ai::pipeline::PipelineExecutor;
-use bongas_ai::pipeline::ExecutionContext;
-use bongas_ai::pipeline::ranking::sort_by_score::service::SortByScoreStage;
-use bongas_ai::pipeline::processing::deduplicate::service::DeduplicateStage;
-use bongas_ai::pipeline::ranking::limit::service::LimitStage;
-use bongas_ai::pipeline::ScoredItem;
+use bongas_ai::pipeline::{PipelineExecutor, ExecutionContext, ScoredItem};
 use std::sync::Arc;
-use serde_json::json;
 
 fn bench_engine(c: &mut Criterion) {
-    // Benchmark implementation
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let context = rt.block_on(ExecutionContext::test_context());
+    
+    let config = bongas_ai::config::PipelineConfig::default();
+    let breaker_registry = Arc::new(bongas_ai::circuit_breaker::CircuitBreakerRegistry::default());
+    let observer = Arc::new(bongas_ai::circuit_breaker::observer::NoOpResilienceObserver);
+    
+    let executor = PipelineExecutor::new(config, breaker_registry, observer, None);
+
+    let definition = bongas_ai::db::PipelineDefinition {
+        stages: vec![],
+        fallback_stages: None,
+    };
+
+    let linked = executor.link(&definition).unwrap();
+
+    c.bench_function("engine_execute_linked", |b| {
+        b.to_async(&rt).iter(|| async {
+            let _res: Vec<ScoredItem> = executor.execute_linked(black_box(&linked), black_box(&context)).await.unwrap();
+        })
+    });
 }
 
 criterion_group!(benches, bench_engine);

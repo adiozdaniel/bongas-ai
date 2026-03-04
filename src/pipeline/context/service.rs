@@ -12,7 +12,7 @@ use std::sync::Arc;
 use crate::analytics::types::PerformanceStats;
 use crate::cache::{CacheManager, HotRegistry};
 use crate::config::PipelineConfig;
-use crate::db::repositories::item_feature_service::ItemFeatureService;
+use crate::db::ItemFeatureService;
 use crate::ml::assets::loader::service::ModelLoader;
 use crate::ml::inference::features::service::FeatureStore;
 use crate::ml::inference::embeddings::service::EmbeddingManager;

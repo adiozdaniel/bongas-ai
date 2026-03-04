@@ -4,7 +4,7 @@ use std::sync::Arc;
 use tracing::{info, warn, debug};
 
 use crate::engine::execution::cache::staging_manager::service::StagingManager;
-use crate::db::repositories::item_feature_service::ItemFeatureService;
+use crate::db::ItemFeatureService;
 
 pub struct StalenessEngine {
     rules: Vec<StalenessRule>,

@@ -4,7 +4,7 @@ use serde_json::{Value as JsonValue, json};
 use serde::Deserialize;
 use crate::pipeline::{PipelineStage, ScoredItem};
 use crate::pipeline::context::service::ExecutionContext;
-use crate::db::repositories::item_feature_service::ItemFeatureRow;
+use crate::db::ItemFeatureRow;
 use crate::ml::assets::utils::service::{cosine_similarity, dot_product};
 use tracing::info;
 

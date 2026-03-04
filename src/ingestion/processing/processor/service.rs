@@ -5,7 +5,7 @@ use tokio::sync::{mpsc, Semaphore};
 use tracing::{info, error};
 
 use crate::db::ResilientPool;
-use crate::db::repositories::interaction_repository::InteractionRepository;
+use crate::db::InteractionRepository;
 use crate::engine::intelligence::monitoring::staleness_engine::service::{StalenessEngine, UserEvent};
 use crate::resilience::ResilienceMetricsCollector;
 

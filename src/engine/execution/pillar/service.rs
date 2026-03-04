@@ -7,7 +7,7 @@ pub use crate::engine::execution::cache::staging_manager::service::StagingManage
 use crate::pipeline::executor::service::PipelineExecutor;
 use crate::cache::CacheManager;
 use crate::ml::assets::loader::service::ModelLoader;
-use crate::db::repositories::item_feature_service::ItemFeatureService;
+use crate::db::ItemFeatureService;
 use crate::ml::inference::features::service::FeatureStore;
 use crate::db::repositories::feature_repository::service::FeatureRepository;
 use crate::db::repositories::cache_repository::service::CacheRepository;

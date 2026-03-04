@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use anyhow::Result;
-use crate::db::repositories::scenario_repository::ScenarioRepository;
-use crate::db::models::ScenarioWithStrategy;
+use crate::db::ScenarioRepository;
+use crate::db::ScenarioWithStrategy;
 
 /// Loader for fetching and managing scenario configurations from the database.
 pub struct ScenarioLoader {

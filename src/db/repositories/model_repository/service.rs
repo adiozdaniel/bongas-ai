@@ -8,7 +8,7 @@
 use std::sync::Arc;
 
 use crate::resilience::ResilienceMetricsCollector;
-use crate::db::models::ModelRegistry;
+use crate::db::ModelRegistry;
 use crate::db::ResilientPool;
 use crate::error::{AppError, AppResult, PostgresError};
 

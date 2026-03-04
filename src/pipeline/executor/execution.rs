@@ -5,7 +5,7 @@ use async_recursion::async_recursion;
 
 use crate::pipeline::{ScoredItem, ExecutionNode, ExecutablePipeline, BoundStage};
 use crate::pipeline::context::service::ExecutionContext;
-use crate::db::models::PipelineDefinition;
+use crate::db::PipelineDefinition;
 use crate::error::{PipelineError, AppError};
 use crate::pipeline::executor::service::PipelineExecutor;
 

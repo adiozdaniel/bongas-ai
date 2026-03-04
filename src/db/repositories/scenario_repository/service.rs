@@ -9,7 +9,7 @@ use std::sync::Arc;
 use chrono::{DateTime, Utc};
 
 use crate::resilience::ResilienceMetricsCollector;
-use crate::db::models::{Scenario, ScenarioWithStrategy, PipelineDefinition};
+use crate::db::{Scenario, ScenarioWithStrategy, PipelineDefinition};
 use crate::db::ResilientPool;
 use crate::error::{AppError, AppResult, PostgresError};
 use crate::api::models::scenario::{CreateScenarioRequest, UpdateScenarioRequest};

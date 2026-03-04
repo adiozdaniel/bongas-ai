@@ -21,7 +21,7 @@ use sqlx::PgPool;
 use tokio::sync::Semaphore;
 use tokio::time::timeout;
 
-use crate::db::metrics::DatabaseMetrics;
+use crate::db::DatabaseMetrics;
 use crate::circuit_breaker::{
     CircuitBreaker, CircuitBreakerConfig, CircuitBreakerId, CircuitBreakerRegistry,
 };

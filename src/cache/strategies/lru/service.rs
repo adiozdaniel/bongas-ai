@@ -1,7 +1,7 @@
 //! L1 in-memory LRU cache with size-based eviction and sharding.
 
-  use crate::cache::traits::{CacheStrategy, CacheTier};
-  use crate::cache::metrics::CacheMetrics;
+  use crate::cache::{CacheStrategy, CacheTier};
+  use crate::cache::CacheMetrics;
   use async_trait::async_trait;
   use lru::LruCache as LruMap;
   use serde::{Deserialize, Serialize};

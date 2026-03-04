@@ -34,7 +34,7 @@ impl PagesManager {
         }
     }
 
-    fn map_db_to_domain(db: crate::db::models::PageLayout) -> PageLayout {
+    fn map_db_to_domain(db: crate::db::PageLayout) -> PageLayout {
         PageLayout {
             page_slug: PageSlug(db.page_slug),
             is_landing: db.is_landing,
