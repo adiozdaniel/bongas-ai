@@ -97,10 +97,10 @@ impl PagesManager {
     }
 
     /// Resolve the navigation mesh for a specific context.
-    pub async fn get_nav_mesh_contextual(&self, _identity_key: Option<&str>) -> Vec<crate::api::models::recommendation::SymphonyNavigation> {
+    pub async fn get_nav_mesh_contextual(&self, _identity_key: Option<&str>) -> Vec<crate::api::SymphonyNavigation> {
         let nav = self.nav_mesh.read().await;
         
-        nav.iter().map(|l| crate::api::models::recommendation::SymphonyNavigation {
+        nav.iter().map(|l| crate::api::SymphonyNavigation {
             slug: l.page_slug.0.clone(),
             title: l.page_slug.0.replace('_', " "), 
             nav_type: match l.nav_type {

@@ -5,12 +5,12 @@ use axum::{extract::Extension, Json, http::HeaderMap};
 use std::sync::Arc;
 
 use crate::engine::coordination::service::BongasEngine;
-use crate::api::models::{
+use crate::api::{
     StandardResponse, CacheStatsResponse, KafkaMetricsResponse,
     ModelReloadResponse, ModelStatsResponse, SecurityStatusResponse,
 };
 use crate::error::AppError;
-use crate::api::middleware::service::extract_request_id_from_headers;
+use crate::api::extract_request_id_from_headers;
 
 /// GET /api/v1/metrics/system
 pub async fn get_system_stats(

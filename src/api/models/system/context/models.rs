@@ -21,7 +21,7 @@ pub struct ContextParams {
 
 impl ContextParams {
     /// Merge extracted identity information into the context parameters.
-    pub fn merge_identity(&mut self, identity: &crate::api::middleware::identity::IdentityContext) {
+    pub fn merge_identity(&mut self, identity: &crate::api::IdentityContext) {
         self.visitor_id = Some(identity.visitor_id.clone());
         self.device_hash = Some(identity.device_hash.clone());
         self.ip_address = Some(identity.ip_address.clone());

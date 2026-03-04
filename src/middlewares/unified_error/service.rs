@@ -32,7 +32,7 @@
         let method = req.method().clone();
         let uri = req.uri().clone();
         let start_time = std::time::Instant::now();
-        let request_id = crate::api::middleware::service::extract_request_id(&req);
+        let request_id = crate::api::extract_request_id(&req);
   
         let response = next.run(req).await;      let status = response.status();
 
@@ -57,7 +57,7 @@
               "Error response enhanced"
           );
 
-          let error_response = crate::api::models::StandardResponse::<()>::error(
+          let error_response = crate::api::StandardResponse::<()>::error(
               message,
               error_code,
               format!("{:?}", classification),
@@ -83,7 +83,7 @@
       duration: std::time::Duration,
       request_id: String,
   ) -> impl IntoResponse {
-      let response = crate::api::models::StandardResponse::<()>::error(
+      let response = crate::api::StandardResponse::<()>::error(
           "Validation failed",
           "VALIDATION_ERROR",
           "Permanent",

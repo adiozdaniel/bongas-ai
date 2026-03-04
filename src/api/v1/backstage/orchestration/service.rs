@@ -10,10 +10,10 @@ use std::sync::Arc;
 use tracing::info;
 
 use crate::engine::coordination::service::BongasEngine;
-use crate::api::models::StandardResponse;
+use crate::api::StandardResponse;
 use crate::error::AppError;
 use crate::engine::governance::orchestration::types::models::{PageLayout, SavePageLayoutRequest};
-use crate::api::middleware::service::extract_request_id_from_headers;
+use crate::api::extract_request_id_from_headers;
 
 /// GET /api/v1/recommendation/admin/pages/active
 pub async fn list_active_pages(

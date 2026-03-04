@@ -10,11 +10,11 @@ use std::sync::Arc;
 use tracing::info;
 
 use crate::engine::coordination::service::BongasEngine;
-use crate::api::models::StandardResponse;
+use crate::api::StandardResponse;
 use crate::error::AppError;
 use crate::db::ScenarioWithStrategy;
-use crate::api::models::scenario::{CreateScenarioRequest, UpdateScenarioRequest};
-use crate::api::middleware::service::extract_request_id_from_headers;
+use crate::api::{CreateScenarioRequest, UpdateScenarioRequest};
+use crate::api::extract_request_id_from_headers;
 
 /// POST /api/v1/recommendation/admin/scenarios
 pub async fn create_scenario(

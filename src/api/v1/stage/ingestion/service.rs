@@ -10,9 +10,9 @@ use std::sync::Arc;
 use tokio::spawn;
 
 use crate::engine::coordination::service::BongasEngine;
-use crate::api::models::{StandardResponse, recommendation::IngestEvent};
-use crate::api::middleware::service::extract_request_id_from_headers;
-use crate::api::middleware::identity::IdentityContext;
+use crate::api::{StandardResponse, IngestEvent};
+use crate::api::extract_request_id_from_headers;
+use crate::api::IdentityContext;
 use crate::ingestion::types::UserActivity;
 
 /// POST /api/v1/recommendation/ingest

@@ -21,7 +21,7 @@ use tower_http::{
 use tracing::{error, info_span};
 use uuid::Uuid;
 
-use crate::api::models::RecommendationItem;
+use crate::api::RecommendationItem;
 use crate::middlewares::{
     unified_error::unified_error_middleware,
     metrics::{DurationTracker, EndpointMetrics},
@@ -37,9 +37,9 @@ use crate::engine::coordination::service::BongasEngine;
 use crate::config::AppConfig;
 use std::time::Instant;
 
-use crate::api::middleware::identity::identity_middleware;
-use crate::api::middleware::identity::IdentityContext;
-use crate::api::middleware::adaptive_limiter::{adaptive_limiter_middleware, ConnectionTracker};
+use crate::api::identity_middleware;
+use crate::api::IdentityContext;
+use crate::api::{adaptive_limiter_middleware, ConnectionTracker};
 
 /// Apply the full middleware stack to a router.
 ///
@@ -178,7 +178,7 @@ async fn rate_limit_layer(req: Request<Body>, next: Next) -> Response {
         Some(rl) => rl.clone(),
         None => {
             error!(request_id = %request_id, "RateLimiter extension missing");
-            let response = crate::api::models::StandardResponse::<()>::error(
+            let response = crate::api::StandardResponse::<()>::error(
                 "Internal configuration error",
                 "INTERNAL_ERROR",
                 "Internal",
@@ -197,12 +197,12 @@ async fn rate_limit_layer(req: Request<Body>, next: Next) -> Response {
     match rate_limiter.check(&ip).await {
         RateLimitResult::Allowed => next.run(req).await,
         RateLimitResult::ShadowBan => {
-            let response = crate::api::models::StandardResponse::success(Vec::<RecommendationItem>::new())
+            let response = crate::api::StandardResponse::success(Vec::<RecommendationItem>::new())
                 .with_request_id(request_id);
             (StatusCode::OK, Json(response)).into_response()
         }
         RateLimitResult::RateLimited(status) => {
-            let response = crate::api::models::StandardResponse::<()>::error(
+            let response = crate::api::StandardResponse::<()>::error(
                 "Too many requests",
                 "RATE_LIMIT_EXCEEDED",
                 "Overload",

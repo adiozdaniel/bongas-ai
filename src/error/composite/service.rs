@@ -110,7 +110,7 @@ impl IntoResponse for AppError {
         let retry_after = retry_hint.retry_after.map(|d| d.as_millis() as u64);
 
         // Use StandardResponse for consistent serialization
-        let mut response = crate::api::models::StandardResponse::<()>::error(
+        let mut response = crate::api::StandardResponse::<()>::error(
             message,
             error_code,
             format!("{:?}", classification),

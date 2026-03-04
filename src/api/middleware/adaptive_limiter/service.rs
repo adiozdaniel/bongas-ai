@@ -15,8 +15,8 @@ use dashmap::DashMap;
 use std::sync::Arc;
 use tracing::warn;
 
-use crate::api::middleware::identity::IdentityContext;
-use crate::api::models::StandardResponse;
+use crate::api::IdentityContext;
+use crate::api::StandardResponse;
 
 /// Tracks active connection counts per visitor.
 pub struct ConnectionTracker {

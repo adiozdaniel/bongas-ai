@@ -1,5 +1,3 @@
-//! The Backstage: Administrative Control.
-
+pub mod intelligence;
 pub mod orchestration;
 pub mod strategy;
-pub mod intelligence;

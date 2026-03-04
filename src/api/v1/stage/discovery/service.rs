@@ -12,10 +12,10 @@ use std::sync::Arc;
 use tracing::warn;
 
 use crate::engine::coordination::service::{BongasEngine, ScenarioDefinition};
-use crate::api::models::{ContextParams, StandardResponse};
-use crate::api::models::recommendation::{FeedRow, SymphonyNavigation, RecommendationItem};
-use crate::api::middleware::service::extract_request_id;
-use crate::api::middleware::identity::IdentityContext;
+use crate::api::{ContextParams, StandardResponse};
+use crate::api::{FeedRow, SymphonyNavigation, RecommendationItem};
+use crate::api::extract_request_id;
+use crate::api::IdentityContext;
 use crate::engine::governance::orchestration::types::models::{PageCompositionItem, PageLayout};
 use crate::api::v1::stage::service::execute_and_map;
 

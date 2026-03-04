@@ -10,8 +10,7 @@ use crate::middlewares::metrics::MetricsCollector;
 use crate::middlewares::rate_limit::RateLimiter;
 use crate::circuit_breaker::CircuitBreakerRegistry;
 use crate::api::v1;
-use crate::api::middleware;
-use crate::api::middleware::adaptive_limiter::ConnectionTracker;
+use crate::api::ConnectionTracker;
 
 use axum::routing::get;
 
@@ -36,11 +35,11 @@ pub fn create_router(
     let connection_tracker = Arc::new(ConnectionTracker::new(3));
 
     let routes = Router::new()
-        .nest("/api/v1", v1::routes(engine.clone(), config.clone()))
-        .route("/health/live", get(v1::pulse::health::liveness_check))
-        .route("/health/ready", get(v1::pulse::health::readiness_check));
+        .nest("/api/v1", crate::api::routes(engine.clone(), config.clone()))
+        .route("/health/live", get(v1::pulse::health::service::liveness_check))
+        .route("/health/ready", get(v1::pulse::health::service::readiness_check));
 
-    middleware::apply_middleware(
+    crate::api::apply_middleware(
         routes, 
         circuit_breaker_registry,
         engine,

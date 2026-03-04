@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 use crate::engine::coordination::service::{BongasEngine, ScenarioDefinition};
-use crate::api::models::{RecommendationItem, ContextParams};
+use crate::api::{RecommendationItem, ContextParams};
 use crate::error::AppError;
 use crate::ingestion::types::UserActivity;
 

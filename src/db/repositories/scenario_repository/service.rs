@@ -12,7 +12,7 @@ use crate::resilience::ResilienceMetricsCollector;
 use crate::db::{Scenario, ScenarioWithStrategy, PipelineDefinition};
 use crate::db::ResilientPool;
 use crate::error::{AppError, AppResult, PostgresError};
-use crate::api::models::scenario::{CreateScenarioRequest, UpdateScenarioRequest};
+use crate::api::{CreateScenarioRequest, UpdateScenarioRequest};
 
 #[derive(sqlx::FromRow)]
 struct FlatScenarioRow {
