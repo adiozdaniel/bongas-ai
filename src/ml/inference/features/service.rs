@@ -110,6 +110,28 @@ impl FeatureStore {
         }
     }
 
+    /// Get genre affinities for a visitor.
+    pub async fn get_visitor_affinities(&self, visitor_id: &str) -> Result<HashMap<String, f32>> {
+        let visitor_id = visitor_id.to_string();
+        
+        let row: Option<JsonValue> = self.pool.execute(|pool| async move {
+            sqlx::query_scalar(
+                "SELECT genre_affinity FROM visitor_features WHERE visitor_id = $1"
+            )
+            .bind(visitor_id)
+            .fetch_optional(&pool)
+            .await
+        }).await?;
+
+        match row {
+            Some(json) => {
+                let affinities: HashMap<String, f32> = serde_json::from_value(json).unwrap_or_default();
+                Ok(affinities)
+            }
+            None => Ok(HashMap::new())
+        }
+    }
+
     /// Get item features for multiple items with cache → DB → fallback chain.
     pub async fn get_item_features(
         &self,

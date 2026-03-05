@@ -17,7 +17,7 @@ use ort::session::Session;
 use ort::session::builder::GraphOptimizationLevel;
 use ort::value::Value;
 use tokio::sync::Semaphore;
-use tracing::{info, warn, debug};
+use tracing::{info, warn, debug, error};
 
 use crate::circuit_breaker::{CircuitBreaker, CircuitBreakerConfig, CircuitBreakerId};
 use crate::circuit_breaker::observer::ResilienceObserver;
@@ -265,24 +265,45 @@ impl OnnxInferenceEngine {
         user_features: Array2<f32>,
         item_features: Array2<f32>,
     ) -> Result<Vec<f32>, ModelError> {
+        // 🛡️ HARIDENING: Explicit shape validation before entering FFI
+        let user_shape = user_features.shape();
+        let item_shape = item_features.shape();
+        
+        if user_shape[0] != item_shape[0] {
+            return Err(ModelError::InferenceFailed(format!(
+                "Batch size mismatch: user={} vs item={}", user_shape[0], item_shape[0]
+            )));
+        }
+
         // OWNED Tensors: Using ort::Value::from_array to transfer ownership into the ONNX runtime.
         // This is critical for memory safety across the FFI boundary, preventing segfaults
         // that occur when ndarray buffers are dropped while ONNX is still processing them.
         let user_input = Value::from_array(user_features)
-            .map_err(|e| ModelError::InferenceFailed(format!("user tensor: {e}")))?;
+            .map_err(|e| ModelError::InferenceFailed(format!("user tensor conversion: {e}")))?;
         let item_input = Value::from_array(item_features)
-            .map_err(|e| ModelError::InferenceFailed(format!("item tensor: {e}")))?;
+            .map_err(|e| ModelError::InferenceFailed(format!("item tensor conversion: {e}")))?;
 
         let mut session = self.session.lock().unwrap_or_else(|e| {
             warn!(model = %self.model_name, "ONNX session mutex poisoned, recovering");
             e.into_inner()
         });
         
+        // Ensure input names exist
+        if self.input_names.len() < 2 {
+            return Err(ModelError::InferenceFailed(format!(
+                "Model {} expects fewer than 2 inputs, but two-tower requires 2", self.model_name
+            )));
+        }
+
         let outputs = session.run(ort::inputs![
             self.input_names[0].clone() => user_input,
             self.input_names[1].clone() => item_input,
         ])
-        .map_err(|e| ModelError::InferenceFailed(format!("session run: {e}")))?;
+        .map_err(|e| {
+            // CRITICAL: Capture detailed error from ONNX C++ layer
+            error!(model = %self.model_name, error = %e, "ONNX Runtime C++ execution error");
+            ModelError::InferenceFailed(format!("session run: {e}"))
+        })?;
 
         // Extract tensor
         let (shape, scores_slice) = outputs[0]
@@ -316,6 +337,16 @@ impl OnnxInferenceEngine {
         // Execute via circuit breaker + spawn_blocking
         let result = self.breaker.call(|| async move {
             tokio::task::spawn_blocking(move || {
+                // 🛡️ HARDENING: Explicit shape validation
+                let user_shape = user_features.shape();
+                let item_shape = item_features.shape();
+                
+                if user_shape[0] != item_shape[0] {
+                    return Err(ModelError::InferenceFailed(format!(
+                        "Batch size mismatch (multi): user={} vs item={}", user_shape[0], item_shape[0]
+                    )));
+                }
+
                 let mut session = engine.session.lock().unwrap_or_else(|e| {
                     warn!(model = %engine.model_name, "ONNX session mutex poisoned (multi), recovering");
                     e.into_inner()
@@ -323,15 +354,24 @@ impl OnnxInferenceEngine {
 
                 // OWNED Tensors: Critical for FFI safety
                 let user_input = Value::from_array(user_features)
-                    .map_err(|e| ModelError::InferenceFailed(format!("user tensor: {e}")))?;
+                    .map_err(|e| ModelError::InferenceFailed(format!("user tensor conversion: {e}")))?;
                 let item_input = Value::from_array(item_features)
-                    .map_err(|e| ModelError::InferenceFailed(format!("item tensor: {e}")))?;
+                    .map_err(|e| ModelError::InferenceFailed(format!("item tensor conversion: {e}")))?;
+
+                if engine.input_names.len() < 2 {
+                    return Err(ModelError::InferenceFailed(format!(
+                        "Model {} expects fewer than 2 inputs, but multi-tower requires 2", engine.model_name
+                    )));
+                }
 
                 let outputs = session.run(ort::inputs![
                     engine.input_names[0].clone() => user_input,
                     engine.input_names[1].clone() => item_input,
                 ])
-                .map_err(|e| ModelError::InferenceFailed(format!("session run: {e}")))?;
+                .map_err(|e| {
+                    error!(model = %engine.model_name, error = %e, "ONNX Runtime C++ execution error (multi)");
+                    ModelError::InferenceFailed(format!("session run: {e}"))
+                })?;
 
                 // Extract multi-dimensional output (Batch x Actions)
                 let (shape, flat_scores) = outputs[0]
