@@ -43,7 +43,7 @@ pub fn routes(_engine: Arc<BongasEngine>, _config: Arc<AppConfig>) -> Router {
         .route("/reload", post(backstage::strategy::service::reload_all_scenarios))
         
         // Intelligence (ML Suggestions & Chat)
-        .route("/features/user/{user_id}", get(backstage::intelligence::service::get_user_features))
+        .route("/features/profile/{profile_id}", get(backstage::intelligence::service::get_profile_features))
         .route("/features/item/{item_id}", get(backstage::intelligence::service::get_item_features))
         .route("/features/trending", get(backstage::intelligence::service::get_trending_items))
         .route("/suggestions", get(backstage::intelligence::service::list_suggestions))

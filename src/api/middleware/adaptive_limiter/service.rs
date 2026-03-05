@@ -61,18 +61,22 @@ pub async fn adaptive_limiter_middleware(
     let tracker = req.extensions().get::<Arc<ConnectionTracker>>().cloned();
     let identity = req.extensions().get::<IdentityContext>().cloned();
 
-    let (tracker, visitor_id) = match (tracker, identity) {
-        (Some(t), Some(id)) => (t, id.visitor_id),
+    let (tracker, limit_key) = match (tracker, identity) {
+        (Some(t), Some(id)) => {
+            // Identity-Aware Limiting: Profile ID if authenticated, else Device Hash
+            let key = id.profile_id.clone().unwrap_or(id.device_hash.clone());
+            (t, key)
+        },
         _ => return next.run(req).await, // Skip if tracker or identity is missing
     };
 
     // 1. Check limit
-    if !tracker.acquire(&visitor_id) {
-        warn!(visitor_id = %visitor_id, "Adaptive rate limit reached: too many concurrent SSE connections");
+    if !tracker.acquire(&limit_key) {
+        warn!(limit_key = %limit_key, "Resilience Shield: Max concurrent SSE connections reached for this identity");
         let response = StandardResponse::<()>::error(
-            "Too many concurrent connections. Please try again later.",
+            "Security Shield: Too many concurrent connections for this profile. Exactly 3 streams allowed.",
             "RATE_LIMIT_EXCEEDED",
-            "Overload",
+            "Security",
             true
         );
         return (StatusCode::TOO_MANY_REQUESTS, axum::Json(response)).into_response();
@@ -82,7 +86,7 @@ pub async fn adaptive_limiter_middleware(
     let response = next.run(req).await;
 
     // 3. Release slot (on response completion)
-    tracker.release(&visitor_id);
+    tracker.release(&limit_key);
 
     response
 }

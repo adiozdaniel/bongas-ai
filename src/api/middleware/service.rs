@@ -12,7 +12,7 @@ use crate::api::ConnectionTracker;
 /// Apply all global middleware to the provided router.
 pub fn apply_middleware(
     app: Router,
-    _engine: Arc<BongasEngine>,
+    engine: Arc<BongasEngine>,
     config: Arc<AppConfig>,
     _redis: Arc<redis::Client>,
     _resilience_metrics: Arc<ResilienceMetricsCollector>,
@@ -20,21 +20,29 @@ pub fn apply_middleware(
     tracker: Arc<ConnectionTracker>,
     _start_time: Arc<Instant>,
 ) -> Router {
-    app.layer(middleware::from_fn(move |req: Request<axum::body::Body>, next: Next| {
-        let _breakers = circuit_breaker_registry.clone();
-        let _tracker = tracker.clone();
-        let _env = config.server.environment.clone();
-        
-        async move {
-            // Identity & Rate Limiting Middleware
-            let response = next.run(req).await;
+    let engine_clone = engine.clone();
+    let tracker_clone = tracker.clone();
+    let circuit_breaker_registry_clone = circuit_breaker_registry.clone();
+    let environment = config.server.environment.clone();
+    
+    app
+        .layer(middleware::from_fn(move |req, next| {
+            let engine = engine_clone.clone();
+            async move {
+                crate::api::middleware::identity::service::identity_middleware(req, next, engine).await
+            }
+        }))
+        .layer(middleware::from_fn(crate::api::middleware::adaptive_limiter::service::adaptive_limiter_middleware))
+        .layer(middleware::from_fn(move |req: Request<axum::body::Body>, next: Next| {
+            let _breakers = circuit_breaker_registry_clone.clone();
+            let _tracker = tracker_clone.clone();
+            let _env = environment.clone();
             
-            // Record generic metrics
-            // metrics.record_api_call(&env);
-            
-            response
-        }
-    }))
+            async move {
+                let response = next.run(req).await;
+                response
+            }
+        }))
 }
 
 pub fn extract_request_id<B>(req: &Request<B>) -> String {

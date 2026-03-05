@@ -135,4 +135,10 @@ impl ScenariosManager {
         // Simple synchronous approximation if needed, or use a task
         0 // Placeholder for actual implementation
     }
+
+    /// Get the maturity rating for a scenario.
+    pub async fn get_scenario_rating(&self, slug: &str) -> Option<String> {
+        let lock = self.scenarios.read().await;
+        lock.get(slug).map(|s| s.maturity_rating.clone())
+    }
 }

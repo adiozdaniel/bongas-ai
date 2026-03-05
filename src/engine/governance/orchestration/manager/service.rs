@@ -4,12 +4,13 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use lru::LruCache;
 use std::num::NonZeroUsize;
-use tracing::info;
+use tracing::{info, debug};
 use std::collections::HashMap;
 
 use crate::engine::governance::orchestration::types::models::{PageLayout, PageSlug, SavePageLayoutRequest, NavType};
 use crate::db::repositories::page_layout_repository::service::PageLayoutRepository;
 use crate::db::repositories::interaction_repository::service::InteractionRepository;
+use crate::engine::governance::factory::scenarios_manager::service::ScenariosManager;
 use crate::ml::inference::features::service::FeatureStore;
 use crate::error::AppResult;
 use crate::ingestion::types::UserActivity;
@@ -20,6 +21,7 @@ pub struct PagesManager {
     repo: Arc<PageLayoutRepository>,
     interaction_repo: Arc<InteractionRepository>,
     feature_store: Arc<FeatureStore>,
+    scenarios: Arc<ScenariosManager>,
     /// High-performance L1 cache for resolved layouts (target-aware)
     cache: Arc<RwLock<LruCache<(PageSlug, Option<String>, Option<String>), PageLayout>>>,
     /// In-memory landing page registry for ultra-fast genesis resolution
@@ -33,12 +35,14 @@ impl PagesManager {
         repo: Arc<PageLayoutRepository>, 
         interaction_repo: Arc<InteractionRepository>,
         feature_store: Arc<FeatureStore>, 
+        scenarios: Arc<ScenariosManager>,
         cache_size: usize
     ) -> Self {
         Self {
             repo,
             interaction_repo,
             feature_store,
+            scenarios,
             cache: Arc::new(RwLock::new(LruCache::new(NonZeroUsize::new(cache_size).unwrap()))),
             landing_pages: Arc::new(RwLock::new(HashMap::new())),
             nav_mesh: Arc::new(RwLock::new(Vec::new())),
@@ -182,7 +186,7 @@ impl PagesManager {
 
         // 1. Try cache first
         let layout_from_cache = {
-            let mut cache: tokio::sync::RwLockWriteGuard<'_, LruCache<(PageSlug, Option<String>, Option<String>), PageLayout>> = self.cache.write().await;
+            let mut cache = self.cache.write().await;
             cache.get(&(slug.clone(), device.clone(), maturity.clone())).cloned()
         };
 
@@ -192,7 +196,7 @@ impl PagesManager {
             let resolved = Self::map_db_to_domain(db_row);
             // Update cache
             {
-                let mut cache: tokio::sync::RwLockWriteGuard<'_, LruCache<(PageSlug, Option<String>, Option<String>), PageLayout>> = self.cache.write().await;
+                let mut cache = self.cache.write().await;
                 cache.put((slug, device, maturity), resolved.clone());
             }
             Some(resolved)
@@ -200,14 +204,45 @@ impl PagesManager {
             None
         };
 
-        // 🧠 Step 2: Algorithmic Reordering (The Brain)
+        // 🛡️ Phase 3: Zero-Touch Security & Intelligence
         if let Some(ref mut l) = layout {
+            // Step 2: KFCB Early-Block (Maturity Ceiling)
+            // If profile_id is missing, we assume Adult (18+)
+            let profile_rating = maturity_rating.unwrap_or("18");
+            
+            let mut safe_composition = Vec::new();
+            for item in l.composition.drain(..) {
+                let scenario_rating = self.scenarios.get_scenario_rating(&item.slug).await.unwrap_or("G".to_string());
+                
+                if self.is_rating_allowed(profile_rating, &scenario_rating) {
+                    safe_composition.push(item);
+                } else {
+                    debug!(
+                        scenario = %item.slug, 
+                        profile_rating = %profile_rating, 
+                        scenario_rating = %scenario_rating, 
+                        "KFCB Early-Block: Scenario restricted by maturity ceiling"
+                    );
+                    // Replace with fallback if available
+                    if let Some(fallback) = item.fallback_slug {
+                        safe_composition.push(crate::engine::governance::orchestration::types::models::PageCompositionItem {
+                            slug: fallback,
+                            fallback_slug: None,
+                            row_type: item.row_type,
+                            row_style: item.row_style,
+                        });
+                    }
+                }
+            }
+            l.composition = safe_composition;
+
+            // Step 3: Algorithmic Reordering (Engagement Feedback Loop)
             if let Some(vid) = identity_key {
                 // Fetch engagement scores for all scenarios in the composition
+                // We use None for user_id to prioritize visitor-level engagement if provided as key
                 if let Ok(engagement) = self.interaction_repo.get_scenario_engagement_scores(None, Some(vid)).await {
                     if !engagement.is_empty() {
                         // Perform a STABLE SORT to bubble up high-engagement rows
-                        // while preserving relative order for zero-score items.
                         l.composition.sort_by(|a, b| {
                             let score_a = engagement.get(&a.slug).copied().unwrap_or(0.0);
                             let score_b = engagement.get(&b.slug).copied().unwrap_or(0.0);
@@ -219,6 +254,24 @@ impl PagesManager {
         }
 
         Ok(layout)
+    }
+
+    /// Internal helper to check if a scenario rating is allowed for a given profile rating.
+    fn is_rating_allowed(&self, profile_rating: &str, scenario_rating: &str) -> bool {
+        let profile_score = self.get_rating_score(profile_rating);
+        let scenario_score = self.get_rating_score(scenario_rating);
+        profile_score >= scenario_score
+    }
+
+    fn get_rating_score(&self, rating: &str) -> i32 {
+        match rating.to_uppercase().as_str() {
+            "G" | "GE" | "ALL" => 1,
+            "PG" | "7+" => 2,
+            "PG-13" | "13+" => 3,
+            "16+" | "NC-17" => 4,
+            "18" | "18+" | "R" | "ADULT" => 5,
+            _ => 0, // Restricted by default if unknown
+        }
     }
 
     /// Administrative: Save or update a layout.
@@ -264,7 +317,7 @@ impl PagesManager {
     }
 
     pub async fn invalidate_cache(&self, slug: &str) {
-        let mut cache: tokio::sync::RwLockWriteGuard<'_, LruCache<(PageSlug, Option<String>, Option<String>), PageLayout>> = self.cache.write().await;
+        let mut cache = self.cache.write().await;
         let keys: Vec<(PageSlug, Option<String>, Option<String>)> = cache.iter()
             .filter(|((s, _, _), _)| s.0 == slug)
             .map(|(k, _)| k.clone())

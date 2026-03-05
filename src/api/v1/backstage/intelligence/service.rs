@@ -20,14 +20,14 @@ pub struct TrendingQuery {
     pub limit: Option<usize>,
 }
 
-/// GET /api/v1/recommendation/admin/features/user/:user_id
-pub async fn get_user_features(
+/// GET /api/v1/recommendation/admin/features/profile/:profile_id
+pub async fn get_profile_features(
     headers: HeaderMap,
     Extension(engine): Extension<Arc<BongasEngine>>,
-    Path(user_id): Path<i32>,
+    Path(profile_id): Path<String>,
 ) -> Result<Json<StandardResponse<serde_json::Value>>, AppError> {
     let request_id = extract_request_id_from_headers(&headers);
-    let features = engine.execution.manager.item_feature_service.get_user_features(user_id).await?;
+    let features = engine.execution.manager.item_feature_service.get_profile_features(&profile_id).await?;
     Ok(Json(StandardResponse::success(serde_json::to_value(features).unwrap_or_default()).with_request_id(request_id)))
 }
 

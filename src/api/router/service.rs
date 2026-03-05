@@ -21,8 +21,8 @@ pub fn create_router(
     circuit_breaker_registry: Arc<CircuitBreakerRegistry>,
     start_time: Arc<Instant>,
 ) -> Router {
-    // 1. Initialize Adaptive Rate Limiter
-    let tracker = Arc::new(ConnectionTracker::new(1000)); // Default max connections
+    // 1. Initialize Adaptive Rate Limiter (The Shield)
+    let tracker = Arc::new(ConnectionTracker::new(3)); // Exactly 3 concurrent SSE streams per profile
 
     // 2. Build V1 Routes
     let v1_routes = v1::router::service::routes(engine.clone(), config.clone());
