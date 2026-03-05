@@ -10,6 +10,7 @@ use tokio::task::JoinHandle;
 use crate::circuit_breaker::CircuitBreakerRegistry;
 use crate::db::ResilientPool;
 use crate::engine::intelligence::monitoring::staleness_engine::service::StalenessEngine;
+use crate::engine::intelligence::pillar::service::IntelligencePillar;
 use crate::resilience::ResilienceMetricsCollector;
 
 use crate::ingestion::{ActivitySource, UserActivity};
@@ -36,7 +37,7 @@ pub struct IngestionManager {
 impl IngestionManager {
     pub async fn bootstrap(
         pool: Arc<ResilientPool>,
-        clickhouse: Option<Arc<clickhouse::Client>>,
+        intelligence: Arc<IntelligencePillar>,
         breaker_registry: Arc<CircuitBreakerRegistry>,
         resilience_metrics: Arc<ResilienceMetricsCollector>,
         staleness_engine: Arc<StalenessEngine>,
@@ -64,13 +65,13 @@ impl IngestionManager {
             sources.push(Arc::new(kafka));
         }
 
-        // Add ClickHouse if configured
-        if let Some(ref ch) = clickhouse {
+        // Add ClickHouse Source if configured
+        if let Some(ch) = intelligence.monitoring.clickhouse_client() {
             let ch_config = crate::ingestion::recovery::clickhouse::service::ClickHouseSourceConfig {
                 poll_interval_secs: 60,
                 batch_size: 1000,
             };
-            sources.push(Arc::new(ClickHouseSource::new(ch_config, (**ch).clone(), breaker_registry.clone())));
+            sources.push(Arc::new(ClickHouseSource::new(ch_config, ch, breaker_registry.clone())));
         }
 
         let metrics = Arc::new(IngestionMetrics::new(sources.clone()));
@@ -78,7 +79,7 @@ impl IngestionManager {
         let processor = Arc::new(ActivityProcessor::new(
             Arc::new(crate::db::InteractionRepository::new(pool.clone(), resilience_metrics.clone())),
             pool.clone(),
-            clickhouse.clone(),
+            intelligence,
             staleness_engine,
             pages_manager,
             resilience_metrics.clone(),

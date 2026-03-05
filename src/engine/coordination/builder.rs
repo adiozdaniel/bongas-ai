@@ -251,7 +251,7 @@ impl DiscoverySymphony {
         
         let ingestion_manager = IngestionManager::bootstrap(
             resilient_pool.clone(),
-            None,
+            intelligence.clone(),
             circuit_breaker_registry.clone(),
             resilience_metrics.clone(),
             staleness_engine,

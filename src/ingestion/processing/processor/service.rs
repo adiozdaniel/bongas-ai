@@ -6,24 +6,12 @@ use tracing::{info, error};
 
 use crate::db::ResilientPool;
 use crate::db::InteractionRepository;
-use crate::engine::intelligence::monitoring::staleness_engine::service::{StalenessEngine, UserEvent};
+use crate::engine::intelligence::monitoring::staleness_engine::service::{StalenessEngine, UserEvent as StalenessEvent};
+use crate::engine::intelligence::monitoring::analytics_sidecar::service::UserEvent as AnalyticsEvent;
+use crate::engine::intelligence::pillar::service::IntelligencePillar;
 use crate::resilience::ResilienceMetricsCollector;
 
 use crate::ingestion::UserActivity;
-use clickhouse::Row;
-use serde::{Serialize, Deserialize};
-
-#[derive(Debug, Serialize, Deserialize, Row)]
-pub struct ClickHouseInteraction {
-    pub user_id: i32,
-    pub item_id: i32,
-    pub interaction_type: String,
-    pub scenario_slug: String,
-    pub weight: f32,
-    pub watch_duration_seconds: i32,
-    pub created_at: u64, 
-}
-
 use tokio::task::JoinSet;
 use crate::engine::governance::orchestration::manager::service::PagesManager;
 
@@ -31,7 +19,7 @@ use crate::engine::governance::orchestration::manager::service::PagesManager;
 pub struct ActivityProcessor {
     interaction_repo: Arc<InteractionRepository>,
     _pool: Arc<ResilientPool>,
-    clickhouse: Option<Arc<clickhouse::Client>>,
+    intelligence: Arc<IntelligencePillar>,
     staleness_engine: Arc<StalenessEngine>,
     pages_manager: Arc<PagesManager>,
     metrics: Arc<ResilienceMetricsCollector>,
@@ -42,7 +30,7 @@ impl ActivityProcessor {
     pub fn new(
         interaction_repo: Arc<InteractionRepository>,
         pool: Arc<ResilientPool>,
-        clickhouse: Option<Arc<clickhouse::Client>>,
+        intelligence: Arc<IntelligencePillar>,
         staleness_engine: Arc<StalenessEngine>,
         pages_manager: Arc<PagesManager>,
         metrics: Arc<ResilienceMetricsCollector>,
@@ -51,7 +39,7 @@ impl ActivityProcessor {
         Self {
             interaction_repo,
             _pool: pool,
-            clickhouse,
+            intelligence,
             staleness_engine,
             pages_manager,
             metrics,
@@ -90,7 +78,7 @@ impl ActivityProcessor {
     async fn process_single(&self, activity: UserActivity) -> anyhow::Result<()> {
         let start = std::time::Instant::now();
 
-        // 1. Sink to Postgres (Interaction Repo)
+        // 1. Sink to Postgres (Interaction Repo) - RELATIONAL PERSISTENCE
         self.interaction_repo.record_interaction(
             activity.user_id(),
             match activity {
@@ -105,33 +93,30 @@ impl ActivityProcessor {
             },
         ).await?;
 
-        // 2. Sink to ClickHouse (for Analytics & Sidecar)
-        if let Some(ref ch) = self.clickhouse {
-            let ch_row = ClickHouseInteraction {
-                user_id: activity.user_id(),
-                item_id: match activity {
-                    UserActivity::Playback { item_id, .. } | UserActivity::Reaction { item_id, .. } | UserActivity::Click { item_id, .. } | UserActivity::Impression { item_id, .. } => item_id,
-                    _ => 0,
-                },
-                interaction_type: activity.kind().to_string(),
-                scenario_slug: activity.scenario_slug().unwrap_or("unknown").to_string(),
-                weight: 1.0,
-                watch_duration_seconds: match activity {
-                    UserActivity::Playback { watch_duration_seconds, .. } => watch_duration_seconds,
-                    _ => 0,
-                },
-                created_at: chrono::Utc::now().timestamp() as u64,
-            };
-            
-            let mut insert = ch.insert::<ClickHouseInteraction>("user_interactions").await?;
-            insert.write(&ch_row).await?;
-            insert.end().await?;
-        }
+        // 2. Sink to ClickHouse (Asynchronous Buffered) - HIGH-VOLUME ANALYTICS
+        let analytics_event = AnalyticsEvent {
+            user_id: activity.user_id(),
+            profile_id: "unknown".to_string(), 
+            item_id: match activity {
+                UserActivity::Playback { item_id, .. } | UserActivity::Reaction { item_id, .. } | UserActivity::Click { item_id, .. } | UserActivity::Impression { item_id, .. } => item_id,
+                _ => 0,
+            },
+            interaction_type: activity.kind().to_string(),
+            scenario_slug: activity.scenario_slug().unwrap_or("unknown").to_string(),
+            device_type: "unknown".to_string(),
+            watch_duration_seconds: match activity {
+                UserActivity::Playback { watch_duration_seconds, .. } => watch_duration_seconds,
+                _ => 0,
+            },
+            created_at: chrono::Utc::now().timestamp() as u64,
+        };
+        
+        self.intelligence.record_event(analytics_event).await;
 
         // 3. Notify Staleness Engine (Real-time cache invalidation)
         let event = match activity {
-            UserActivity::Playback { user_id, item_id, watch_percentage, .. } => Some(UserEvent::WatchEvent { user_id, item_id, completion_rate: watch_percentage }),
-            UserActivity::Reaction { user_id, item_id, ref reaction_type, .. } => Some(UserEvent::ExplicitFeedback { user_id, item_id, rating: if reaction_type == "like" { 1.0 } else { -1.0 } }),
+            UserActivity::Playback { user_id, item_id, watch_percentage, .. } => Some(StalenessEvent::WatchEvent { user_id, item_id, completion_rate: watch_percentage }),
+            UserActivity::Reaction { user_id, item_id, ref reaction_type, .. } => Some(StalenessEvent::ExplicitFeedback { user_id, item_id, rating: if reaction_type == "like" { 1.0 } else { -1.0 } }),
             _ => None,
         };
 
