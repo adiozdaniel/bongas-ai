@@ -127,8 +127,13 @@ impl BongasEngine {
 
     /// Proxy: Reload all scenarios
     pub async fn reload_scenarios(&self) -> AppResult<usize> {
-        self.governance.scenarios.reload_scenarios().await
-            .map_err(|e| AppError::Scenario(ScenarioError::ExecutionFailed(format!("Reload failed: {}", e))))
+        let count = self.governance.scenarios.reload_scenarios().await
+            .map_err(|e| AppError::Scenario(ScenarioError::ExecutionFailed(format!("Reload failed: {}", e))))?;
+        
+        // Also reload discovery configurations
+        self.governance.reload_discovery_configs().await?;
+        
+        Ok(count)
     }
 
     /// Proxy: Reload a single scenario

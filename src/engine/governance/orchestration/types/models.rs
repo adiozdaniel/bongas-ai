@@ -79,3 +79,15 @@ pub struct SavePageLayoutRequest {
     pub composition: Vec<PageCompositionItem>,
     pub is_active: Option<bool>,
 }
+
+/// Device-specific discovery and orchestration configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DiscoveryConfig {
+    pub device_type: String,
+    pub initial_batch_size: i32,
+    pub continuation_batch_size: i32,
+    pub prewarm_lookahead: i32,
+    pub ghost_ttl_seconds: i32,
+    pub cache_ttl_seconds: i32,
+    pub updated_at: DateTime<Utc>,
+}

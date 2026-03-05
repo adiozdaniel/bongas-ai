@@ -25,6 +25,7 @@ use crate::db::repositories::cache_repository::service::CacheRepository;
 use crate::db::repositories::model_repository::service::ModelRepository;
 use crate::db::repositories::scenario_repository::service::ScenarioRepository;
 use crate::db::repositories::page_layout_repository::service::PageLayoutRepository;
+use crate::db::repositories::discovery_repository::service::DiscoveryConfigRepository;
 
 // Cortex (ML & Transformation)
 use crate::ml::assets::loader::service::ModelLoader;
@@ -100,6 +101,7 @@ impl DiscoverySymphony {
         let model_repo = Arc::new(ModelRepository::new(resilient_pool.clone(), resilience_metrics.clone()));
         let scenario_repo = Arc::new(ScenarioRepository::new(resilient_pool.clone(), resilience_metrics.clone()));
         let layout_repo = Arc::new(PageLayoutRepository::new(resilient_pool.clone(), resilience_metrics.clone()));
+        let discovery_repo = Arc::new(DiscoveryConfigRepository::new(resilient_pool.clone(), resilience_metrics.clone()));
 
         // ─── 3. CORTEX & SECURITY ────────────────────────────────────────────
         let security = SecurityManager::new(
@@ -211,7 +213,11 @@ impl DiscoverySymphony {
             pages,
             scenarios,
             scenario_factory,
+            discovery_repo,
         ));
+
+        // Hydrate discovery configs
+        governance.reload_discovery_configs().await.context("Failed to hydrate discovery configurations")?;
 
         // Component: Intelligence
         let intelligence = Arc::new(IntelligencePillar::new(
