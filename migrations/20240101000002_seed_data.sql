@@ -176,3 +176,18 @@ SET is_landing = EXCLUDED.is_landing,
     nav_type = EXCLUDED.nav_type,
     composition = EXCLUDED.composition, 
     priority = EXCLUDED.priority;
+
+-- 6. Seed Discovery Configurations (Device-Specific Orchestration)
+INSERT INTO discovery_configs (device_type, initial_batch_size, continuation_batch_size, prewarm_lookahead, ghost_ttl_seconds, cache_ttl_seconds)
+VALUES 
+    ('default', 5, 5, 5, 300, 300),
+    ('web', 8, 5, 8, 600, 600),
+    ('mobile', 4, 3, 4, 180, 180),
+    ('tv', 12, 8, 12, 1200, 1200)
+ON CONFLICT (device_type) DO UPDATE SET
+    initial_batch_size = EXCLUDED.initial_batch_size,
+    continuation_batch_size = EXCLUDED.continuation_batch_size,
+    prewarm_lookahead = EXCLUDED.prewarm_lookahead,
+    ghost_ttl_seconds = EXCLUDED.ghost_ttl_seconds,
+    cache_ttl_seconds = EXCLUDED.cache_ttl_seconds,
+    updated_at = NOW();

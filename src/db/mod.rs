@@ -16,4 +16,5 @@ pub use repositories::cache_repository::service::CacheRepository;
 pub use repositories::scenario_repository::service::ScenarioRepository;
 pub use repositories::page_layout_repository::service::PageLayoutRepository;
 pub use repositories::feature_repository::service::FeatureRepository;
+pub use repositories::discovery_repository::service::DiscoveryConfigRepository;
 pub use repositories::item_feature_service::models::*;

@@ -316,3 +316,17 @@ WHERE is_deleted = false;
 
 CREATE INDEX IF NOT EXISTS idx_page_layouts_resolver ON page_layouts (page_slug, device_type, maturity_rating) 
 WHERE is_active = true AND is_deleted = false;
+
+-- ============================================================================
+-- 12. discovery_configs (Device-Specific Orchestration)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS discovery_configs (
+    device_type VARCHAR(32) PRIMARY KEY, -- 'web', 'mobile', 'tv', 'default'
+    initial_batch_size INTEGER NOT NULL DEFAULT 5,
+    continuation_batch_size INTEGER NOT NULL DEFAULT 5,
+    prewarm_lookahead INTEGER NOT NULL DEFAULT 5,
+    ghost_ttl_seconds INTEGER NOT NULL DEFAULT 300,
+    cache_ttl_seconds INTEGER NOT NULL DEFAULT 300,
+    
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);

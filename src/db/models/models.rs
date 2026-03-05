@@ -260,3 +260,18 @@ pub struct PageLayout {
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
+
+// ============================================================================
+// 9. DiscoveryConfig (Device-Specific Orchestration)
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct DiscoveryConfig {
+    pub device_type: String,
+    pub initial_batch_size: i32,
+    pub continuation_batch_size: i32,
+    pub prewarm_lookahead: i32,
+    pub ghost_ttl_seconds: i32,
+    pub cache_ttl_seconds: i32,
+    pub updated_at: DateTime<Utc>,
+}

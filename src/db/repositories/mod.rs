@@ -7,3 +7,4 @@ pub mod feature_repository;
 pub mod configuration_repository;
 pub mod page_layout_repository;
 pub mod item_feature_service;
+pub mod discovery_repository;
