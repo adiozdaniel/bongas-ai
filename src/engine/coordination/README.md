@@ -17,3 +17,7 @@ The Coordination pillar is the assembly point of the Bongas-AI engine. It orches
 - **Unified Assembly**: Single point of coordination for the entire engine.
 - **Context-Aware**: Injects dependencies across pillars.
 - **Stateful Management**: Handles engine lifecycle and graceful shutdown.
+
+---
+
+[🏠 Hub](../../../docs/HUB.md) | [🧠 Engine Root](../README.md) | [🔝 Top](# -the-condutor-coordination-pillar)

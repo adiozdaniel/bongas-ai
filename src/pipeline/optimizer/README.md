@@ -23,4 +23,5 @@ graph LR
 - **Zero-Cost Abstractions**: Minimizes overhead between dynamic definitions and static execution.
 
 ---
-[⬅️ Back to Pipeline Main](../README.md)
+
+[🏠 Hub](../../../docs/HUB.md) | [⬅️ Back to Pipeline Main](../README.md)

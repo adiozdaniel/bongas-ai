@@ -23,4 +23,5 @@ graph LR
 - **Labeling**: Enables versioning through Git branches or tags.
 
 ---
-[⬅️ Back to Sources Main](../README.md)
+
+[🏠 Hub](../../../../docs/HUB.md) | [📡 Back to Sources Main](../README.md) | [🔝 Top](#️-config-source-spring-cloud)

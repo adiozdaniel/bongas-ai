@@ -19,4 +19,5 @@ classDiagram
 ```
 
 ---
-[⬅️ Back to Cache Main](../README.md)
+
+[🏠 Hub](../../../docs/HUB.md) | [🗄️ Back to Cache Main](../README.md) | [🔝 Top](#-cache-traits)

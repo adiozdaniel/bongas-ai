@@ -26,4 +26,5 @@ graph TD
 - **Recursive Branching**: Supports complex nested logic via the `ExecutionNode` FSM.
 
 ---
-[⬅️ Back to Pipeline Main](../README.md)
+
+[🏠 Hub](../../../docs/HUB.md) | [⬅️ Back to Pipeline Main](../README.md)

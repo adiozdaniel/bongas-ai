@@ -14,4 +14,5 @@ Internal operational models for reporting system health, monitoring metrics, and
 | **SecurityStatusResponse** | Binary integrity and license validation. |
 
 ---
-[⬅️ Back to Models Main](../README.md)
+
+[🏠 Hub](../../../../docs/HUB.md) | [🧬  Back to Models Main](../README.md) | [🔝 Top](#️-api-models-system)

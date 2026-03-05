@@ -3,4 +3,5 @@
 Ensures a mix of classic and contemporary content.
 
 ---
-[⬅️ Back to Diversify Category](../README.md)
+
+[🏠 Hub](../../../../docs/HUB.md) | [⬅️ Back to Diversify Category](../README.md)

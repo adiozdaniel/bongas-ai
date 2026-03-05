@@ -49,4 +49,5 @@ println!("Server running on port: {}", config.server.port);
 ```
 
 ---
-[🏠 Back to Project Root](../../README.md)
+
+[🏠 Hub](../../docs/HUB.md) | [🔝 Top](#️-configuration-module)

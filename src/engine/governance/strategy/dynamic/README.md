@@ -19,4 +19,5 @@ The Dynamic Scenario module provides an execution engine for recommendations def
 | [**🏗️ Stages**](./stages/README.md) | Pluggable building blocks for dynamic recommendation pipelines. |
 
 ---
-[⬅️ Back to Scenarios Main](../README.md)
+
+[🏠 Hub](../../../../../docs/HUB.md) | [🎬 Strategies Main](../README.md) | [🔝 Top](#-dynamic-scenarios-jsonb-pipelines)

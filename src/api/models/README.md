@@ -29,4 +29,4 @@ This struct includes the **`merge_identity`** method, which seamlessly integrate
 
 ---
 
-[🏠 Hub](../../../docs/HUB.md) | [🔝 Top](#-api-models--symphony-context)
+[🏠 Hub](../../../docs/HUB.md)  | [🔌  Back to API Main](../README.md) | [🔝 Top](#-api-models--symphony-context)

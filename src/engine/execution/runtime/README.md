@@ -18,3 +18,7 @@ The Runtime sub-module provides the lifecycle and execution context for the reco
 - **Stateful Management**: Graceful start and shutdown orchestration.
 - **Contextual Integrity**: Ensures visitor identity and device state are preserved throughout a discovery stream.
 - **Lifecycle Awareness**: Engine-wide health and readiness signal management.
+
+---
+
+[🏠 Hub](../../../../docs/HUB.md) | [⚡ Runtime Main](../README.md)

@@ -17,3 +17,7 @@ The Coordination pillar is the assembly point of the Cortex. It orchestrates the
 - **Unified Intelligence**: Single point of coordination for all ML operations.
 - **Resilient Wiring**: Injects circuit breakers and metrics across the cortex.
 - **Context Preservation**: Ensures that request context is preserved across inference boundaries.
+
+---
+
+[🏠 Hub](../../../docs/HUB.md) | [⬅️ Back to ML](../README.md)

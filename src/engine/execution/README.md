@@ -21,4 +21,5 @@ The Execution pillar is the high-performance discovery path of the Bongas-AI eng
 - **Resilient**: Guarded by global circuit breakers at the repository layer.
 
 ---
-[🏠 Engine Root](../README.md)
+
+[🏠 Hub](../../../docs/HUB.md) | [🧠 Engine Root](../README.md) | [🔝 Top](#-the-stage-execution-pillar)

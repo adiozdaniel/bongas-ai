@@ -38,4 +38,4 @@ Protects the high-throughput SSE pool by tracking concurrent connections per `vi
 
 ---
 
-[🏠 Hub](../../../docs/HUB.md) | [🔝 Top](#️-api-middleware)
+[🏠 Hub](../../../docs/HUB.md)  | [🔌  Back to API Main](../README.md) |  [🔝 Top](#️-api-middleware)

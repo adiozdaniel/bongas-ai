@@ -37,4 +37,4 @@ The Backstage implements the **Atomic Swap** pattern. Administrators can perform
 
 ---
 
-[🏠 Hub](../../../../docs/HUB.md) | [🔝 Top](#-the-backstage-administrative-control)
+[🏠 Hub](../../../../docs/HUB.md) | [📡  Back to API Main](../README.md) | [🔝 Top](#-the-backstage-administrative-control)

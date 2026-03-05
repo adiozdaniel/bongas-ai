@@ -31,4 +31,5 @@ classDiagram
 ```
 
 ---
-[⬅️ Back to Models Main](../README.md)
+
+[🏠 Hub](../../../../docs/HUB.md) | [🧬  Back to Models Main](../README.md) | [🔝 Top](#-api-models-recommendation)

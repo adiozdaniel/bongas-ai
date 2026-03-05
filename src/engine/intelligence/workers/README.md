@@ -17,3 +17,7 @@ The Workers sub-module manages the background tasks and maintenance routines tha
 - **Fire-and-Forget Efficiency**: Reliable background task processing.
 - **Maintenance Awareness**: Health probes and periodic cache cleanup.
 - **Orchestrated Pulse**: Regular heartbeat for system-wide health.
+
+---
+
+[🏠 Hub](../../../../docs/HUB.md) | [🏠 Workers Main](../README.md) | [🔝 Top](#-workers-background-maintenance)

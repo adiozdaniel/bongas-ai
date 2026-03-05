@@ -26,4 +26,5 @@ graph TD
 - **Comments Support**: Enables documented configuration files.
 
 ---
-[⬅️ Back to Sources Main](../README.md)
+
+[🏠 Hub](../../../../docs/HUB.md) | [📡 Back to Sources Main](../README.md) | [🔝 Top](#-config-source-toml)

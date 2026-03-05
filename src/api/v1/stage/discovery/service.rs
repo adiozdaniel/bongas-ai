@@ -50,6 +50,15 @@ pub async fn genesis(
     // 1. Resolve Navigation Mesh (Personalized)
     let nav_mesh = engine.governance.orchestration.get_nav_mesh_contextual(identity_key.as_deref()).await;
     
+    let main_nav: Vec<SymphonyNavigation> = nav_mesh.iter()
+        .filter(|n| n.nav_type == "main")
+        .cloned()
+        .collect();
+
+    let sub_nav: Vec<SymphonyNavigation> = nav_mesh.into_iter()
+        .filter(|n| n.nav_type == "sub")
+        .collect();
+
     // 2. Resolve Landing Page
     let landing_layout: Option<PageLayout> = engine.governance.orchestration.get_landing_page_contextual(
         cp_base.device_type.as_deref(),
@@ -78,19 +87,16 @@ pub async fn genesis(
             slug: landing_slug.clone(),
             title: "Bongas Discovery".to_string(),
             nav_type: "main".to_string(),
-            nav_mesh: nav_mesh.into_iter().map(|n| SymphonyNavigation {
-                slug: n.slug,
-                title: n.title,
-                nav_type: n.nav_type,
-                nav_mesh: vec![],
-                landing_slug: "".to_string(),
-                total_rows: 0,
-                request_id: "".to_string(),
-            }).collect(),
+            nav_mesh: main_nav,
             landing_slug: landing_slug.clone(),
             total_rows: total_count,
             request_id: rid.clone(),
         })
+        .unwrap_or_else(|_| Event::default().comment("serial_error"));
+
+    let sub_nav_event = Event::default()
+        .event("sub_navigation")
+        .json_data(&sub_nav)
         .unwrap_or_else(|_| Event::default().comment("serial_error"));
 
     let manifest_event = Event::default()
@@ -129,7 +135,7 @@ pub async fn genesis(
         },
     );
 
-    let full_stream = stream::iter(vec![Ok(nav_event), Ok(manifest_event)])
+    let full_stream = stream::iter(vec![Ok(nav_event), Ok(sub_nav_event), Ok(manifest_event)])
         .chain(stream)
         .chain(stream::iter(end_events));
 

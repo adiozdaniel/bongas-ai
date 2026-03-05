@@ -5,4 +5,5 @@
 Provides retrieval based on item metadata (genre, tags, language).
 
 ---
-[⬅️ Back to Stages Main](../README.md)
+
+[🏠 Hub](../../../../../../../docs/HUB.md) | [🌈 Dynamic Scenarios Main](../README.md) | [🔝 Top](#-dynamic-stages-content-based)

@@ -54,4 +54,5 @@ let result: Option<MyData> = manager.get("user:123").await?;
 ```
 
 ---
-[🏠 Back to Project Root](../../README.md)
+
+[🏠 Hub](../../docs/HUB.md) | [🔝 Top](#️-multi-tier-cache-module)

@@ -5,4 +5,5 @@
 Provides dynamic scoring adjustments for relevance and business goals.
 
 ---
-[⬅️ Back to Stages Main](../README.md)
+
+[🏠 Hub](../../../../../../../docs/HUB.md) | [🌈 Dynamic Scenarios Main](../README.md) | [🔝 Top](#-dynamic-stages-boosters)

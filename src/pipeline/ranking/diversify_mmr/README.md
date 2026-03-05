@@ -3,4 +3,5 @@
 A greedy algorithm that iteratively selects items which maximize the weighted balance between their original score (relevance) and their dissimilarity to already-selected items (novelty).
 
 ---
-[⬅️ Back to Diversify Category](../README.md)
+
+[🏠 Hub](../../../../docs/HUB.md) | [⬅️ Back to Diversify Category](../README.md)

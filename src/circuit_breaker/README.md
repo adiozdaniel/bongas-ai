@@ -60,4 +60,5 @@ let result = breaker.call(|| async {
 ```
 
 ---
-[🏠 Back to Project Root](../../README.md)
+
+[🏠 Hub](../../docs/HUB.md) | [🔝 Top](#️-circuit-breaker-module)

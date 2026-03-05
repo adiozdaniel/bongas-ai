@@ -23,4 +23,5 @@ graph LR
 - **Resource Aware**: Throttles warming operations during peak API load to protect system throughput.
 
 ---
-[⬅️ Back to Engine Main](../README.md)
+
+[🏠 Hub](../../../../../docs/HUB.md) | [🧊 Cache Main](../README.md) | [🔝 Top](#️-engine-predictive-warmer)

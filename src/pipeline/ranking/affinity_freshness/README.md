@@ -13,4 +13,5 @@ Intelligent discovery stage that boosts new content only if it aligns with speci
 | `affinity_key` | string | "genre" | Metadata key used for affinity matching. |
 
 ---
-[⬅️ Back to Boost Category](../README.md)
+
+[🏠 Hub](../../../../docs/HUB.md) | [⬅️ Back to Boost Category](../README.md)

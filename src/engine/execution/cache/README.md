@@ -18,3 +18,7 @@ The Cache sub-module ensures that discovery responses are consistently delivered
 - **Predictive Performance**: Anticipates user navigation to hydrate discovery paths.
 - **Thundering Herd Protection**: Single-flight resolution for cold cache keys.
 - **Persistence Strategy**: Tiered L1 (In-Memory) and L2 (Redis) storage.
+
+---
+
+[🏠 Hub](../../../../docs/HUB.md) | [⚡ Execution Main](../README.md) | [🔝 Top](#️ -cache-discovery-hydration-&-staging)

@@ -15,4 +15,5 @@ graph TD
 ```
 
 ---
-[⬅️ Back to API Main](../README.md)
+
+[🏠 Hub](../../../docs/HUB.md)  | [🔌  Back to API Main](../README.md) | [🔝 Top](#-api-version-1)

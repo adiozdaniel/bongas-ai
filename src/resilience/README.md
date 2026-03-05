@@ -27,4 +27,5 @@ The Resilience module provides the metrics infrastructure that powers the system
 | [**📄 Types**](./types/README.md) | Core data models and event definitions. |
 
 ---
-[🏠 Back to Project Root](../../README.md)
+
+[🏠 Hub](../../docs/HUB.md) | [🏠 Back to Project Root](../../README.md)

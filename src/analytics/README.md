@@ -47,4 +47,5 @@ collector.record_hit("home_feed", duration).await;
 ```
 
 ---
-[🏠 Back to Project Root](../../README.md)
+
+[🏠 Hub](../../docs/HUB.md) |  [🔝 Top](#-analytics-module)

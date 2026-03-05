@@ -14,4 +14,5 @@ graph LR
 ```
 
 ---
-[⬅️ Back to Types Main](../README.md)
+
+[🏠 Hub](../../../../docs/HUB.md) | [🧬 Back to Types Main](../README.md) | [🔝 Top](#️-config-type-redis)

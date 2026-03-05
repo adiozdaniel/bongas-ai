@@ -24,4 +24,5 @@ graph TD
 - **Atomic Staging**: Ensures cache population is race-free.
 
 ---
-[⬅️ Back to Engine Main](../README.md)
+
+[🏠 Hub](../../../../../docs/HUB.md) | [🧊 Cache Main](../README.md) | [🔝 Top](#️-engine-staging-manager)

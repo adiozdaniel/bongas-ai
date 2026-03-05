@@ -3,4 +3,5 @@
 The primary safety gate that ensures users only see content appropriate for their age profile.
 
 ---
-[⬅️ Back to Filter Category](../README.md)
+
+[🏠 Hub](../../../../docs/HUB.md) | [⬅️ Back to Filter Category](../README.md)

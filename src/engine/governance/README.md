@@ -21,4 +21,5 @@ The Governance pillar manages the definitions, rules, and layouts that drive the
 - **Unified Backstage**: A single source of truth for administrative governance.
 
 ---
-[🏠 Engine Root](../README.md)
+
+[🏠 Hub](../../../docs/HUB.md) | [🧠 Engine Root](../README.md) | [🔝 Top](#-the-backstage-governance-pillar)

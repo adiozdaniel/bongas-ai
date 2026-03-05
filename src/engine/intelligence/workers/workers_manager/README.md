@@ -13,4 +13,5 @@ Coordinates the system's "heartbeat" tasks. This includes periodic cache warming
 | **CTR Pruning** | On Demand | Identify scenarios with < 1% click-through. |
 
 ---
-[⬅️ Back to Engine Main](../README.md)
+
+[🏠 Hub](../../../../../docs/HUB.md) | [🏠 Workers Main](../../README.md) | [🔝 Top](#-engine-workers-manager)

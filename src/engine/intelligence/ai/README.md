@@ -18,3 +18,7 @@ The AI sub-module provides the strategic brain of the engine, handling rule gene
 - **Non-Blocking Inference**: AI tasks must never impede the discovery fast-path.
 - **Continuous Learning**: Real-time feedback loops for strategy refinement.
 - **Global Consistency**: Ensures intelligence is synchronized across the cluster.
+
+---
+
+[🏠 Hub](../../../../docs/HUB.md) | [🏠 Intelligence Main](../README.md)

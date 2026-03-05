@@ -21,4 +21,5 @@ The Experiments module enables the recommendation engine to test new algorithms,
 | [**📊 Models**](./models/README.md) | Experiment and Variant data models. |
 
 ---
-[⬅️ Back to Project Root](../../README.md)
+
+[🏠 Hub](../../docs/HUB.md)

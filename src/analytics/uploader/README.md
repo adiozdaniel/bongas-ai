@@ -26,4 +26,5 @@ graph LR
 - **Bulkhead Isolation**: Ensures analytics traffic does not exhaust global HTTP connection pools.
 
 ---
-[⬅️ Back to Analytics Main](../README.md)
+
+[🏠 Hub](../../../docs/HUB.md)  | [📊  Back to Analytics Main](../README.md) |  [🔝 Top](#-analytics-uploader)

@@ -19,3 +19,7 @@ The Assets pillar manages the ML infrastructure, including model registries, loa
 - **Atomic Swapping**: Models are updated atomically without dropping inference requests.
 - **Infrastructure Integrity**: Strict validation of model artifacts before registration.
 - **Operational Visibility**: Real-time monitoring of model health and loader performance.
+
+---
+
+[🏠 Hub](../../../docs/HUB.md) | [⬅️ Back to ML](../README.md)

@@ -12,9 +12,10 @@ graph TD
     Group -->|Msg| Worker[Kafka Worker]
     Worker -->|Deserialize| activity[UserActivity]
     Worker -->|Push| Chan[Internal Channel]
-    
+
     Worker -.-> CB[Circuit Breaker]
 ```
 
 ---
-[⬅️ Back to Sources Main](../README.md)
+
+[🏠 Hub](../../../../docs/HUB.md) | [⬅️ Back to Recovery Main](../README.md)

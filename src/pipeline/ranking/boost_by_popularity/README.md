@@ -11,4 +11,5 @@ Standard weight-based boosting using global trending scores. Leverages SIMD-acce
 | `weight` | float | 1.0 | Strength of the popularity signal. |
 
 ---
-[⬅️ Back to Boost Category](../README.md)
+
+[🏠 Hub](../../../../docs/HUB.md) | [⬅️ Back to Boost Category](../README.md)

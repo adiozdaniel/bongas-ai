@@ -3,4 +3,5 @@
 Retrieves the most recently published items from the primary content store.
 
 ---
-[⬅️ Back to Fetch Category](../README.md)
+
+[🏠 Hub](../../../../docs/HUB.md) | [⬅️ Back to Fetch Category](../README.md)

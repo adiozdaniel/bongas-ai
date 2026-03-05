@@ -19,3 +19,7 @@ The Inference pillar is the latency-sensitive fast path of the Cortex. It handle
 - **Zero-Latency Target**: Optimized for sub-10ms model execution.
 - **Hardware Aware**: Leverages CUDA/CoreML acceleration where available.
 - **Stateless Inference**: Minimizes memory pressure through efficient buffer management.
+
+---
+
+[🏠 Hub](../../../docs/HUB.md) | [⬅️ Back to ML Training](../README.md)

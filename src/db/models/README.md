@@ -14,4 +14,5 @@ Internal data structures representing database entities. These models map direct
 | **Interaction** | `user_interactions` | Raw playback and reaction events. |
 
 ---
-[⬅️ Back to Database Main](../README.md)
+
+[🏠 Hub](../../../docs/HUB.md) | [📦 Back to Database Main](../README.md) | [🔝 Top](#-database-models)

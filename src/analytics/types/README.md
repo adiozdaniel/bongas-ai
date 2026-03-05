@@ -31,4 +31,5 @@ classDiagram
 - **Security Context**: Includes hardware and binary integrity metadata in every payload.
 
 ---
-[⬅️ Back to Analytics Main](../README.md)
+
+[🏠 Hub](../../../docs/HUB.md)  | [📊  Back to Analytics Main](../README.md) |  [🔝 Top](#-analytics-types)

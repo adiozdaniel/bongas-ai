@@ -13,4 +13,5 @@ This module contains the core models used to describe experiments, their variant
 - **`AllocationStrategy`**: Logic for distribution (e.g., Weighted, Multi-Armed Bandit).
 
 ---
-[⬅️ Back to Experiments Main](../README.md)
+
+[🏠 Hub](../../../docs/HUB.md) | [⬅️ Back to Experiments Main](../README.md)

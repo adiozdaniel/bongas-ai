@@ -43,4 +43,5 @@ let repo = ScenarioRepository::new(pool, metrics);
 ```
 
 ---
-[🏠 Back to Project Root](../../README.md)
+
+[🏠 Hub](../../docs/HUB.md) | [🔝 Top](#️-database-layer-module)

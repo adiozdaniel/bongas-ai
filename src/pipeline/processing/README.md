@@ -31,4 +31,5 @@ Processing stages represent the "Backstage" of the pipeline, where raw candidate
 | [**💳 Subscription**](./filter_by_subscription_tier/README.md) | Logic | Enforces content access based on user tier. |
 
 ---
+
 [🏠 Hub](../../../docs/HUB.md) | [🔝 Top](#-pipeline-processing-the-backstage)

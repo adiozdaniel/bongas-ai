@@ -31,4 +31,4 @@ The Pulse is powered by the **Resilience Middleware**, which ensures that monito
 
 ---
 
-[🏠 Hub](../../../../docs/HUB.md) | [🔝 Top](#-the-pulse-operations--observability)
+[🏠 Hub](../../../../docs/HUB.md) | [📡  Back to API Main](../README.md) | [🔝 Top](#-the-pulse-operations--observability)

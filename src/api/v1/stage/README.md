@@ -35,4 +35,4 @@ The frictionless feedback loop for "The Brain."
 
 ---
 
-[🏠 Hub](../../../../docs/HUB.md) | [🔝 Top](#-the-stage-public-discovery-gateway)
+[🏠 Hub](../../../../docs/HUB.md) | [📡  Back to API Main](../README.md) | [🔝 Top](#-the-stage-public-discovery-gateway)

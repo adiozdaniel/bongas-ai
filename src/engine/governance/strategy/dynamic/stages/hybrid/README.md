@@ -5,4 +5,5 @@
 Provides blended retrieval strategies for cold-start and engagement.
 
 ---
-[⬅️ Back to Stages Main](../README.md)
+
+[🏠 Hub](../../../../../../../docs/HUB.md) | [🌈 Dynamic Scenarios Main](../README.md) | [🔝 Top](#-dynamic-stages-hybrid)

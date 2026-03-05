@@ -5,4 +5,5 @@
 Orchestrates the lifecycle of model training, from data extraction to ONNX export. It manages the hand-off between the data platform and the inference engine.
 
 ---
-[⬅️ Back to ML Main](../README.md)
+
+[🏠 Hub](../../../../docs/HUB.md) | [⬅️ Back to ML Training](../README.md)

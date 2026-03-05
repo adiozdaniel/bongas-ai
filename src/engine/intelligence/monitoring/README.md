@@ -18,3 +18,7 @@ The Monitoring sub-module provides the real-time observability and health monito
 - **Zero-Touch Observability**: Monitoring that has minimal impact on the discovery path.
 - **Freshness First**: Ensures cache state remains consistent with source systems.
 - **Resilience Visibility**: Full observability into circuit breaker and bulkhead states.
+
+---
+
+[🏠 Hub](../../../../docs/HUB.md) | [🏠 Workers Main](../../README.md)

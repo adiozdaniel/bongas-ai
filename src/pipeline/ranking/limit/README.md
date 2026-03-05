@@ -3,4 +3,5 @@
 Trims the result set to a maximum number of items.
 
 ---
-[⬅️ Back to Sort Category](../README.md)
+
+[🏠 Hub](../../../../docs/HUB.md) | [⬅️ Back to Sort Category](../README.md)

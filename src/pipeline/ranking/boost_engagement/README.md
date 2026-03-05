@@ -11,4 +11,5 @@ Adjusts item scores based on historical interaction patterns (CTR, View Through 
 | `engagement_weight` | float | 1.5 | Multiplier for engagement signals. |
 
 ---
-[⬅️ Back to Boost Category](../README.md)
+
+[🏠 Hub](../../../../docs/HUB.md) | [⬅️ Back to Boost Category](../README.md)

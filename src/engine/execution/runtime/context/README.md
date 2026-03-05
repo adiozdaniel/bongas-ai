@@ -26,4 +26,5 @@ graph LR
 - **Persona Isolation**: Ensures maturity ratings and profile-specific filters are strictly enforced.
 
 ---
-[⬅️ Back to Engine Main](../README.md)
+
+[🏠 Hub](../../../../../docs/HUB.md) | [⚡ Runtime Main](../README.md) | [🔝 Top](#-engine-execution-context)

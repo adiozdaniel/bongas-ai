@@ -22,4 +22,5 @@ classDiagram
 ```
 
 ---
-[⬅️ Back to Pipeline Main](../README.md)
+
+[🏠 Hub](../../../docs/HUB.md) | [⬅️ Back to Pipeline Main](../README.md)

@@ -2,4 +2,6 @@
 
 > **The delivery domain — coordinating processed activity to downstream consumers.**
 
-[🏠 Hub](../../../docs/HUB.md) | [🏗️ Architecture](../../../docs/architecture/SYMPHONY.md)
+---
+
+[🏠 Hub](../../../docs/HUB.md) | [⬅️ Back to Ingestion Main](../README.md)

@@ -45,4 +45,4 @@ Router::new().nest("/recommendation", symphony).merge(pulse)
 
 ---
 
-[🏠 Hub](../../../../docs/HUB.md) | [🔝 Top](#-router-the-grand-composer)
+[🏠 Hub](../../../../docs/HUB.md) | [📡  Back to API Main](../README.md) | [🔝 Top](#-router-the-grand-composer)

@@ -26,4 +26,4 @@ The Pages module is the heart of the **Server-Driven UI (SDUI)** engine. It tran
 
 ---
 
-[🏠 Hub](../../../../docs/HUB.md) | [🔝 Top](#️-pages-smart-sdui-orchestration)
+[🏠 Hub](../../../../docs/HUB.md) | [🔐 Governance Main](../README.md) | [🔝 Top](#️-pages-smart-sdui-orchestration)

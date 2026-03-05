@@ -25,4 +25,5 @@ graph TD
 - **Fail-Fast**: Prevents invalid pipelines from ever entering the active engine memory.
 
 ---
-[⬅️ Back to Pipeline Main](../README.md)
+
+[🏠 Hub](../../../docs/HUB.md) | [⬅️ Back to Pipeline Main](../README.md)

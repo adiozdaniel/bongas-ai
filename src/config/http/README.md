@@ -32,4 +32,5 @@ graph TD
 - **Security Headers**: Standardized transport-level security settings.
 
 ---
-[⬅️ Back to Config Main](../README.md)
+
+[🏠 Hub](../../../docs/HUB.md) | [⚙️ Back to Config Main](../README.md) | [🔝 Top](#-configuration-http)

@@ -83,7 +83,7 @@ Bongas-AI uses a multi-stage SSE stream to deliver an "Instant-On" experience.
 | :--- | :---: | :--- |
 | `navigation` | 1 | Global main pages (Home, Movies, TV). |
 | `sub_navigation` | 2 | Contextual sub-pages ranked by user engagement. |
-| `manifest` | 3 | Metadata for the landing page (Expected rows, Trace ID). |
+| `manifest` | 3 | Metadata for the page (Expected rows, Device Batching config). |
 | `row` | 4+ | Individual content rows with SDUI metadata. |
 | `continuation` | Last | The URL to fetch the **next batch** of rows. |
 
@@ -92,8 +92,8 @@ Bongas-AI uses a multi-stage SSE stream to deliver an "Instant-On" experience.
 ## 🛡️ Resilience & The Shield
 
 - **Adaptive Rate Limiting**: Max 3 concurrent SSE connections per `visitor_id`.
+- **Ghost Execution**: Automatic server-side look-ahead for zero-latency scrolling.
 - **Fail-Over**: Automatic execution of `fallback_slug` on primary scenario failure.
-- **Maturity Safety**: Early-block logic ensures KFCB compliance.
 
 ---
 

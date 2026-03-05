@@ -3,4 +3,4 @@
 Filters items based on their video resolution or production value metrics.
 
 ---
-[⬅️ Back to Filter Category](../README.md)
+[🏠 Hub](../../../../docs/HUB.md) | [⬅️ Back to Filter Category](../README.md)

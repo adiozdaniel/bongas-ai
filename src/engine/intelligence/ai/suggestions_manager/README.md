@@ -16,4 +16,5 @@ graph TD
 ```
 
 ---
-[⬅️ Back to Engine Main](../README.md)
+
+[🏠 Hub](../../../../../docs/HUB.md) | [🏠 Ai Main](../README.md) | [🔝 Top](#-engine-suggestions-manager)

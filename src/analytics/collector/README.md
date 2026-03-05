@@ -31,4 +31,5 @@ sequenceDiagram
 - **Deduplication**: Automatically merges identical rapid-fire events to reduce payload size.
 
 ---
-[⬅️ Back to Analytics Main](../README.md)
+
+[🏠 Hub](../../../docs/HUB.md)  | [📊  Back to Analytics Main](../README.md) |  [🔝 Top](#-analytics-collector)

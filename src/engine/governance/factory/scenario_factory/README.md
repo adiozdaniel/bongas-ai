@@ -23,4 +23,5 @@ graph LR
 - **Dependency Resolution**: Wires required shared services into every executable stage.
 
 ---
-[⬅️ Back to Engine Main](../README.md)
+
+[🏠 Hub](../../../../../docs/HUB.md) | [🔐 Factory Main](../README.md) | [🔝 Top](#-engine-scenario-factory)

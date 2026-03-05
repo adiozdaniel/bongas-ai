@@ -41,4 +41,5 @@ graph TD
 ```
 
 ---
-[⬅️ Back to Project Root](../../README.md)
+
+[🏠 Hub](../../docs/HUB.md)

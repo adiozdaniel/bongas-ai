@@ -23,4 +23,5 @@ graph LR
 - **Consistency**: Ensures the "Continue Watching" row is always up-to-date.
 
 ---
-[⬅️ Back to Engine Main](../README.md)
+
+[🏠 Hub](../../../../../docs/HUB.md) | [🏠 Monitoring Main](../README.md) | [🔝 Top](#-engine-staleness-engine)

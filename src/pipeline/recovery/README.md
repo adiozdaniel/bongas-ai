@@ -4,7 +4,7 @@
 
 Recovery stages represent the "Stage" of the pipeline, where initial data is brought into the engine. These components are optimized for high-concurrency and resilient I/O, utilizing ClickHouse, Postgres, and Redis to fetch the raw material for our recommendation models.
 
-[🏠 Hub](../../docs/HUB.md) | [🏗️ Architecture](../../docs/architecture/SYMPHONY.md) | [📖 Pipeline Main](../README.md)
+[🏠 Hub](../../../docs/HUB.md) | [🏗️ Architecture](../../../docs/architecture/SYMPHONY.md) | [📖 Pipeline Main](../README.md)
 
 ---
 
@@ -32,4 +32,5 @@ Recovery stages represent the "Stage" of the pipeline, where initial data is bro
 | [**⏪ Recent Watches**](./fetch_recent_watches/README.md) | Retrieves the user's most recent activity history. | Redis |
 
 ---
-[🏠 Hub](../../docs/HUB.md) | [🔝 Top](#-pipeline-recovery-the-stage)
+
+[🏠 Hub](../../../docs/HUB.md) | [🔝 Top](#-pipeline-recovery-the-stage)

@@ -38,4 +38,5 @@ sequenceDiagram
 - **Fast Path**: Optimized state checks with minimal lock contention.
 
 ---
-[⬅️ Back to Circuit Breaker Main](../README.md)
+
+[🏠 Hub](../../../docs/HUB.md) | [🛡️ Back to Circuit Breaker Main](../README.md) | [🔝 Top](#-circuit-breaker-core-execution)

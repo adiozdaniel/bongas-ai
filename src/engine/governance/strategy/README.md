@@ -23,4 +23,5 @@ The Scenarios module defines the high-level strategies for delivering recommenda
 | [**🌈 Dynamic**](./dynamic/README.md) | JSONB pipeline execution and dynamic stage management. |
 
 ---
-[🏠 Back to Project Root](../../README.md)
+
+[🏠 Hub](../../../../docs/HUB.md) | [🔐 Governance Main](../README.md) | [🔝 Top](#-scenarios-recommendation-strategies)

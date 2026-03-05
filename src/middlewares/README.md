@@ -24,4 +24,5 @@ The middleware stack is executed in a layered "onion" pattern. External requests
 | [**🚨 Error Handling**](./unified_error/README.md) | Global error normalization and HTTP response mapping. |
 
 ---
-[🏠 Back to Project Root](../../README.md)
+
+[🏠 Hub](../../docs/HUB.md)

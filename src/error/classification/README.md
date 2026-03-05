@@ -25,4 +25,5 @@ graph TD
 ```
 
 ---
-[⬅️ Back to Error Main](../README.md)
+
+[🏠 Hub](../../../docs/HUB.md) | [⬅️ Back to Error Main Documentation](../README.md)

@@ -23,4 +23,5 @@ classDiagram
 ```
 
 ---
-[⬅️ Back to Ingestion Main](../README.md)
+
+[🏠 Hub](../../../docs/HUB.md) | [⬅️ Back to Ingestion Main](../README.md)

@@ -28,4 +28,5 @@ graph LR
 - **Snapshot Support**: Provides immutable snapshots of metrics for decision-making without blocking writers.
 
 ---
-[⬅️ Back to Circuit Breaker Main](../README.md)
+
+[🏠 Hub](../../../docs/HUB.md) | [🛡️ Back to Circuit Breaker Main](../README.md) | [🔝 Top](#-circuit-breaker-rolling-window)

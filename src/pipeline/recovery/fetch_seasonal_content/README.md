@@ -3,4 +3,5 @@
 Retrieves content curated for specific seasonal events or time-of-day windows.
 
 ---
-[⬅️ Back to Fetch Category](../README.md)
+
+[🏠 Hub](../../../../docs/HUB.md) | [⬅️ Back to Fetch Category](../README.md)

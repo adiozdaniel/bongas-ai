@@ -5,4 +5,5 @@
 Provides neural ranking and scoring using ONNX models.
 
 ---
-[⬅️ Back to Stages Main](../README.md)
+
+[🏠 Hub](../../../../../../../docs/HUB.md) | [🌈 Dynamic Scenarios Main](../README.md) | [🔝 Top](#-dynamic-stages-onnx-stages)

@@ -38,25 +38,33 @@ graph TD
 ## 🏛️ Functional Pillars
 
 ### [🎯 THE STAGE (Inference)](./inference/README.md)
+
 The latency-sensitive fast path for real-time model execution and feature retrieval.
+
 - **ONNX**: Real-time runtime with hardware acceleration.
 - **Embeddings**: High-performance vector resolution and lookups.
 - **Features**: Low-latency feature store fetching.
 
 ### [🏗️ THE BACKSTAGE (Training)](./training/README.md)
+
 The heavy-lifting domain for model refinement, feedback loops, and compute-intensive tasks.
+
 - **Online Learning**: Incremental model updates from real-time feedback.
 - **Orchestration**: Management of training and export pipelines.
 - **Workers**: Asynchronous heavy-compute worker orchestration.
 
 ### [📦 THE PULSE (Assets)](./assets/README.md)
+
 The ML infrastructure layer managing model lifecycles, health, and swapping.
+
 - **Registry**: Versioned model storage and deployment governance.
 - **Loader**: Hot-swapping logic and memory management.
 - **Utils**: Shared mathematical and data utilities.
 
 ### [🎼 THE CONDUCTOR (Coordination)](./coordination/README.md)
+
 The assembly point that wires the three pillars into a unified `DiscoveryCortex`.
 
 ---
-[🏠 Back to Project Root](../README.md)
+
+[🏠 Hub](../../docs/HUB.md) | [🏠 Back to Project Root](../README.md)

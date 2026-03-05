@@ -25,4 +25,5 @@ graph TD
 - **Feedback Loop**: Continuously validates the impact of approved suggestions.
 
 ---
-[⬅️ Back to Engine Main](../README.md)
+
+[🏠 Hub](../../../../../docs/HUB.md) | [🏠 Monitoring Main](../README.md)

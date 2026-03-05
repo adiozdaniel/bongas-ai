@@ -21,4 +21,5 @@ The Intelligence pillar provides the continuous feedback loops and AI-driven ins
 - **Self-Healing**: Automated maintenance routines for cache health.
 
 ---
-[🏠 Engine Root](../README.md)
+
+[🏠 Hub](../../../docs/HUB.md) | [🏠 Engine Root](../README.md) | [🔝 Top](#-the-pulse-intelligence-pillar)

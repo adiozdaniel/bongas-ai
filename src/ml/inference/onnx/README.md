@@ -5,4 +5,5 @@
 Wraps the ONNX Runtime for executing neural network models. It includes hardware-level optimizations (SIMD, CUDA) and resilience patterns (Circuit Breaker, Bulkhead) to ensure inference latency stays within strict bounds.
 
 ---
-[⬅️ Back to ML Main](../README.md)
+
+[🏠 Hub](../../../../docs/HUB.md) | [⬅️ Back to ML Training](../README.md)

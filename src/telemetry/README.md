@@ -27,4 +27,5 @@ The Telemetry module provides the foundation for observability in Bongas-AI. It 
 | [**🔍 Tracing**](./tracing/README.md) | Core tracing lifecycle and initialization. |
 
 ---
-[🏠 Back to Project Root](../../README.md)
+
+[🏠 Hub](../../docs/HUB.md) | [🏠 Back to Project Root](../../README.md)

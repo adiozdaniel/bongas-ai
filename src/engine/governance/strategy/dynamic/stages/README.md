@@ -31,4 +31,5 @@ The Dynamic Stages module provides a library of standardized recommendation comp
 | [**🧠 ONNX Stages**](./onnx_stages/README.md) | Neural ranking and scoring using ONNX-based models. |
 
 ---
-[⬅️ Back to Dynamic Main](../README.md)
+
+[🏠 Hub](../../../../../../docs/HUB.md) | [🌈 Dynamic Scenarios Main](../README.md)

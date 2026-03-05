@@ -23,4 +23,5 @@ graph TD
 - **Composite Support**: Use `CompositeObserver` to broadcast events to multiple listeners.
 
 ---
-[⬅️ Back to Circuit Breaker Main](../README.md)
+
+[🏠 Hub](../../../docs/HUB.md) | [🛡️ Back to Circuit Breaker Main](../README.md) | [🔝 Top](#-circuit-breaker-observer)

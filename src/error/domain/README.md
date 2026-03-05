@@ -16,4 +16,5 @@ Domain errors are grouped into functional categories. Each category implements t
 | **Security** | License, Binary integrity, and Hardware validation. |
 
 ---
-[⬅️ Back to Error Main](../README.md)
+
+[🏠 Hub](../../../docs/HUB.md) | [⬅️ Back to Error Main Documentation](../README.md)

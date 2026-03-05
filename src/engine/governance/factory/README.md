@@ -18,3 +18,7 @@ The Factory sub-module manages the dynamic lifecycle of recommendation pipelines
 - **Lifecycle Governance**: Atomic reloads and state management for discovery strategies.
 - **Dynamic Assembly**: Compiled pipeline logic from high-level scenario definitions.
 - **Safety First**: Validates all scenario definitions before activation.
+
+---
+
+[🏠 Hub](../../../../docs/HUB.md) | [🔐 Governance Main](../README.md) | [🔝 Top](#-factory-discovery-pipeline-lifecycle)

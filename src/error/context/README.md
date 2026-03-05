@@ -14,4 +14,5 @@ Error context allows the system to attach structured metadata to an error as it 
 - **`metadata`**: Arbitrary key-value pairs for domain-specific debugging data.
 
 ---
-[⬅️ Back to Error Main](../README.md)
+
+[🏠 Hub](../../../docs/HUB.md) | [⬅️ Back to Error Main Documentation](../README.md)

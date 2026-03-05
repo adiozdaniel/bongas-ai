@@ -23,4 +23,5 @@ graph LR
 - **Strict Mapping**: Ensures a 1:1 relationship between type strings and stage traits.
 
 ---
-[⬅️ Back to Pipeline Main](../README.md)
+
+[🏠 Hub](../../../docs/HUB.md) | [⬅️ Back to Pipeline Main](../README.md)

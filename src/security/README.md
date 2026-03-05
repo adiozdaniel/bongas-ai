@@ -29,4 +29,5 @@ The Security module provides an 8-layer validation stack orchestrated by the `Se
 | [**✅ Validator**](./validator/README.md) | High-level security validation interfaces. |
 
 ---
-[🏠 Back to Project Root](../../README.md)
+
+[🏠 Hub](../../docs/HUB.md) | [🏠 Back to Project Root](../../README.md)

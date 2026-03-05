@@ -22,4 +22,5 @@ graph LR
 - **Air-Gap Support**: Gracefully falls back to local strategies if the network is unavailable.
 
 ---
-[⬅️ Back to Engine Main](../README.md)
+
+[🏠 Hub](../../../../../docs/HUB.md) | [🏠 Ai Main](../README.md) | [🔝 Top](#-engine-hive-mind)

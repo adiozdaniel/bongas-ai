@@ -57,13 +57,20 @@ graph TD
 To ensure "Netflix-Grade" reliability, Bongas-AI implements three layers of protection:
 
 ### 1. Fallback Scenarios (Fail-Over)
+
 Admins can configure a `fallback_slug` for every row. If the primary (personalized) scenario fails, the engine automatically swaps it for a generic, high-performance alternative (e.g., "Trending").
 
 ### 2. Adaptive Rate Limiting
+
 The SSE pool is protected by a visitor-level concurrency tracker. Each `visitor_id` is limited to **3 concurrent connections**, preventing device malfunctions or bot attacks from exhausting server resources.
 
-### 3. Predictive Warming (Scroll Depth)
-The `manifest` event contains a `prewarm_scenarios` hint. As the user scrolls, the client can call the `/prewarm` endpoint to trigger background execution for future rows, ensuring they are already cached when the user reaches them.
+### 3. Server-Side Look-Ahead (Ghost Execution)
+
+Instead of relying on the client to trigger pre-warming, the engine performs **Anticipatory Execution**. When a user requests a batch of rows, the orchestrator automatically spawns a background "Ghost" task to execute the *next* batch of rows.
+
+- **Zero-Latency Fetch**: Results are stored in a high-speed Redis "Ghost Cache" with a 5-minute TTL.
+- **Immediate Response**: When the user scrolls and the client requests the next batch, the server streams the pre-computed results instantly.
+- **Device-Awareness**: The look-ahead depth is dynamically adjusted based on the user's `device_type` (e.g., deeper for TV, shallower for Mobile).
 
 ---
 

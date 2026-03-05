@@ -20,4 +20,5 @@ graph LR
 ```
 
 ---
-[⬅️ Back to Engine Main](../README.md)
+
+[🏠 Hub](../../../docs/HUB.md) | [🧠 Engine Root](../README.md) | [🔝 Top](#️-engine-config)

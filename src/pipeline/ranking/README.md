@@ -31,4 +31,5 @@ Ranking stages represent the "Pulse" of the pipeline, where mathematical models 
 | [**🎯 Relevance**](./sort_by_relevance/README.md) | Logic | Secondary sort for fine-grained metadata alignment. |
 
 ---
+
 [🏠 Hub](../../../docs/HUB.md) | [🔝 Top](#-pipeline-ranking-the-pulse)

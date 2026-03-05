@@ -24,4 +24,5 @@ graph TD
 - **High Performance**: Evaluates complex rule-sets in < 1ms using pre-compiled predicates.
 
 ---
-[⬅️ Back to Engine Main](../README.md)
+
+[🏠 Hub](../../../../../docs/HUB.md) | [🎬 Strategies Main](../README.md) | [🔝 Top](#-engine-strategy-resolver)

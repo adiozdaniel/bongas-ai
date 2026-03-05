@@ -29,4 +29,5 @@ graph TD
 - **State Assembly**: Coordinates the wiring between the Coordinator and its Managers.
 
 ---
-[⬅️ Back to Engine Main](../README.md)
+
+[🏠 Hub](../../../../../docs/HUB.md) | [⚡ Runtime Main](../README.md) | [🔝 Top](#-engine-runtime)

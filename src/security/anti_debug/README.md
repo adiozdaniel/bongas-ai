@@ -5,4 +5,5 @@
 Protects the application from reverse engineering by detecting the presence of debuggers, virtual machines, and binary analysis frameworks (e.g., GDB, Frida, OllyDbg).
 
 ---
-[⬅️ Back to Security Main](../README.md)
+
+[🏠 Hub](../../../docs/HUB.md) | [⬅️ Back to Security Main](../README.md)

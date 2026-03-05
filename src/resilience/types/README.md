@@ -5,4 +5,5 @@
 Contains the foundational data structures and enums used across the resilience module, including event types, state transitions, and snapshot models.
 
 ---
-[⬅️ Back to Resilience Main](../README.md)
+
+[🏠 Hub](../../../docs/HUB.md) | [⬅️ Back to Resilience Main](../README.md)

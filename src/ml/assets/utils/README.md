@@ -5,4 +5,5 @@
 A collection of high-performance utility functions, including SIMD-accelerated vector operations, normalization routines, and serialization helpers.
 
 ---
-[⬅️ Back to ML Main](../README.md)
+
+[🏠 Hub](../../../../docs/HUB.md) | [⬅️ Back to Assets](../README.md)

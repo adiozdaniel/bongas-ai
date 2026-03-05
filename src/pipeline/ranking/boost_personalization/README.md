@@ -11,4 +11,5 @@ The core personalization stage. It calculates a dynamic boost based on the cosin
 | `sensitivity` | float | 1.0 | Controls the "steepness" of the personalization curve. |
 
 ---
-[⬅️ Back to Boost Category](../README.md)
+
+[🏠 Hub](../../../../docs/HUB.md) | [⬅️ Back to Boost Category](../README.md)
