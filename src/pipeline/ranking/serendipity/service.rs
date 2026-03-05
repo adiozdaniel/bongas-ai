@@ -63,13 +63,14 @@ impl PipelineStage for SerendipityStage {
             return Ok(input);
         }
 
-        let user_id = match context.user_id {
+        let _user_id = match context.user_id {
             Some(id) => id,
             None => return Ok(input), // No user context, skip serendipity
         };
 
         // Get user's genre preferences
-        let user_features = context.item_feature_service.get_user_features(user_id).await?;
+        let profile_id = context.profile_id.as_deref().unwrap_or("adult_default");
+        let user_features = context.item_feature_service.get_profile_features(profile_id).await?;
 
         let genre_affinity: HashMap<String, f32> = user_features.as_ref()
             .and_then(|u| u.genre_affinity.clone())

@@ -76,7 +76,8 @@ impl PipelineStage for ONNXInferenceStage {
         let mut results = input.clone();
 
         // 2. Resolve User Features (Cached in context)
-        let user_features = context.feature_store.get_user_features(context.user_id.unwrap_or(0), params.user_dim).await?;
+        let profile_id = context.profile_id.as_deref().unwrap_or("adult_default");
+        let user_features = context.feature_store.get_profile_features(profile_id, params.user_dim).await?;
 
         // 3. Batch Inference Loop
         for chunk_slice in input.chunks(params.batch_size) {

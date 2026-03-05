@@ -41,13 +41,14 @@ impl PipelineStage for AffinityFreshnessStage {
     ) -> Result<Vec<ScoredItem>> {
         let params: Params = serde_json::from_value(params.clone())?;
 
-        let user_id = match context.user_id {
+        let _user_id = match context.user_id {
             Some(id) => id,
             None => return Ok(input),
         };
 
         // Fetch user preferences for affinity matching
-        let user_prefs = context.item_feature_service.get_user_features(user_id).await?;
+        let profile_id = context.profile_id.as_deref().unwrap_or("adult_default");
+        let user_prefs = context.item_feature_service.get_profile_features(profile_id).await?;
         let user_prefs = match user_prefs {
             Some(p) => p,
             None => return Ok(input),

@@ -68,8 +68,9 @@ impl PipelineStage for MLInferenceTwoTowerStage {
         );
 
         // Get user embedding from features
+        let profile_id = context.profile_id.as_deref().unwrap_or("adult_default");
         let user_features = context.feature_store
-            .get_user_features(user_id, 3) // Assuming feature_dim is 3 for this model
+            .get_profile_features(profile_id, 3) // Assuming feature_dim is 3 for this model
             .await?;
 
         // Score all input items using Two-Tower dot product

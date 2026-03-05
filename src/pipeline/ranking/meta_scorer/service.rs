@@ -62,7 +62,8 @@ impl PipelineStage for MetaScorerStage {
             // Get features for this batch
             let item_ids: Vec<i32> = chunk.iter().map(|i| i.item_id).collect();
             let item_features = context.feature_store.get_item_features(&item_ids, 128).await?;
-            let user_features = context.feature_store.get_user_features(context.user_id.unwrap_or(0), 128).await?;
+        let profile_id = context.profile_id.as_deref().unwrap_or("adult_default");
+        let user_features = context.feature_store.get_profile_features(profile_id, 128).await?;
 
             // Prepare tensors
             let mut user_batch = Vec::with_capacity(chunk.len());

@@ -113,11 +113,12 @@ impl PipelineStage for BoostPersonalizationStage {
 impl BoostPersonalizationStage {
     async fn compute_fallback_scores(
         context: &ExecutionContext,
-        user_id: i32,
+        _user_id: i32,
         item_ids: &[i32],
     ) -> Result<HashMap<i32, f32>> {
         // Get user's genre preferences
-        let user = context.item_feature_service.get_user_features(user_id).await?;
+        let profile_id = context.profile_id.as_deref().unwrap_or("adult_default");
+        let user = context.item_feature_service.get_profile_features(profile_id).await?;
 
         let genre_affinity: HashMap<String, f32> = user
             .and_then(|u| u.genre_affinity)

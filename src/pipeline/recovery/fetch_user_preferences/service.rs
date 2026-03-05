@@ -63,7 +63,8 @@ impl PipelineStage for FetchUserPreferencesStage {
         };
 
         // Get user's genre preferences
-        let user_features = context.item_feature_service.get_user_features(user_id).await?;
+        let profile_id = context.profile_id.as_deref().unwrap_or("adult_default");
+        let user_features = context.item_feature_service.get_profile_features(profile_id).await?;
 
         let genre_affinity: Vec<(String, f32)> = user_features
             .and_then(|p| p.genre_affinity)
