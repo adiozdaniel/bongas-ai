@@ -103,6 +103,7 @@ impl DiscoverySymphony {
         let scenario_repo = Arc::new(ScenarioRepository::new(resilient_pool.clone(), resilience_metrics.clone()));
         let layout_repo = Arc::new(PageLayoutRepository::new(resilient_pool.clone(), resilience_metrics.clone()));
         let discovery_repo = Arc::new(DiscoveryConfigRepository::new(resilient_pool.clone(), resilience_metrics.clone()));
+        let interaction_repo = Arc::new(InteractionRepository::new(resilient_pool.clone(), resilience_metrics.clone()));
 
         // ─── 3. CORTEX & SECURITY ────────────────────────────────────────────
         let security = SecurityManager::new(
@@ -185,6 +186,7 @@ impl DiscoverySymphony {
             execution_manager.clone(),
             feature_repo,
             cache_repo,
+            interaction_repo.clone(),
             circuit_breaker_registry.clone(),
             warmer.clone(),
         ));
@@ -205,11 +207,11 @@ impl DiscoverySymphony {
             100, // max scenarios
         ));
 
-        let interaction_repo = Arc::new(InteractionRepository::new(resilient_pool.clone(), resilience_metrics.clone()));
         let pages = Arc::new(PagesManager::new(
             layout_repo,
             interaction_repo.clone(),
             feature_store.clone(),
+            scenarios.clone(),
             100, // cache size
         ));
 

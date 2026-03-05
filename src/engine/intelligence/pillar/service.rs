@@ -7,6 +7,7 @@ use crate::engine::intelligence::monitoring::analytics_sidecar::service::Analyti
 use crate::engine::intelligence::monitoring::staleness_engine::service::StalenessEngine;
 use crate::engine::intelligence::workers::workers_manager::service::WorkersManager;
 use crate::engine::intelligence::ai::simulator::service::SafetySimulator;
+use crate::engine::intelligence::identity::service::IdentityStitcher;
 
 pub struct IntelligencePillar {
     pub suggestions: Arc<SuggestionsManager>,
@@ -15,6 +16,7 @@ pub struct IntelligencePillar {
     pub staleness: Arc<StalenessEngine>,
     pub workers: Arc<WorkersManager>,
     pub simulator: Arc<SafetySimulator>,
+    pub identity: Arc<IdentityStitcher>,
 }
 
 impl IntelligencePillar {
@@ -32,6 +34,7 @@ impl IntelligencePillar {
             staleness,
             workers,
             simulator: Arc::new(SafetySimulator::new()),
+            identity: Arc::new(IdentityStitcher::new()),
         }
     }
 }

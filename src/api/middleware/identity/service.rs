@@ -5,6 +5,7 @@
 //! 2. Generate deterministic Device_Hash for anonymous tracking.
 //! 3. Manage transparent Visitor_ID via cookies (Zero-Touch).
 //! 4. Inject IdentityContext into request extensions.
+//! 5. Reactive Identity Stitching (Anonymous -> Authenticated).
 
 use axum::{
     extract::Request,
@@ -16,6 +17,8 @@ use axum::{
 use sha2::{Sha256, Digest};
 use uuid::Uuid;
 use tracing::debug;
+use std::sync::Arc;
+use crate::engine::coordination::service::BongasEngine;
 
 /// Contextual identity information extracted from the request.
 #[derive(Debug, Clone, serde::Serialize)]
@@ -25,10 +28,15 @@ pub struct IdentityContext {
     pub device_type: String, // 'mobile', 'tv', 'web', 'tablet', 'all'
     pub ip_address: String,
     pub user_agent: String,
+    pub profile_id: Option<String>,
 }
 
 /// Middleware to extract and manage identity context.
-pub async fn identity_middleware(mut req: Request<Body>, next: Next) -> Response {
+pub async fn identity_middleware(
+    mut req: Request<Body>, 
+    next: Next,
+    engine: Arc<BongasEngine>,
+) -> Response {
     // 1. Extract IP Address
     let ip = req.extensions()
         .get::<axum::extract::ConnectInfo<std::net::SocketAddr>>()
@@ -88,21 +96,53 @@ pub async fn identity_middleware(mut req: Request<Body>, next: Next) -> Response
             Uuid::new_v4().to_string()
         });
 
+    // 5. Extract Profile ID (Reactive Detection)
+    let profile_id = req.headers()
+        .get("x-profile-id")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string());
+
+    // 6. Reactive Stitching Detection
+    if let Some(ref pid) = profile_id {
+        // Extract user_id from headers (usually set by an upstream auth gateway or JWT middleware)
+        let user_id = req.headers()
+            .get("x-user-id")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|s| s.parse::<i32>().ok())
+            .unwrap_or(0);
+
+        if user_id != 0 {
+            // Trigger reactive stitch (Redis-guarded inside service)
+            let _ = engine.intelligence.identity.reactive_stitch(
+                engine.clone(), 
+                &visitor_id, 
+                user_id, 
+                pid
+            ).await;
+        }
+    }
+
     let identity = IdentityContext {
         visitor_id: visitor_id.clone(),
         device_hash,
         device_type,
         ip_address: ip,
         user_agent: ua,
+        profile_id,
     };
 
-    // 5. Inject IdentityContext into extensions
-    debug!(visitor_id = %visitor_id, device_hash = %identity.device_hash, "Identity context established");
+    // 7. Inject IdentityContext into extensions
+    debug!(
+        visitor_id = %visitor_id, 
+        device_hash = %identity.device_hash, 
+        profile_id = ?identity.profile_id,
+        "Identity context established"
+    );
     req.extensions_mut().insert(identity);
 
     let mut response = next.run(req).await;
 
-    // 6. Set-Cookie if it's a new visitor (Zero-Touch Persistence)
+    // 8. Set-Cookie if it's a new visitor (Zero-Touch Persistence)
     if is_new_visitor {
         let cookie_val = format!("visitor_id={}; Path=/; HttpOnly; SameSite=Lax; Max-Age=31536000", visitor_id);
         if let Ok(value) = header::HeaderValue::from_str(&cookie_val) {

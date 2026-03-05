@@ -11,6 +11,7 @@ use crate::db::ItemFeatureService;
 use crate::ml::inference::features::service::FeatureStore;
 use crate::db::repositories::feature_repository::service::FeatureRepository;
 use crate::db::repositories::cache_repository::service::CacheRepository;
+use crate::db::repositories::interaction_repository::service::InteractionRepository;
 use crate::circuit_breaker::CircuitBreakerRegistry;
 
 /// ⚡ THE STAGE: High-performance discovery execution.
@@ -25,6 +26,7 @@ pub struct ExecutionPillar {
     pub feature_store: Arc<FeatureStore>,
     pub feature_repo: Arc<FeatureRepository>,
     pub cache_repo: Arc<CacheRepository>,
+    pub interaction_repo: Arc<InteractionRepository>,
     pub circuit_breaker_registry: Arc<CircuitBreakerRegistry>,
     pub warmer: Arc<PredictiveWarmer>,
 }
@@ -35,6 +37,7 @@ impl ExecutionPillar {
         manager: Arc<ExecutionManager>,
         feature_repo: Arc<FeatureRepository>,
         cache_repo: Arc<CacheRepository>,
+        interaction_repo: Arc<InteractionRepository>,
         circuit_breaker_registry: Arc<CircuitBreakerRegistry>,
         warmer: Arc<PredictiveWarmer>,
     ) -> Self {
@@ -49,6 +52,7 @@ impl ExecutionPillar {
             manager, 
             feature_repo,
             cache_repo,
+            interaction_repo,
             circuit_breaker_registry,
             warmer,
         }
