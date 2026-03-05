@@ -80,6 +80,18 @@ pub async fn genesis(
     let initial_batch: Vec<PageCompositionItem> = composition.iter().take(batch_size).cloned().collect();
     let total_count = composition.len();
 
+    // Trigger Ghost Pre-warm for the NEXT batch
+    if total_count > batch_size {
+        engine.clone().ghost_prewarm(
+            user_id,
+            landing_slug.clone(),
+            batch_size,
+            config.continuation_batch_size as usize,
+            config.ghost_ttl_seconds as usize,
+            serde_json::to_value(&cp_base).unwrap_or_default(),
+        );
+    }
+
     // 3. Assemble Genesis Stream
     let nav_event = Event::default()
         .event("navigation")
@@ -139,7 +151,7 @@ pub async fn genesis(
         .chain(stream)
         .chain(stream::iter(end_events));
 
-    Sse::new(full_stream).keep_alive(KeepAlive::default())
+    Sse::new(full_stream.boxed()).keep_alive(KeepAlive::default())
 }
 
 // ─── Page Orchestrator (Paginated) ─────────────────────────────────────────
@@ -176,8 +188,48 @@ pub async fn get_page_recommendations(
     let config = engine.governance.get_discovery_config(cp_base.device_type.as_deref()).await;
     let offset = page_params.offset.unwrap_or(0);
     let batch_size = page_params.batch.unwrap_or(config.continuation_batch_size as usize);
+    let cache_key = format!("ghost:user_{:?}:page_{}:offset_{}", user_id, page_slug, offset);
 
-    // 1. Resolve Layout
+    // 1. Try Ghost Cache first
+    if let Ok(Some(results)) = engine.cache.get::<Vec<serde_json::Value>>(&cache_key).await {
+        if !results.is_empty() {
+            let total_rows_est = offset + batch_size + 10; // Estimated
+            let manifest = DiscoveryManifest {
+                total_rows: total_rows_est,
+                batch_size: batch_size as i32,
+                prewarming_active: true,
+                request_id: rid.clone(),
+            };
+            
+            let continuation = ContinuationEvent {
+                next_url: format!("/api/v1/recommendation/page/{}?offset={}", page_slug, offset + batch_size),
+                next_offset: offset + batch_size,
+                next_batch: config.continuation_batch_size,
+            };
+
+            // Trigger NEXT ghost pre-warm immediately
+            engine.clone().ghost_prewarm(
+                user_id,
+                page_slug.clone(),
+                offset + batch_size,
+                config.continuation_batch_size as usize,
+                config.ghost_ttl_seconds as usize,
+                serde_json::to_value(&cp_base).unwrap_or_default(),
+            );
+
+            let stream = stream::iter(results).map(|r| {
+                Ok(Event::default().event("row").json_data(&r).unwrap_or_else(|_| Event::default().comment("serial_error")))
+            });
+
+            let full_stream = stream::once(async move { Ok(Event::default().event("manifest").json_data(&manifest).unwrap()) })
+                .chain(stream)
+                .chain(stream::once(async move { Ok(Event::default().event("continuation").json_data(&continuation).unwrap()) }));
+
+            return Sse::new(full_stream.boxed()).keep_alive(KeepAlive::default());
+        }
+    }
+
+    // 2. Fallback to Live Execution
     let layout_res = engine.governance.orchestration.get_layout_contextual(
         &page_slug, 
         cp_base.device_type.as_deref(), 
@@ -190,6 +242,18 @@ pub async fn get_page_recommendations(
         _ => vec![]
     };
     let total_count = composition.len();
+
+    // Trigger NEXT ghost pre-warm
+    if total_count > offset + batch_size {
+        engine.clone().ghost_prewarm(
+            user_id,
+            page_slug.clone(),
+            offset + batch_size,
+            config.continuation_batch_size as usize,
+            config.ghost_ttl_seconds as usize,
+            serde_json::to_value(&cp_base).unwrap_or_default(),
+        );
+    }
 
     // Slice batch
     let batch: Vec<PageCompositionItem> = composition.into_iter()
@@ -237,7 +301,7 @@ pub async fn get_page_recommendations(
         .chain(stream)
         .chain(stream::iter(end_events));
 
-    Sse::new(full_stream).keep_alive(KeepAlive::default())
+    Sse::new(full_stream.boxed()).keep_alive(KeepAlive::default())
 }
 
 // ─── Scenario Detail (JSON) ────────────────────────────────────────────────
