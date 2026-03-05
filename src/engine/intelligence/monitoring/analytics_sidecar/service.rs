@@ -9,9 +9,23 @@ use tokio::time::{interval, Duration};
 use tracing::{info, warn, error, debug};
 use anyhow::{Result, Context};
 use clickhouse::Client as ClickHouseClient;
+use tokio::sync::Mutex as TokioMutex;
 
 use crate::engine::coordination::service::BongasEngine;
 use crate::db::ResilientPool;
+
+/// High-velocity event structure for ClickHouse.
+#[derive(Debug, Clone, clickhouse::Row, serde::Serialize)]
+pub struct UserEvent {
+    pub user_id: i32,
+    pub profile_id: String,
+    pub item_id: i32,
+    pub interaction_type: String,
+    pub scenario_slug: String,
+    pub device_type: String,
+    pub watch_duration_seconds: i32,
+    pub created_at: u64,
+}
 
 /// The sidecar that gives the binary "eyes" on its own performance.
 pub struct AnalyticsSidecar {
@@ -21,6 +35,9 @@ pub struct AnalyticsSidecar {
     pool: Arc<ResilientPool>,
     check_interval: Duration,
     shutdown_rx: tokio::sync::broadcast::Receiver<()>,
+    
+    /// Internal high-velocity event buffer
+    event_buffer: TokioMutex<Vec<UserEvent>>,
 }
 
 impl AnalyticsSidecar {
@@ -35,7 +52,48 @@ impl AnalyticsSidecar {
             pool,
             check_interval: Duration::from_secs(3600), // Run hourly
             shutdown_rx,
+            event_buffer: TokioMutex::new(Vec::with_capacity(1000)),
         }
+    }
+
+    /// Record an event into the asynchronous buffer.
+    pub async fn record_event(&self, event: UserEvent) {
+        let mut buffer = self.event_buffer.lock().await;
+        buffer.push(event);
+        
+        // Immediate flush if buffer is getting large
+        if buffer.len() >= 1000 {
+            drop(buffer);
+            let _ = self.flush_events().await;
+        }
+    }
+
+    /// Flush all buffered events to ClickHouse in a single batch.
+    pub async fn flush_events(&self) -> Result<()> {
+        let mut buffer = self.event_buffer.lock().await;
+        if buffer.is_empty() {
+            return Ok(());
+        }
+
+        let events_to_flush = std::mem::replace(&mut *buffer, Vec::with_capacity(1000));
+        drop(buffer);
+
+        let count = events_to_flush.len();
+        
+        // Execute batch insert
+        let mut insert = self.clickhouse.insert::<UserEvent>("user_events").await?;
+        for event in events_to_flush {
+            insert.write(&event).await?;
+        }
+        insert.end().await?;
+
+        debug!(count, "Successfully flushed batch to ClickHouse");
+        Ok(())
+    }
+
+    /// Accessor for the ClickHouse client.
+    pub fn clickhouse_client(&self) -> Option<ClickHouseClient> {
+        Some(self.clickhouse.clone())
     }
 
     /// Set the engine reference (must be called after BongasEngine is created).
@@ -46,20 +104,27 @@ impl AnalyticsSidecar {
 
     /// Start the sidecar background loop.
     pub async fn start(self: Arc<Self>) {
-        let mut ticker = interval(self.check_interval);
+        let mut analysis_ticker = interval(self.check_interval);
+        let mut flush_ticker = interval(Duration::from_secs(10)); // Flush every 10s
         let mut shutdown_rx = self.shutdown_rx.resubscribe();
         
         info!("Analytics Sidecar started (Self-Awareness: ON)");
 
         loop {
             tokio::select! {
-                _ = ticker.tick() => {
+                _ = analysis_ticker.tick() => {
                     if let Err(e) = self.run_analysis_cycle().await {
                         error!(error = %e, "Analytics sidecar cycle failed");
                     }
                 }
+                _ = flush_ticker.tick() => {
+                    if let Err(e) = self.flush_events().await {
+                        error!(error = %e, "Failed to flush analytics events to ClickHouse");
+                    }
+                }
                 _ = shutdown_rx.recv() => {
                     info!("Analytics Sidecar shutting down...");
+                    let _ = self.flush_events().await; // Final flush
                     break;
                 }
             }
@@ -116,7 +181,7 @@ impl AnalyticsSidecar {
     async fn get_catalog_blindness(&self, total_active_items: i64) -> Result<f64> {
         let query = format!(
             "SELECT (1 - (count(DISTINCT item_id) / {})) as blindness \
-             FROM user_interactions \
+             FROM user_events \
              WHERE created_at > (toUnixTimestamp(now()) - 86400) \
                AND interaction_type = 'impression'",
             total_active_items.max(1)
@@ -132,7 +197,7 @@ impl AnalyticsSidecar {
     async fn get_user_churn(&self) -> Result<Vec<i32>> {
         let query = r#"
             SELECT user_id
-            FROM user_interactions
+            FROM user_events
             WHERE created_at > (toUnixTimestamp(now()) - 604800)
             GROUP BY user_id
             HAVING (avgIf(watch_duration_seconds, created_at > (toUnixTimestamp(now()) - 86400)) < 

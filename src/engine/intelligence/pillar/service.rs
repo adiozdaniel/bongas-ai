@@ -9,6 +9,8 @@ use crate::engine::intelligence::workers::workers_manager::service::WorkersManag
 use crate::engine::intelligence::ai::simulator::service::SafetySimulator;
 use crate::engine::intelligence::identity::service::IdentityStitcher;
 
+use crate::engine::intelligence::monitoring::analytics_sidecar::service::UserEvent;
+
 pub struct IntelligencePillar {
     pub suggestions: Arc<SuggestionsManager>,
     pub hive_mind: Arc<HiveMindConnector>,
@@ -36,5 +38,10 @@ impl IntelligencePillar {
             simulator: Arc::new(SafetySimulator::new()),
             identity: Arc::new(IdentityStitcher::new()),
         }
+    }
+
+    /// Global telemetry entry point: Record an event asynchronously.
+    pub async fn record_event(&self, event: UserEvent) {
+        self.monitoring.record_event(event).await;
     }
 }
