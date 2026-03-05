@@ -180,13 +180,14 @@ impl InteractionRepository {
     }
 
     /// Get scenario engagement scores for a specific identity (visitor or user).
+    /// Get scenario engagement scores for a specific identity (visitor or profile).
     pub async fn get_scenario_engagement_scores(
         &self,
-        user_id: Option<i32>,
+        profile_id: Option<&str>,
         visitor_id: Option<&str>
     ) -> AppResult<HashMap<String, f32>> {
         let vid = visitor_id.map(|s| s.to_string());
-        let uid = user_id.unwrap_or(0);
+        let pid = profile_id.map(|s| s.to_string());
 
         self.pool.execute(move |pool| async move {
             let rows: Vec<(String, f32)> = sqlx::query_as(
@@ -194,13 +195,13 @@ impl InteractionRepository {
                 SELECT scenario_slug, 
                        (COUNT(*) * 1.0 + SUM(CASE WHEN interaction_type = 'click' THEN 2.0 ELSE 0.0 END)) as score
                 FROM user_interactions
-                WHERE (user_id = $1 AND $1 != 0) OR (visitor_id = $2 AND $2 IS NOT NULL)
+                WHERE (profile_id = $1 AND $1 IS NOT NULL) OR (visitor_id = $2 AND $2 IS NOT NULL)
                 AND created_at > NOW() - INTERVAL '7 days'
                 AND scenario_slug IS NOT NULL
                 GROUP BY scenario_slug
                 "#
             )
-            .bind(uid)
+            .bind(pid)
             .bind(vid)
             .fetch_all(&pool)
             .await?;
@@ -208,6 +209,32 @@ impl InteractionRepository {
             Ok(rows.into_iter().collect())
         }).await.map_err(|e| AppError::Postgres(PostgresError::Query {
             message: format!("Failed to fetch scenario engagement scores: {}", e),
+            source: None,
+        }))
+    }
+
+    /// Stitch anonymous interactions (by visitor_id) to a persistent user_id and profile_id.
+    pub async fn stitch_identity(&self, visitor_id: &str, user_id: i32, profile_id: &str) -> AppResult<u64> {
+        let vid = visitor_id.to_string();
+        let pid = profile_id.to_string();
+        
+        self.pool.execute(move |pool| async move {
+            let res = sqlx::query(
+                r#"
+                UPDATE user_interactions 
+                SET user_id = $1, profile_id = $2 
+                WHERE visitor_id = $3 AND (user_id = 0 OR user_id IS NULL)
+                "#
+            )
+            .bind(user_id)
+            .bind(pid)
+            .bind(vid)
+            .execute(&pool)
+            .await?;
+            
+            Ok(res.rows_affected())
+        }).await.map_err(|e| AppError::Postgres(PostgresError::Query {
+            message: format!("Failed to stitch interactions: {}", e),
             source: None,
         }))
     }

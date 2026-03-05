@@ -8,7 +8,7 @@
 use std::sync::Arc;
 
 use crate::resilience::ResilienceMetricsCollector;
-use crate::db::{ItemFeatures, UserFeatures, VisitorFeatures};
+use crate::db::{ItemFeatures, ProfileFeatures, VisitorFeatures};
 use crate::db::ResilientPool;
 use crate::error::{AppError, AppResult, PostgresError};
 
@@ -30,18 +30,20 @@ impl FeatureRepository {
         }
     }
 
-    /// Get user features by user ID.
+    /// Get profile features by profile ID.
     ///
     /// Executes through circuit breaker with bulkhead protection.
-    pub async fn get_user_features(&self, user_id: i32) -> AppResult<Option<UserFeatures>> {
+    pub async fn get_profile_features(&self, profile_id: &str) -> AppResult<Option<ProfileFeatures>> {
+        let profile_id = profile_id.to_string();
+        let profile_log = profile_id.clone();
         let start_time = std::time::Instant::now();
         
         let result = self.pool
             .execute(|pool| async move {
-                sqlx::query_as::<_, UserFeatures>(
-                    "SELECT * FROM user_features WHERE user_id = $1",
+                sqlx::query_as::<_, ProfileFeatures>(
+                    "SELECT * FROM profile_features WHERE profile_id = $1",
                 )
-                .bind(user_id)
+                .bind(profile_id)
                 .fetch_optional(&pool)
                 .await
             })
@@ -52,19 +54,19 @@ impl FeatureRepository {
         match result {
             Ok(features) => {
                 // Record successful operation
-                let metrics = self.metrics_collector.registry().get_or_create("feature_user");
+                let metrics = self.metrics_collector.registry().get_or_create("feature_profile");
                 metrics.latency.record_duration(duration);
                 metrics.successes.increment();
                 Ok(features)
             }
             Err(e) => {
                 // Record failed operation
-                let metrics = self.metrics_collector.registry().get_or_create("feature_user");
+                let metrics = self.metrics_collector.registry().get_or_create("feature_profile");
                 metrics.latency.record_duration(duration);
                 metrics.failures.increment();
                 
                 Err(AppError::Postgres(PostgresError::Query {
-                    message: format!("Failed to fetch user features for user_id={}: {}", user_id, e),
+                    message: format!("Failed to fetch profile features for profile_id={}: {}", profile_log, e),
                     source: None,
                 }))
             }
@@ -146,22 +148,22 @@ impl FeatureRepository {
             })
     }
 
-    /// Batch get user features for multiple user IDs.
-    pub async fn get_user_features_batch(&self, user_ids: &[i32]) -> AppResult<Vec<UserFeatures>> {
-        let user_ids = user_ids.to_vec();
+    /// Batch get profile features for multiple profile IDs.
+    pub async fn get_profile_features_batch(&self, profile_ids: &[String]) -> AppResult<Vec<ProfileFeatures>> {
+        let profile_ids = profile_ids.to_vec();
         self.pool
             .execute(|pool| async move {
-                sqlx::query_as::<_, UserFeatures>(
-                    "SELECT * FROM user_features WHERE user_id = ANY($1)",
+                sqlx::query_as::<_, ProfileFeatures>(
+                    "SELECT * FROM profile_features WHERE profile_id = ANY($1)",
                 )
-                .bind(&user_ids)
+                .bind(&profile_ids)
                 .fetch_all(&pool)
                 .await
             })
             .await
             .map_err(|e| {
                 AppError::Postgres(PostgresError::Query {
-                    message: format!("Failed to batch fetch user features: {}", e),
+                    message: format!("Failed to batch fetch profile features: {}", e),
                     source: None,
                 })
             })
@@ -186,5 +188,36 @@ impl FeatureRepository {
                     source: None,
                 })
             })
+    }
+
+    /// Merge visitor features into profile features.
+    pub async fn merge_visitor_features(&self, visitor_id: &str, user_id: i32, profile_id: &str) -> AppResult<()> {
+        let vid = visitor_id.to_string();
+        let pid = profile_id.to_string();
+        
+        self.pool.execute(move |pool| async move {
+            sqlx::query(
+                r#"
+                INSERT INTO profile_features (profile_id, user_id, genre_affinity, total_watch_time_minutes, features_updated_at)
+                SELECT $1, $2, genre_affinity, total_watch_time_minutes, NOW()
+                FROM visitor_features
+                WHERE visitor_id = $3
+                ON CONFLICT (profile_id) DO UPDATE SET
+                    genre_affinity = profile_features.genre_affinity || EXCLUDED.genre_affinity,
+                    total_watch_time_minutes = profile_features.total_watch_time_minutes + EXCLUDED.total_watch_time_minutes,
+                    features_updated_at = NOW()
+                "#
+            )
+            .bind(pid)
+            .bind(user_id)
+            .bind(vid)
+            .execute(&pool)
+            .await?;
+            
+            Ok(())
+        }).await.map_err(|e| AppError::Postgres(PostgresError::Query {
+            message: format!("Failed to merge visitor features: {}", e),
+            source: None,
+        }))
     }
 }

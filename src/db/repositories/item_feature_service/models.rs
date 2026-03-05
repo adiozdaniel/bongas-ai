@@ -61,7 +61,8 @@ pub struct ItemFeatureRow {
 }
 
 #[derive(Debug, Clone, FromRow, Serialize)]
-pub struct UserFeatureRow {
+pub struct ProfileFeatureRow {
+    pub profile_id: String,
     pub user_id: i32,
     pub genre_affinity: Option<JsonValue>,
     pub disliked_genres: Option<JsonValue>,

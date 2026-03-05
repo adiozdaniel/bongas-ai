@@ -87,10 +87,11 @@ CREATE TABLE IF NOT EXISTS rule_suggestions (
 CREATE INDEX IF NOT EXISTS idx_rule_suggestions_status ON rule_suggestions(status, confidence_score DESC);
 
 -- ============================================================================
--- 5. user_features (Feature Store)
+-- 5. profile_features (Feature Store)
 -- ============================================================================
-CREATE TABLE IF NOT EXISTS user_features (
-    user_id INTEGER PRIMARY KEY,
+CREATE TABLE IF NOT EXISTS profile_features (
+    profile_id VARCHAR(100) PRIMARY KEY,
+    user_id INTEGER NOT NULL,
     genre_affinity JSONB,
     disliked_genres JSONB,
     total_watch_time_minutes INTEGER DEFAULT 0,

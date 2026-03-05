@@ -100,14 +100,14 @@ impl EmbeddingManager {
         }
     }
 
-    /// Get user embedding.
-    pub async fn get_user_embedding(
+    /// Get profile embedding.
+    pub async fn get_profile_embedding(
         &self,
-        user_id: i32,
+        profile_id: &str,
         embedding_dim: usize,
     ) -> Result<Vec<f32>, ModelError> {
         let start = Instant::now();
-        let metric_key = "ml.embeddings.user";
+        let metric_key = "ml.embeddings.profile";
 
         // Bulkhead
         let _permit = self.bulkhead.clone().try_acquire_owned()
@@ -119,9 +119,9 @@ impl EmbeddingManager {
             })?;
 
         // Cache check
-        let cache_key = format!("user_embedding:{}", user_id);
+        let cache_key = format!("profile_embedding:{}", profile_id);
         if let Ok(Some(embedding)) = self.cache_manager.get::<Vec<f32>>(&cache_key).await {
-            debug!(user_id = user_id, "User embedding from cache");
+            debug!(profile_id = %profile_id, "Profile embedding from cache");
             if let Some(ref a) = self.analytics {
                 a.increment_throughput(&format!("{}.cache_hit", metric_key));
             }
@@ -129,7 +129,7 @@ impl EmbeddingManager {
         }
 
         // DB fetch
-        let result = self.fetch_user_embedding_from_db(user_id, embedding_dim).await;
+        let result = self.fetch_profile_embedding_from_db(profile_id, embedding_dim).await;
 
         let latency = start.elapsed();
         if let Some(ref a) = self.analytics {
@@ -143,7 +143,7 @@ impl EmbeddingManager {
                 Ok(crate::ml::assets::utils::service::pad_or_truncate(embedding, embedding_dim))
             }
             Err(e) => {
-                warn!(user_id = user_id, error = %e, "User embedding fetch failed, using zero fallback");
+                warn!(profile_id = %profile_id, error = %e, "Profile embedding fetch failed, using zero fallback");
                 if let Some(ref a) = self.analytics {
                     a.increment_error(metric_key);
                 }
@@ -212,9 +212,9 @@ impl EmbeddingManager {
         Ok(result)
     }
 
-    async fn fetch_user_embedding_from_db(
+    async fn fetch_profile_embedding_from_db(
         &self,
-        user_id: i32,
+        profile_id: &str,
         embedding_dim: usize,
     ) -> Result<Vec<f32>> {
         #[derive(sqlx::FromRow)]
@@ -222,11 +222,12 @@ impl EmbeddingManager {
             embedding: Option<Vec<f32>>,
         }
 
+        let pid = profile_id.to_string();
         let row: Option<Row> = self.pool.execute(|pool| async move {
             sqlx::query_as::<_, Row>(
-                "SELECT embedding FROM user_features WHERE user_id = $1",
+                "SELECT embedding FROM profile_features WHERE profile_id = $1",
             )
-            .bind(user_id)
+            .bind(pid)
             .fetch_optional(&pool)
             .await
         }).await?;

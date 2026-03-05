@@ -53,14 +53,14 @@ impl FeatureStore {
         &self.config
     }
 
-    /// Get user features with cache → DB → cold-start fallback chain.
-    pub async fn get_user_features(
+    /// Get profile features with cache → DB → cold-start fallback chain.
+    pub async fn get_profile_features(
         &self,
-        user_id: i32,
+        profile_id: &str,
         feature_dim: usize,
     ) -> Result<Vec<f32>, ModelError> {
         let start = Instant::now();
-        let metric_key = "ml.feature_store.user";
+        let metric_key = "ml.feature_store.profile";
 
         // Bulkhead
         let _permit = self.bulkhead.clone().try_acquire_owned()
@@ -75,9 +75,9 @@ impl FeatureStore {
             })?;
 
         // L1: Cache
-        let cache_key = format!("user_features:{}", user_id);
+        let cache_key = format!("profile_features:{}", profile_id);
         if let Ok(Some(features)) = self.cache_manager.get::<Vec<f32>>(&cache_key).await {
-            debug!(user_id = user_id, "User features from cache");
+            debug!(profile_id = %profile_id, "Profile features from cache");
             if let Some(ref a) = self.analytics {
                 a.increment_throughput(&format!("{}.cache_hit", metric_key));
             }
@@ -85,7 +85,7 @@ impl FeatureStore {
         }
 
         // L2: Database
-        let features = self.fetch_user_features_from_db(user_id, feature_dim).await;
+        let features = self.fetch_profile_features_from_db(profile_id, feature_dim).await;
 
         let latency = start.elapsed();
         if let Some(ref a) = self.analytics {
@@ -100,7 +100,7 @@ impl FeatureStore {
                 Ok(crate::ml::assets::utils::service::pad_or_truncate(feats, feature_dim))
             }
             Err(e) => {
-                warn!(user_id = user_id, error = %e, "Feature fetch failed, using cold-start defaults");
+                warn!(profile_id = %profile_id, error = %e, "Feature fetch failed, using cold-start defaults");
                 if let Some(ref a) = self.analytics {
                     a.increment_error(metric_key);
                 }
@@ -180,9 +180,9 @@ impl FeatureStore {
 
     // ── DB Queries ────────────────────────────────────────────────────────────
 
-    async fn fetch_user_features_from_db(
+    async fn fetch_profile_features_from_db(
         &self,
-        user_id: i32,
+        profile_id: &str,
         feature_dim: usize,
     ) -> Result<Vec<f32>> {
         #[derive(sqlx::FromRow)]
@@ -193,15 +193,17 @@ impl FeatureStore {
             avg_completion_rate: Option<f32>,
         }
 
+        let pid = profile_id.to_string();
+        let pid_log = profile_id.to_string();
         let row: Option<Row> = self.pool.execute(|pool| async move {
             sqlx::query_as::<_, Row>(
                 r#"
                 SELECT genre_affinity, embedding, total_watch_time_minutes, avg_completion_rate
-                FROM user_features
-                WHERE user_id = $1
+                FROM profile_features
+                WHERE profile_id = $1
                 "#,
             )
-            .bind(user_id)
+            .bind(pid)
             .fetch_optional(&pool)
             .await
         }).await?;
@@ -223,7 +225,7 @@ impl FeatureStore {
                 }
             }
             None => {
-                warn!(user_id = user_id, "No user features found, using cold start defaults");
+                warn!(profile_id = %pid_log, "No profile features found, using cold start defaults");
                 vec![0.0; feature_dim]
             }
         };
@@ -287,7 +289,13 @@ impl FeatureStore {
         Ok(map)
     }
 
-    // ── Helpers ───────────────────────────────────────────────────────────────
-
-
+    pub fn repository(&self) -> Arc<crate::db::repositories::feature_repository::service::FeatureRepository> {
+        use crate::resilience::{MetricsRegistry, ResilienceMetricsConfig, ResilienceMetricsCollector};
+        Arc::new(crate::db::repositories::feature_repository::service::FeatureRepository::new(
+            self.pool.clone(),
+            Arc::new(ResilienceMetricsCollector::new(
+                Arc::new(MetricsRegistry::new(ResilienceMetricsConfig::default()))
+            )),
+        ))
+    }
 }

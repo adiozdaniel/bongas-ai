@@ -3,30 +3,31 @@ use crate::db::repositories::item_feature_service::models::*;
 use crate::db::repositories::item_feature_service::service::ItemFeatureService;
 
 impl ItemFeatureService {
-    /// Get user features for a single user.
-    pub async fn get_user_features(&self, user_id: i32) -> Result<Option<UserFeatureRow>> {
+    /// Get profile features for a single profile.
+    pub async fn get_profile_features(&self, profile_id: &str) -> Result<Option<ProfileFeatureRow>> {
         let start = std::time::Instant::now();
+        let pid = profile_id.to_string();
 
-        let row: Option<UserFeatureRow> = self
+        let row: Option<ProfileFeatureRow> = self
             .pool
             .execute(|pool| async move {
-                sqlx::query_as::<_, UserFeatureRow>(
+                sqlx::query_as::<_, ProfileFeatureRow>(
                     r#"
-                    SELECT user_id, genre_affinity, disliked_genres, total_watch_time_minutes,
+                    SELECT profile_id, user_id, genre_affinity, disliked_genres, total_watch_time_minutes,
                            total_videos_watched, avg_completion_rate,
                            favorite_genres, favorite_creators, preferred_content_type, embedding
-                    FROM user_features
-                    WHERE user_id = $1
+                    FROM profile_features
+                    WHERE profile_id = $1
                     "#,
                 )
-                .bind(user_id)
+                .bind(pid)
                 .fetch_optional(&pool)
                 .await
             })
             .await?;
 
         let duration = start.elapsed();
-        let metrics = self.metrics.registry().get_or_create("item_feature_service.user");
+        let metrics = self.metrics.registry().get_or_create("item_feature_service.profile");
         metrics.latency.record_duration(duration);
         metrics.successes.increment();
 

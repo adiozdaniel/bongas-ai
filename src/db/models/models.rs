@@ -47,11 +47,12 @@ pub struct PipelineStageConfig {
 }
 
 // ============================================================================
-// 2. UserFeatures (Feature Store)
+// 2. ProfileFeatures (Feature Store)
 // ============================================================================
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
-pub struct UserFeatures {
+pub struct ProfileFeatures {
+    pub profile_id: String,
     pub user_id: i32,
     pub genre_affinity: Option<JsonValue>,
     pub disliked_genres: Option<JsonValue>,
