@@ -123,7 +123,21 @@
           Ok(None)
       }
 
-      /// Set a value in all cache tiers.
+      /// Set a value in all cache tiers with a specific TTL.
+      pub async fn set_with_ttl<T>(&self, key: &str, value: &T, ttl: std::time::Duration) -> Result<()>
+      where
+          T: Serialize + Send + Sync,
+      {
+          if let Some(ref l2) = self.l2 {
+              let _ = l2.set(key, value, ttl).await;
+          }
+          if let Some(ref l1) = self.l1 {
+              let _ = l1.set(key, value, ttl).await;
+          }
+          Ok(())
+      }
+
+      /// Set a value in all cache tiers using default TTLs.
       pub async fn set<T>(&self, key: &str, value: &T) -> Result<()>
       where
           T: Serialize + Send + Sync,
@@ -136,7 +150,6 @@
           }
           Ok(())
       }
-
       /// Delete a value from all cache tiers.
       pub async fn delete(&self, key: &str) -> Result<()> {
           if let Some(ref l1) = self.l1 {
