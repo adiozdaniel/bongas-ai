@@ -23,6 +23,7 @@ use crate::db::{ResilientPool, ResilientPoolConfig};
 use crate::db::repositories::feature_repository::service::FeatureRepository;
 use crate::db::repositories::cache_repository::service::CacheRepository;
 use crate::db::repositories::model_repository::service::ModelRepository;
+use crate::db::repositories::interaction_repository::service::InteractionRepository;
 use crate::db::repositories::scenario_repository::service::ScenarioRepository;
 use crate::db::repositories::page_layout_repository::service::PageLayoutRepository;
 use crate::db::repositories::discovery_repository::service::DiscoveryConfigRepository;
@@ -204,8 +205,11 @@ impl DiscoverySymphony {
             100, // max scenarios
         ));
 
+        let interaction_repo = Arc::new(InteractionRepository::new(resilient_pool.clone(), resilience_metrics.clone()));
         let pages = Arc::new(PagesManager::new(
             layout_repo,
+            interaction_repo.clone(),
+            feature_store.clone(),
             100, // cache size
         ));
 

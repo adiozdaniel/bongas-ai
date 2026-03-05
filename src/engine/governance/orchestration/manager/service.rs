@@ -9,6 +9,8 @@ use std::collections::HashMap;
 
 use crate::engine::governance::orchestration::types::models::{PageLayout, PageSlug, SavePageLayoutRequest, NavType};
 use crate::db::repositories::page_layout_repository::service::PageLayoutRepository;
+use crate::db::repositories::interaction_repository::service::InteractionRepository;
+use crate::ml::inference::features::service::FeatureStore;
 use crate::error::AppResult;
 use crate::ingestion::types::UserActivity;
 
@@ -16,6 +18,8 @@ use crate::ingestion::types::UserActivity;
 /// Orchestrates the relationship between navigation mesh and page compositions.
 pub struct PagesManager {
     repo: Arc<PageLayoutRepository>,
+    interaction_repo: Arc<InteractionRepository>,
+    feature_store: Arc<FeatureStore>,
     /// High-performance L1 cache for resolved layouts (target-aware)
     cache: Arc<RwLock<LruCache<(PageSlug, Option<String>, Option<String>), PageLayout>>>,
     /// In-memory landing page registry for ultra-fast genesis resolution
@@ -25,9 +29,16 @@ pub struct PagesManager {
 }
 
 impl PagesManager {
-    pub fn new(repo: Arc<PageLayoutRepository>, cache_size: usize) -> Self {
+    pub fn new(
+        repo: Arc<PageLayoutRepository>, 
+        interaction_repo: Arc<InteractionRepository>,
+        feature_store: Arc<FeatureStore>, 
+        cache_size: usize
+    ) -> Self {
         Self {
             repo,
+            interaction_repo,
+            feature_store,
             cache: Arc::new(RwLock::new(LruCache::new(NonZeroUsize::new(cache_size).unwrap()))),
             landing_pages: Arc::new(RwLock::new(HashMap::new())),
             nav_mesh: Arc::new(RwLock::new(Vec::new())),
@@ -97,10 +108,10 @@ impl PagesManager {
     }
 
     /// Resolve the navigation mesh for a specific context.
-    pub async fn get_nav_mesh_contextual(&self, _identity_key: Option<&str>) -> Vec<crate::api::SymphonyNavigation> {
+    pub async fn get_nav_mesh_contextual(&self, identity_key: Option<&str>) -> Vec<crate::api::SymphonyNavigation> {
         let nav = self.nav_mesh.read().await;
         
-        nav.iter().map(|l| crate::api::SymphonyNavigation {
+        let mut symphony_nav: Vec<crate::api::SymphonyNavigation> = nav.iter().map(|l| crate::api::SymphonyNavigation {
             slug: l.page_slug.0.clone(),
             title: l.page_slug.0.replace('_', " "), 
             nav_type: match l.nav_type {
@@ -112,7 +123,27 @@ impl PagesManager {
             landing_slug: "".to_string(),
             total_rows: 0,
             request_id: "".to_string(),
-        }).collect()
+        }).collect();
+
+        // 🧠 Step 1: ML-Ranked Navigation Mesh
+        if let Some(vid) = identity_key {
+            if let Ok(affinities) = self.feature_store.get_visitor_affinities(vid).await {
+                if !affinities.is_empty() {
+                    // Sort 'sub' navigation hubs by affinity score
+                    symphony_nav.sort_by(|a, b| {
+                        if a.nav_type == "sub" && b.nav_type == "sub" {
+                            let score_a = affinities.get(&a.slug).copied().unwrap_or(0.0);
+                            let score_b = affinities.get(&b.slug).copied().unwrap_or(0.0);
+                            score_b.partial_cmp(&score_a).unwrap_or(std::cmp::Ordering::Equal)
+                        } else {
+                            std::cmp::Ordering::Equal
+                        }
+                    });
+                }
+            }
+        }
+
+        symphony_nav
     }
 
     /// Resolve the landing page for a device/maturity context.
@@ -143,7 +174,7 @@ impl PagesManager {
         page_slug: &str,
         device_type: Option<&str>,
         maturity_rating: Option<&str>,
-        _identity_key: Option<&str>
+        identity_key: Option<&str>
     ) -> AppResult<Option<PageLayout>> {
         let slug = PageSlug(page_slug.to_string());
         let device = device_type.map(|s| s.to_string());
@@ -155,22 +186,39 @@ impl PagesManager {
             cache.get(&(slug.clone(), device.clone(), maturity.clone())).cloned()
         };
 
-        if let Some(cached) = layout_from_cache {
-            return Ok(Some(cached));
-        }
-
-        // 2. Fallback to DB
-        if let Some(db_row) = self.repo.find_best_match(page_slug, device_type, maturity_rating).await? {
+        let mut layout = if let Some(cached) = layout_from_cache {
+            Some(cached)
+        } else if let Some(db_row) = self.repo.find_best_match(page_slug, device_type, maturity_rating).await? {
             let resolved = Self::map_db_to_domain(db_row);
             // Update cache
             {
                 let mut cache: tokio::sync::RwLockWriteGuard<'_, LruCache<(PageSlug, Option<String>, Option<String>), PageLayout>> = self.cache.write().await;
                 cache.put((slug, device, maturity), resolved.clone());
             }
-            return Ok(Some(resolved));
+            Some(resolved)
+        } else {
+            None
+        };
+
+        // 🧠 Step 2: Algorithmic Reordering (The Brain)
+        if let Some(ref mut l) = layout {
+            if let Some(vid) = identity_key {
+                // Fetch engagement scores for all scenarios in the composition
+                if let Ok(engagement) = self.interaction_repo.get_scenario_engagement_scores(None, Some(vid)).await {
+                    if !engagement.is_empty() {
+                        // Perform a STABLE SORT to bubble up high-engagement rows
+                        // while preserving relative order for zero-score items.
+                        l.composition.sort_by(|a, b| {
+                            let score_a = engagement.get(&a.slug).copied().unwrap_or(0.0);
+                            let score_b = engagement.get(&b.slug).copied().unwrap_or(0.0);
+                            score_b.partial_cmp(&score_a).unwrap_or(std::cmp::Ordering::Equal)
+                        });
+                    }
+                }
+            }
         }
 
-        Ok(None)
+        Ok(layout)
     }
 
     /// Administrative: Save or update a layout.
