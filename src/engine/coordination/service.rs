@@ -202,4 +202,78 @@ impl BongasEngine {
     pub fn staleness_engine(&self) -> Arc<StalenessEngine> {
         self.intelligence.staleness.clone()
     }
+
+    /// 👻 GHOST EXECUTION: Server-side look-ahead pre-warming.
+    /// Anticipates the user's next scroll by executing the next batch in the background.
+    pub fn ghost_prewarm(
+        self: Arc<Self>,
+        user_id: Option<i32>,
+        page_slug: String,
+        offset: usize,
+        batch_size: usize,
+        ttl_seconds: usize,
+        context_params: serde_json::Value,
+    ) {
+        let engine = self.clone();
+        
+        tokio::spawn(async move {
+            let rid = format!("ghost-{}-{}", page_slug, offset);
+            let cache_key = format!("ghost:user_{:?}:page_{}:offset_{}", user_id, page_slug, offset);
+
+            // 1. Resolve the layout for the next batch
+            let layout_res = engine.governance.orchestration.get_layout_contextual(
+                &page_slug,
+                context_params.get("device_type").and_then(|v| v.as_str()),
+                context_params.get("maturity_rating").and_then(|v| v.as_str()),
+                context_params.get("visitor_id").and_then(|v| v.as_str()),
+            ).await;
+
+            let composition = match layout_res {
+                Ok(Some(l)) => l.composition,
+                _ => return,
+            };
+
+            // Slice the next batch
+            let next_batch: Vec<crate::engine::governance::orchestration::types::models::PageCompositionItem> = composition.into_iter()
+                .skip(offset)
+                .take(batch_size)
+                .collect();
+
+            if next_batch.is_empty() {
+                return;
+            }
+
+            // 2. Execute all scenarios in the next batch
+            let mut results = Vec::new();
+            for item in next_batch {
+                let slug = item.slug.clone();
+                let execution_res = engine.execute_scenario_with_stats_contextual(
+                    &slug,
+                    user_id,
+                    None,
+                    None,
+                    None,
+                    context_params.clone(),
+                    Some(20),
+                ).await;
+
+                if let Ok((items, _)) = execution_res {
+                    results.push(serde_json::json!({
+                        "title": item.slug.replace('_', " "),
+                        "row_type": item.row_type,
+                        "row_style": item.row_style,
+                        "scenario": item.slug,
+                        "items": items,
+                    }));
+                }
+            }
+
+            // 3. Store the entire batch in the "Ghost Cache"
+            if !results.is_empty() {
+                let ttl = std::time::Duration::from_secs(ttl_seconds as u64);
+                let _ = engine.cache.set_with_ttl(&cache_key, &results, ttl).await;
+                tracing::debug!(request_id = %rid, "Ghost pre-warm complete and cached in Redis");
+            }
+        });
+    }
 }
