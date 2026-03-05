@@ -107,6 +107,26 @@ CREATE TABLE IF NOT EXISTS user_features (
 );
 
 -- ============================================================================
+-- 5a. visitor_features (Anonymous Tracking)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS visitor_features (
+    visitor_id VARCHAR(128) PRIMARY KEY,
+    genre_affinity JSONB,
+    disliked_genres JSONB,
+    total_watch_time_minutes INTEGER DEFAULT 0,
+    total_videos_watched INTEGER DEFAULT 0,
+    avg_completion_rate FLOAT DEFAULT 0.0,
+    favorite_genres JSONB,
+    favorite_creators JSONB,
+    watch_patterns JSONB,
+    preferred_content_type VARCHAR(50),
+    embedding FLOAT4[],
+    features_updated_at TIMESTAMP DEFAULT NOW(),
+    last_interaction_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- ============================================================================
 -- 6. item_features (Content Features)
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS item_features (

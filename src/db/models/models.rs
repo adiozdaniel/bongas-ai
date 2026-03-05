@@ -68,6 +68,24 @@ pub struct UserFeatures {
     pub created_at: DateTime<Utc>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct VisitorFeatures {
+    pub visitor_id: String,
+    pub genre_affinity: Option<JsonValue>,
+    pub disliked_genres: Option<JsonValue>,
+    pub total_watch_time_minutes: i32,
+    pub total_videos_watched: i32,
+    pub avg_completion_rate: f32,
+    pub favorite_genres: Option<JsonValue>,
+    pub favorite_creators: Option<JsonValue>,
+    pub watch_patterns: Option<JsonValue>,
+    pub preferred_content_type: Option<String>,
+    pub embedding: Option<Vec<f32>>,
+    pub features_updated_at: DateTime<Utc>,
+    pub last_interaction_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+}
+
 // ============================================================================
 // 3. ItemFeatures (Content Features)
 // ============================================================================

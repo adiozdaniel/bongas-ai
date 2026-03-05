@@ -8,7 +8,7 @@
 use std::sync::Arc;
 
 use crate::resilience::ResilienceMetricsCollector;
-use crate::db::{ItemFeatures, UserFeatures};
+use crate::db::{ItemFeatures, UserFeatures, VisitorFeatures};
 use crate::db::ResilientPool;
 use crate::error::{AppError, AppResult, PostgresError};
 
@@ -65,6 +65,41 @@ impl FeatureRepository {
                 
                 Err(AppError::Postgres(PostgresError::Query {
                     message: format!("Failed to fetch user features for user_id={}: {}", user_id, e),
+                    source: None,
+                }))
+            }
+        }
+    }
+
+    /// Get visitor features by visitor ID.
+    pub async fn get_visitor_features(&self, visitor_id: &str) -> AppResult<Option<VisitorFeatures>> {
+        let visitor_id = visitor_id.to_string();
+        let start_time = std::time::Instant::now();
+        
+        let result = self.pool
+            .execute(|pool| async move {
+                sqlx::query_as::<_, VisitorFeatures>(
+                    "SELECT * FROM visitor_features WHERE visitor_id = $1",
+                )
+                .bind(visitor_id)
+                .fetch_optional(&pool)
+                .await
+            })
+            .await;
+
+        let duration = start_time.elapsed();
+        let metrics = self.metrics_collector.registry().get_or_create("feature_visitor");
+        metrics.latency.record_duration(duration);
+
+        match result {
+            Ok(features) => {
+                metrics.successes.increment();
+                Ok(features)
+            }
+            Err(e) => {
+                metrics.failures.increment();
+                Err(AppError::Postgres(PostgresError::Query {
+                    message: format!("Failed to fetch visitor features: {}", e),
                     source: None,
                 }))
             }
