@@ -178,4 +178,39 @@ impl InteractionRepository {
             .map(|rows| rows.into_iter().map(|r| r.0).collect())
         }).await.map_err(|e| AppError::Postgres(PostgresError::Query { message: e.to_string(), source: None }))
     }
+
+    /// Get scenario engagement scores for a specific identity (visitor or user).
+    pub async fn get_scenario_engagement_scores(
+        &self,
+        user_id: Option<i32>,
+        visitor_id: Option<&str>
+    ) -> AppResult<HashMap<String, f32>> {
+        let vid = visitor_id.map(|s| s.to_string());
+        let uid = user_id.unwrap_or(0);
+
+        self.pool.execute(move |pool| async move {
+            let rows: Vec<(String, f32)> = sqlx::query_as(
+                r#"
+                SELECT scenario_slug, 
+                       (COUNT(*) * 1.0 + SUM(CASE WHEN interaction_type = 'click' THEN 2.0 ELSE 0.0 END)) as score
+                FROM user_interactions
+                WHERE (user_id = $1 AND $1 != 0) OR (visitor_id = $2 AND $2 IS NOT NULL)
+                AND created_at > NOW() - INTERVAL '7 days'
+                AND scenario_slug IS NOT NULL
+                GROUP BY scenario_slug
+                "#
+            )
+            .bind(uid)
+            .bind(vid)
+            .fetch_all(&pool)
+            .await?;
+
+            Ok(rows.into_iter().collect())
+        }).await.map_err(|e| AppError::Postgres(PostgresError::Query {
+            message: format!("Failed to fetch scenario engagement scores: {}", e),
+            source: None,
+        }))
+    }
 }
+
+use std::collections::HashMap;
