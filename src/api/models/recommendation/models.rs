@@ -48,3 +48,18 @@ pub struct HomeFeedResponse {
     pub rows: Vec<FeedRow>,
     pub experiment_id: Option<String>,
 }
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DiscoveryManifest {
+    pub total_rows: usize,
+    pub batch_size: i32,
+    pub prewarming_active: bool,
+    pub request_id: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ContinuationEvent {
+    pub next_url: String,
+    pub next_offset: usize,
+    pub next_batch: i32,
+}

@@ -13,7 +13,7 @@ use tracing::warn;
 
 use crate::engine::coordination::service::{BongasEngine, ScenarioDefinition};
 use crate::api::{ContextParams, StandardResponse};
-use crate::api::{FeedRow, SymphonyNavigation, RecommendationItem};
+use crate::api::{FeedRow, SymphonyNavigation, RecommendationItem, DiscoveryManifest, ContinuationEvent};
 use crate::api::extract_request_id;
 use crate::api::IdentityContext;
 use crate::engine::governance::orchestration::types::models::{PageCompositionItem, PageLayout};
@@ -43,6 +43,10 @@ pub async fn genesis(
     let rid = request_id.clone();
     let identity_key = cp_base.visitor_id.as_deref().map(|s| s.to_string());
 
+    // 0. Fetch Device Configuration
+    let config = engine.governance.get_discovery_config(cp_base.device_type.as_deref()).await;
+    let batch_size = config.initial_batch_size as usize;
+
     // 1. Resolve Navigation Mesh (Personalized)
     let nav_mesh = engine.governance.orchestration.get_nav_mesh_contextual(identity_key.as_deref()).await;
     
@@ -63,8 +67,7 @@ pub async fn genesis(
         }
     };
 
-    // Slice for first batch (Genesis always starts at 0)
-    let batch_size = 5;
+    // Slice for first batch
     let initial_batch: Vec<PageCompositionItem> = composition.iter().take(batch_size).cloned().collect();
     let total_count = composition.len();
 
@@ -84,16 +87,37 @@ pub async fn genesis(
                 total_rows: 0,
                 request_id: "".to_string(),
             }).collect(),
-            landing_slug,
+            landing_slug: landing_slug.clone(),
             total_rows: total_count,
             request_id: rid.clone(),
         })
         .unwrap_or_else(|_| Event::default().comment("serial_error"));
 
+    let manifest_event = Event::default()
+        .event("manifest")
+        .json_data(&DiscoveryManifest {
+            total_rows: total_count,
+            batch_size: config.initial_batch_size,
+            prewarming_active: true,
+            request_id: rid.clone(),
+        })
+        .unwrap_or_else(|_| Event::default().comment("serial_error"));
+
+    // Prepare continuation link
+    let mut end_events = Vec::new();
+    if total_count > batch_size {
+        let continuation = ContinuationEvent {
+            next_url: format!("/api/v1/recommendation/page/{}?offset={}", landing_slug, batch_size),
+            next_offset: batch_size,
+            next_batch: config.continuation_batch_size,
+        };
+        end_events.push(Ok(Event::default().event("continuation").json_data(&continuation).unwrap_or_else(|_| Event::default().comment("serial_error"))));
+    }
+
     // Spawn stream
     let stream = stream::unfold(
-        (0, initial_batch, engine_clone, cp_base, rid, user_id),
-        |(idx, mut batch, engine, cp, rid, uid): (usize, Vec<PageCompositionItem>, Arc<BongasEngine>, ContextParams, String, Option<i32>)| async move {
+        (initial_batch, engine_clone, cp_base, rid, user_id),
+        |(mut batch, engine, cp, rid, uid): (Vec<PageCompositionItem>, Arc<BongasEngine>, ContextParams, String, Option<i32>)| async move {
             if batch.is_empty() {
                 return None;
             }
@@ -101,12 +125,13 @@ pub async fn genesis(
             let item = batch.remove(0);
             let event = execute_row(engine.clone(), cp.clone(), rid.clone(), item, uid).await;
             
-            Some((event, (idx + 1, batch, engine, cp, rid, uid)))
+            Some((event, (batch, engine, cp, rid, uid)))
         },
     );
 
-    let full_stream = stream::once(async move { Ok(nav_event) })
-        .chain(stream);
+    let full_stream = stream::iter(vec![Ok(nav_event), Ok(manifest_event)])
+        .chain(stream)
+        .chain(stream::iter(end_events));
 
     Sse::new(full_stream).keep_alive(KeepAlive::default())
 }
@@ -115,14 +140,14 @@ pub async fn genesis(
 
 #[derive(serde::Deserialize)]
 pub struct PageParams {
-    pub slug: String,
     pub offset: Option<usize>,
     pub batch: Option<usize>,
 }
 
-/// GET /api/v1/recommendation/page
+/// GET /api/v1/recommendation/page/{slug}
 /// Streams a specific batch of rows for a given page.
 pub async fn get_page_recommendations(
+    Path(slug): Path<String>,
     Query(page_params): Query<PageParams>,
     Query(mut context_params): Query<ContextParams>,
     Extension(engine): Extension<Arc<BongasEngine>>,
@@ -136,13 +161,15 @@ pub async fn get_page_recommendations(
     }
 
     let user_id = context_params.user_id;
-    let page_slug = page_params.slug.clone();
+    let page_slug = slug;
     let cp_base = context_params.clone();
     let rid = request_id.clone();
     let identity_key = cp_base.visitor_id.as_deref().map(|s| s.to_string());
 
+    // 0. Fetch Device Configuration
+    let config = engine.governance.get_discovery_config(cp_base.device_type.as_deref()).await;
     let offset = page_params.offset.unwrap_or(0);
-    let batch_size = page_params.batch.unwrap_or(5);
+    let batch_size = page_params.batch.unwrap_or(config.continuation_batch_size as usize);
 
     // 1. Resolve Layout
     let layout_res = engine.governance.orchestration.get_layout_contextual(
@@ -156,12 +183,34 @@ pub async fn get_page_recommendations(
         Ok(Some(layout)) => layout.composition,
         _ => vec![]
     };
+    let total_count = composition.len();
 
     // Slice batch
     let batch: Vec<PageCompositionItem> = composition.into_iter()
         .skip(offset)
         .take(batch_size)
         .collect();
+
+    let manifest_event = Event::default()
+        .event("manifest")
+        .json_data(&DiscoveryManifest {
+            total_rows: total_count,
+            batch_size: batch_size as i32,
+            prewarming_active: true,
+            request_id: rid.clone(),
+        })
+        .unwrap_or_else(|_| Event::default().comment("serial_error"));
+
+    // Prepare continuation link
+    let mut end_events = Vec::new();
+    if total_count > offset + batch_size {
+        let continuation = ContinuationEvent {
+            next_url: format!("/api/v1/recommendation/page/{}?offset={}", page_slug, offset + batch_size),
+            next_offset: offset + batch_size,
+            next_batch: config.continuation_batch_size,
+        };
+        end_events.push(Ok(Event::default().event("continuation").json_data(&continuation).unwrap_or_else(|_| Event::default().comment("serial_error"))));
+    }
 
     // 2. Stream Batch
     let stream = stream::unfold(
@@ -178,7 +227,11 @@ pub async fn get_page_recommendations(
         },
     );
 
-    Sse::new(stream).keep_alive(KeepAlive::default())
+    let full_stream = stream::once(async move { Ok(manifest_event) })
+        .chain(stream)
+        .chain(stream::iter(end_events));
+
+    Sse::new(full_stream).keep_alive(KeepAlive::default())
 }
 
 // ─── Scenario Detail (JSON) ────────────────────────────────────────────────

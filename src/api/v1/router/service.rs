@@ -20,7 +20,7 @@ pub fn routes(_engine: Arc<BongasEngine>, _config: Arc<AppConfig>) -> Router {
     // Optimized for SSE and high-throughput discovery streams.
     let stage_router = Router::new()
         .route("/", get(stage::discovery::service::genesis))
-        .route("/page", get(stage::discovery::service::get_page_recommendations))
+        .route("/page/{*slug}", get(stage::discovery::service::get_page_recommendations))
         .route("/scenario/{slug}", get(stage::discovery::service::get_scenario_recommendations))
         .route("/ingest", post(stage::ingestion::service::ingest_activity))
         .route("/ingest/batch", post(stage::ingestion::service::ingest_activities));
@@ -51,6 +51,10 @@ pub fn routes(_engine: Arc<BongasEngine>, _config: Arc<AppConfig>) -> Router {
         .route("/suggestions/{id}/simulate", post(backstage::intelligence::service::simulate_suggestion))
         .route("/suggestions/{id}", axum::routing::delete(backstage::intelligence::service::reject_suggestion))
         .route("/chat", post(backstage::intelligence::service::ai_chat_process))
+        
+        // Discovery Configurations
+        .route("/discovery/config", get(backstage::discovery::service::list_discovery_configs))
+        .route("/discovery/config", post(backstage::discovery::service::save_discovery_config))
         
         // GLOBAL BACKSTAGE SHIELD: Apply strict system auth to all admin routes
         .layer(from_fn(system_security_middleware))
