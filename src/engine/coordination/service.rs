@@ -217,6 +217,7 @@ impl BongasEngine {
         context_params: serde_json::Value,
     ) {
         let engine = self.clone();
+        let span = tracing::info_span!("ghost_prewarm", %page_slug, %offset);
         
         tokio::spawn(async move {
             let rid = format!("ghost-{}-{}", page_slug, offset);
@@ -285,6 +286,6 @@ impl BongasEngine {
                 let _ = engine.cache.set_with_ttl(&cache_key, &results, ttl).await;
                 tracing::debug!(request_id = %rid, "Ghost pre-warm complete and cached in Redis");
             }
-        });
+        }.instrument(span));
     }
 }
