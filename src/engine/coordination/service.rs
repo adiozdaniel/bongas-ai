@@ -217,7 +217,7 @@ impl BongasEngine {
         context_params: serde_json::Value,
     ) {
         let engine = self.clone();
-        let span = tracing::info_span!("ghost_prewarm", %page_slug, %offset);
+        let span = tracing::info_span!(parent: tracing::Span::current(), "ghost_prewarm", %page_slug, %offset);
         
         tokio::spawn(async move {
             let rid = format!("ghost-{}-{}", page_slug, offset);
