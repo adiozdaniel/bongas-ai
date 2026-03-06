@@ -282,9 +282,16 @@ pub async fn get_page_recommendations(
     }
 
     // 2. Stream Batch
-    let stream = stream::iter(batch);
+    let stream = stream::iter(batch)
+        .map(|item| {
+            let engine = engine.clone();
+            let cp = cp_base.clone();
+            let rid = rid.clone();
+            async move {
+                execute_row(engine, cp, rid, item, user_id).await
+            }
+        });
 
-    // [Step 3: Future Mapping Pending]
     // [Step 4: Fan-Out Pending]
     // [Step 5: Result Wrapping Pending]
     // [Step 6: Trace Context Preservation Pending]
