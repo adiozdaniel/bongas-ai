@@ -141,6 +141,7 @@ impl ResilientPool {
             .failure_rate_threshold(config.failure_rate_threshold)
             .slow_call_rate_threshold(config.slow_call_rate_threshold)
             .slow_call_duration(config.slow_call_duration)
+            .query_timeout(config.query_timeout)
             .minimum_calls(10)
             .build()
             .context("Invalid circuit breaker config")?;
