@@ -10,23 +10,25 @@
   use redis::{AsyncCommands, Client};
   use serde::{Deserialize, Serialize};
   use std::sync::Arc;
-  use std::time::Duration;
-  use anyhow::{Result, Context};
-
+  use crate::error::RedisError;
+  use crate::config::RedisConfig;
+  use async_trait::async_trait;
+  ...
   /// L2 Redis cache with circuit breaker.
   pub struct RedisCache {
       client: ConnectionManager,
       circuit_breaker: Arc<CircuitBreaker>,
       metrics: Arc<CacheMetrics>,
       prefix: String,
+      config: RedisConfig,
   }
 
   impl RedisCache {
       pub async fn new(
-          redis_url: &str,
+          config: RedisConfig,
           metrics: Arc<CacheMetrics>,
       ) -> Result<Self> {
-          let client = Client::open(redis_url)
+          let client = Client::open(config.url.as_str())
               .context("Failed to create Redis client")?;
           let conn_manager = ConnectionManager::new(client).await
               .context("Failed to connect to Redis")?;
@@ -45,8 +47,10 @@
               metrics,
               // Fix #69: Namespace keys to avoid wiping other Redis data (like rate limits)
               prefix: "bongas:cache:".to_string(),
+              config,
           })
       }
+
 
       fn prefixed_key(&self, key: &str) -> String {
           format!("{}{}", self.prefix, key)
@@ -61,9 +65,13 @@
       {
           let mut conn = self.client.clone();
           let key_owned = self.prefixed_key(key);
+          let timeout_dur = Duration::from_secs(self.config.request_timeout);
 
           let result = self.circuit_breaker.call(|| async {
-              let value: Option<Vec<u8>> = conn.get(&key_owned).await.map_err(RedisError::from)?;
+              let value: Option<Vec<u8>> = tokio::time::timeout(
+                  timeout_dur, 
+                  conn.get(&key_owned)
+              ).await.map_err(|_| RedisError::Timeout)??;
               Ok::<_, RedisError>(value)
           }).await;
 
@@ -93,11 +101,13 @@
           let mut conn = self.client.clone();
           let key_owned = self.prefixed_key(key);
           let ttl_secs = ttl.as_secs();
+          let timeout_dur = Duration::from_secs(self.config.request_timeout);
 
           let result = self.circuit_breaker.call(|| async {
-              conn.set_ex::<_, _, ()>(&key_owned, &serialized, ttl_secs)
-                  .await
-                  .map_err(RedisError::from)?;
+              tokio::time::timeout(
+                  timeout_dur,
+                  conn.set_ex::<_, _, ()>(&key_owned, &serialized, ttl_secs)
+              ).await.map_err(|_| RedisError::Timeout)??;
               Ok::<_, RedisError>(())
           }).await;
 

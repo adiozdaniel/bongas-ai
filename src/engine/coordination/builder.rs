@@ -83,17 +83,17 @@ impl DiscoverySymphony {
         let db_url = self.config.database.url.as_deref()
             .ok_or_else(|| anyhow::anyhow!("DATABASE_URL not configured"))?;
         
-        let db_pool = sqlx::PgPool::connect(db_url).await
-            .context("Failed to connect to database mesh")?;
-        
-        let resilient_pool = Arc::new(ResilientPool::from_pool(
-            db_pool,
-            ResilientPoolConfig::default(),
+        let db_config = ResilientPoolConfig::new(db_url)
+            .with_max_connections(self.config.database.max_connections)
+            .with_bulkhead_size(self.config.database.max_connections as usize); // Synchronize Bulkhead (Step 5)
+
+        let resilient_pool = Arc::new(ResilientPool::new(
+            db_config,
             circuit_breaker_registry.clone(),
-        ).map_err(|e| anyhow::anyhow!("Pool config error: {}", e))?);
+        ).await.map_err(|e| anyhow::anyhow!("Pool config error: {}", e))?);
 
         let cache_config = CacheConfig::default();
-        let cache_manager = Arc::new(CacheManager::new(&self.config.redis.url, cache_config).await
+        let cache_manager = Arc::new(CacheManager::new(self.config.redis.clone(), cache_config).await
             .context("Failed to initialize multi-tier cache")?);
 
         // Repositories

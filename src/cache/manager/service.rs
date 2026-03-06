@@ -20,9 +20,11 @@
           config: CacheConfig,
           metrics: Arc<CacheMetrics>,
       }
+  use crate::config::RedisConfig;
+
   impl CacheManager {
       /// Create a new cache manager.
-      pub async fn new(redis_url: &str, config: CacheConfig) -> Result<Self> {
+      pub async fn new(redis_config: RedisConfig, config: CacheConfig) -> Result<Self> {
           let metrics = Arc::new(CacheMetrics::new());
 
           let l1: Option<CacheLayer> = if config.l1_enabled {
@@ -35,7 +37,7 @@
           };
 
           let l2: Option<CacheLayer> = if config.l2_enabled {
-              match RedisCache::new(redis_url, Arc::clone(&metrics)).await {
+              match RedisCache::new(redis_config, Arc::clone(&metrics)).await {
                   Ok(cache) => Some(CacheLayer::Redis(cache)),
                   Err(e) => {
                       tracing::warn!("Failed to initialize Redis cache: {}", e);
