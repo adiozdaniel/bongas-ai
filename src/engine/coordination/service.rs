@@ -262,9 +262,9 @@ impl BongasEngine {
                         ).await;
                         res.map(|(items, _)| (item, items))
                     }
-                });
+                })
+                .buffer_unordered(5);
             
-            // [Step 4: Fan-Out Pending]
             // [Step 5: Result Sanitization Pending]
             // [Step 7: Final Atomic Persistence Pending]
 
