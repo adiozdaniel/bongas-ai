@@ -255,11 +255,20 @@
   ) -> Result<TracerProvider, opentelemetry::trace::TraceError> {
       let exporter = opentelemetry_otlp::new_exporter()
           .http()
-          .with_endpoint(config.endpoint.clone());
+          .with_endpoint(config.endpoint.clone())
+          .with_timeout(std::time::Duration::from_millis(config.timeout_ms));
 
-      // [Step 5 & 6 refinements will be added here]
       opentelemetry_otlp::new_pipeline()
           .tracing()
           .with_exporter(exporter)
+          .with_trace_config(
+              trace::Config::default()
+                  .with_sampler(Sampler::AlwaysOn)
+          )
+          .with_batch_config(
+              trace::BatchConfig::default()
+                  .with_max_batch_size(config.batch_size)
+                  .with_max_queue_size(config.max_queue_size)
+          )
           .install_batch(runtime::Tokio)
   }
