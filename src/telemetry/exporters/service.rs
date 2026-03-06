@@ -252,6 +252,8 @@
   /// Initialize the OTLP tracing pipeline.
   pub fn init_otlp_pipeline(
       config: &OtlpExporterConfig,
+      service_name: String,
+      environment: String,
   ) -> Result<TracerProvider, opentelemetry::trace::TraceError> {
       let exporter = opentelemetry_otlp::new_exporter()
           .http()
@@ -264,6 +266,10 @@
           .with_trace_config(
               trace::Config::default()
                   .with_sampler(Sampler::AlwaysOn)
+                  .with_resource(Resource::new(vec![
+                      KeyValue::new("service.name", service_name),
+                      KeyValue::new("deployment.environment", environment),
+                  ]))
           )
           .with_batch_config(
               trace::BatchConfig::default()
