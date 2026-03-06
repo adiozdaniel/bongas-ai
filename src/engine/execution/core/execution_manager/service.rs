@@ -90,14 +90,16 @@ impl ExecutionManager {
         context_params: serde_json::Value,
         limit: Option<usize>,
     ) -> AppResult<(Vec<RecommendationItem>, ScenarioExecutionStats)> {
+        let request_id = uuid::Uuid::new_v4().to_string();
         let span = tracing::info_span!(
             "execute_scenario", 
             scenario = %scenario_slug, 
             user_id = ?user_id, 
-            profile_id = ?profile_id
+            profile_id = ?profile_id,
+            request_id = %request_id
         );
         self.execute_scenario_internal(
-            scenario_slug, user_id, profile_id, maturity_rating, device_type, context_params, limit
+            scenario_slug, user_id, profile_id, maturity_rating, device_type, context_params, limit, request_id
         ).instrument(span).await
     }
 
@@ -110,6 +112,7 @@ impl ExecutionManager {
         device_type: Option<String>,
         context_params: serde_json::Value,
         limit: Option<usize>,
+        request_id: String,
     ) -> AppResult<(Vec<RecommendationItem>, ScenarioExecutionStats)> {
         let start_time = std::time::Instant::now();
 
@@ -119,7 +122,6 @@ impl ExecutionManager {
             experiment_overrides = overrides;
         }
 
-        let request_id = uuid::Uuid::new_v4().to_string();
         let mut context = ExecutionContext::new(
             user_id,
             self.cache_manager.clone(),
