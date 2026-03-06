@@ -263,9 +263,20 @@ impl BongasEngine {
                         res.map(|(items, _)| (item, items))
                     }
                 })
-                .buffer_unordered(5);
+                .buffer_unordered(5)
+                .filter_map(|res| async {
+                    match res {
+                        Ok((item, items)) => Some(serde_json::json!({
+                            "title": item.slug.replace('_', " "),
+                            "row_type": item.row_type,
+                            "row_style": item.row_style,
+                            "scenario": item.slug,
+                            "items": items,
+                        })),
+                        Err(_) => None,
+                    }
+                });
             
-            // [Step 5: Result Sanitization Pending]
             // [Step 7: Final Atomic Persistence Pending]
 
             // 3. Store the entire batch in the "Ghost Cache"
