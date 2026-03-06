@@ -20,6 +20,7 @@ use sqlx::postgres::PgPoolOptions;
 use sqlx::PgPool;
 use tokio::sync::Semaphore;
 use tokio::time::timeout;
+use tracing::Instrument;
 
 use crate::db::DatabaseMetrics;
 use crate::circuit_breaker::{
@@ -217,12 +218,12 @@ impl ResilientPool {
         Fut: Future<Output = Result<T, sqlx::Error>> + Send,
         T: Send,
     {
-        // Acquire bulkhead permit
-        let _permit = self
-            .bulkhead
-            .acquire()
-            .await
-            .map_err(|_| AppError::Postgres(PostgresError::PoolExhausted))?;
+        // Acquire bulkhead permit (Instrumented to track starvation)
+        let _permit = {
+            let span = tracing::trace_span!("db_acquire");
+            self.bulkhead.acquire().instrument(span).await
+                .map_err(|_| AppError::Postgres(PostgresError::PoolExhausted))?
+        };
 
         self.metrics.record_query_start();
 
