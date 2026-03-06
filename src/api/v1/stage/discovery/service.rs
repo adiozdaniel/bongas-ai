@@ -144,7 +144,6 @@ pub async fn genesis(
         })
         .buffered(5);
 
-    // [Step 5: Result Wrapping Pending]
     // [Step 6: Trace Context Preservation Pending]
 
     let full_stream = stream::iter(vec![Ok(nav_event), Ok(sub_nav_event), Ok(manifest_event)])
