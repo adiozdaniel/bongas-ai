@@ -5,11 +5,11 @@ environment = "development"
 
 [database]
 url = "postgresql://postgres:password@localhost:5432/baze_catalog"
-max_connections = 20
+max_connections = 100
 
 [redis]
 url = "redis://localhost:6379"
-pool_size = 10
+pool_size = 50
 
 [clickhouse]
 url = "localhost:8123/baze_reports?socket_timeout=60000&connection_timeout=30000&max_execution_time=60&retry_on_failure=2&failover=3"
