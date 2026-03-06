@@ -15,7 +15,7 @@ use axum::{
 };
 use sha2::{Sha256, Digest};
 use uuid::Uuid;
-use tracing::{debug, Span, Instrument};
+use tracing::{Span, Instrument};
 use std::sync::Arc;
 use crate::engine::coordination::service::BongasEngine;
 
@@ -47,7 +47,6 @@ pub async fn identity_middleware(
 
     // 1. Extract IP Address
     let ip = req.extensions()
-...
         .get::<axum::extract::ConnectInfo<std::net::SocketAddr>>()
         .map(|axum::extract::ConnectInfo(addr)| addr.ip().to_string())
         .or_else(|| {

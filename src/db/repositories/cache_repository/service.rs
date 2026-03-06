@@ -34,6 +34,11 @@ impl CacheRepository {
         }
     }
 
+    /// Access the underlying resilient pool.
+    pub fn pool(&self) -> Arc<ResilientPool> {
+        self.pool.clone()
+    }
+
     /// Get cached recommendations from L2 by cache key.
     pub async fn get(&self, cache_key: &str) -> AppResult<Option<RecommendationCacheL2>> {
         let start_time = std::time::Instant::now();

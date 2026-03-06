@@ -134,7 +134,7 @@ pub async fn genesis(
 
     // Spawn concurrent stream
     let stream = stream::iter(initial_batch)
-        .map(|item| {
+        .map(move |item| {
             let engine = engine_clone.clone();
             let cp = cp_base.clone();
             let rid = rid.clone();
@@ -283,7 +283,7 @@ pub async fn get_page_recommendations(
 
     // 2. Stream Batch
     let stream = stream::iter(batch)
-        .map(|item| {
+        .map(move |item| {
             let engine = engine.clone();
             let cp = cp_base.clone();
             let rid = rid.clone();

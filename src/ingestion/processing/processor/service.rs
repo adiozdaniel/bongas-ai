@@ -97,6 +97,7 @@ impl ActivityProcessor {
         let analytics_event = AnalyticsEvent {
             user_id: activity.user_id(),
             profile_id: "unknown".to_string(), 
+            request_id: "ingested".to_string(),
             item_id: match activity {
                 UserActivity::Playback { item_id, .. } | UserActivity::Reaction { item_id, .. } | UserActivity::Click { item_id, .. } | UserActivity::Impression { item_id, .. } => item_id,
                 _ => 0,
