@@ -3,7 +3,7 @@
 use crate::error::{AppResult, AppError, ScenarioError};
 use std::collections::HashMap;
 use std::sync::Arc;
-use tracing::warn;
+use tracing::{warn, Instrument};
 use crate::pipeline::context::service::ExecutionContext;
 use crate::pipeline::executor::service::PipelineExecutor;
 use crate::engine::execution::cache::staging_manager::service::StagingManager;
@@ -81,6 +81,27 @@ impl ExecutionManager {
 
     /// Execute scenario with execution stats and persona context
     pub async fn execute_scenario_with_stats_contextual(
+        &self,
+        scenario_slug: &str,
+        user_id: Option<i32>,
+        profile_id: Option<String>,
+        maturity_rating: Option<String>,
+        device_type: Option<String>,
+        context_params: serde_json::Value,
+        limit: Option<usize>,
+    ) -> AppResult<(Vec<RecommendationItem>, ScenarioExecutionStats)> {
+        let span = tracing::info_span!(
+            "execute_scenario", 
+            scenario = %scenario_slug, 
+            user_id = ?user_id, 
+            profile_id = ?profile_id
+        );
+        self.execute_scenario_internal(
+            scenario_slug, user_id, profile_id, maturity_rating, device_type, context_params, limit
+        ).instrument(span).await
+    }
+
+    async fn execute_scenario_internal(
         &self,
         scenario_slug: &str,
         user_id: Option<i32>,
