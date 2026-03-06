@@ -276,9 +276,9 @@ impl BongasEngine {
                         })),
                         Err(_) => None,
                     }
-                });
-            
-            // [Step 7: Final Atomic Persistence Pending]
+                })
+                .collect::<Vec<_>>()
+                .await;
 
             // 3. Store the entire batch in the "Ghost Cache"
             if !results.is_empty() {
