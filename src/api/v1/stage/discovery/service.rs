@@ -133,9 +133,16 @@ pub async fn genesis(
     }
 
     // Spawn concurrent stream
-    let stream = stream::iter(initial_batch);
+    let stream = stream::iter(initial_batch)
+        .map(|item| {
+            let engine = engine_clone.clone();
+            let cp = cp_base.clone();
+            let rid = rid.clone();
+            async move {
+                execute_row(engine, cp, rid, item, user_id).await
+            }
+        });
 
-    // [Step 3: Future Mapping Pending]
     // [Step 4: Fan-Out Pending]
     // [Step 5: Result Wrapping Pending]
     // [Step 6: Trace Context Preservation Pending]
