@@ -170,6 +170,8 @@ pub enum TracingInitError {
     AlreadyInitialized,
     /// Failed to build subscriber.
     SubscriberBuildFailed(String),
+    /// Failed to initialize OTLP pipeline.
+    OtlpFailed,
 }
 
 impl std::fmt::Display for TracingInitError {
@@ -179,6 +181,7 @@ impl std::fmt::Display for TracingInitError {
             Self::SubscriberBuildFailed(msg) => {
                 write!(f, "failed to build subscriber: {}", msg)
             }
+            Self::OtlpFailed => write!(f, "failed to initialize OTLP pipeline"),
         }
     }
 }

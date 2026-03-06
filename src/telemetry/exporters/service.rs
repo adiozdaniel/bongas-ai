@@ -7,11 +7,11 @@
   use std::path::Path;
   use std::sync::{Arc, Mutex, PoisonError};
 
-  use opentelemetry::{trace::TracerProvider as _, KeyValue};
+  use opentelemetry::KeyValue;
   use opentelemetry_otlp::WithExportConfig;
   use opentelemetry_sdk::{
       runtime,
-      trace::{self, Sampler, TracerProvider},
+      trace::{Sampler, TracerProvider},
       Resource,
   };
 
@@ -255,26 +255,22 @@
       service_name: String,
       environment: String,
   ) -> Result<TracerProvider, opentelemetry::trace::TraceError> {
-      let exporter = opentelemetry_otlp::new_exporter()
-          .http()
+      let exporter = opentelemetry_otlp::SpanExporter::builder()
+          .with_http()
           .with_endpoint(config.endpoint.clone())
-          .with_timeout(std::time::Duration::from_millis(config.timeout_ms));
+          .with_timeout(std::time::Duration::from_millis(config.timeout_ms))
+          .build()?;
 
-      opentelemetry_otlp::new_pipeline()
-          .tracing()
-          .with_exporter(exporter)
-          .with_trace_config(
-              trace::Config::default()
-                  .with_sampler(Sampler::AlwaysOn)
-                  .with_resource(Resource::new(vec![
-                      KeyValue::new("service.name", service_name),
-                      KeyValue::new("deployment.environment", environment),
-                  ]))
-          )
-          .with_batch_config(
-              trace::BatchConfig::default()
-                  .with_max_batch_size(config.batch_size)
-                  .with_max_queue_size(config.max_queue_size)
-          )
-          .install_batch(runtime::Tokio)
+      let resource = Resource::new_with_defaults(vec![
+          KeyValue::new("service.name", service_name),
+          KeyValue::new("deployment.environment", environment),
+      ]);
+
+      let provider = TracerProvider::builder()
+          .with_batch_exporter(exporter, runtime::Tokio)
+          .with_sampler(Sampler::AlwaysOn)
+          .with_resource(resource)
+          .build();
+
+      Ok(provider)
   }
