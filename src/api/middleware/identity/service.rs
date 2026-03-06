@@ -6,7 +6,6 @@
 //! 3. Manage transparent Visitor_ID via cookies (Zero-Touch).
 //! 4. Inject IdentityContext into request extensions.
 //! 5. Reactive Identity Stitching (Anonymous -> Authenticated).
-
 use axum::{
     extract::Request,
     body::Body,
@@ -16,9 +15,12 @@ use axum::{
 };
 use sha2::{Sha256, Digest};
 use uuid::Uuid;
-use tracing::debug;
+use tracing::{debug, Span};
 use std::sync::Arc;
 use crate::engine::coordination::service::BongasEngine;
+
+use opentelemetry::global;
+use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 /// Contextual identity information extracted from the request.
 #[derive(Debug, Clone, serde::Serialize)]
@@ -37,8 +39,15 @@ pub async fn identity_middleware(
     next: Next,
     engine: Arc<BongasEngine>,
 ) -> Response {
+    // 0. Extract Trace Context (OTLP Shield)
+    let parent_cx = global::get_text_map_propagator(|propagator| {
+        propagator.extract(&opentelemetry_http::HeaderExtractor(req.headers()))
+    });
+    Span::current().set_parent(parent_cx);
+
     // 1. Extract IP Address
     let ip = req.extensions()
+...
         .get::<axum::extract::ConnectInfo<std::net::SocketAddr>>()
         .map(|axum::extract::ConnectInfo(addr)| addr.ip().to_string())
         .or_else(|| {
