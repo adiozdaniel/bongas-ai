@@ -66,12 +66,38 @@ fn build_and_init(config: &TelemetryConfig) -> Result<(), TracingInitError> {
                 .try_init()
                 .map_err(|_| TracingInitError::AlreadyInitialized)
         }
-        ExporterType::File(_) | ExporterType::Otlp { .. } => {
-            // File and OTLP: fall back to stdout for now
+        ExporterType::File(_) => {
+            // File: fall back to stdout for now
             let layer = build_fmt_layer(config, io::stdout);
             Registry::default()
                 .with(env_filter)
                 .with(layer)
+                .try_init()
+                .map_err(|_| TracingInitError::AlreadyInitialized)
+        }
+        ExporterType::Otlp { endpoint } => {
+            // Live OTLP Initialization
+            let otlp_config = OtlpExporterConfig {
+                endpoint: endpoint.clone(),
+                ..Default::default()
+            };
+
+            let provider = crate::telemetry::exporters::init_otlp_pipeline(
+                &otlp_config,
+                config.service_name().to_string(),
+                config.environment().to_string(),
+            ).map_err(|_| TracingInitError::OtlpFailed)?;
+
+            global::set_tracer_provider(provider.clone());
+            let tracer = provider.tracer("bongas-ai");
+            let otlp_layer = OpenTelemetryLayer::new(tracer);
+
+            let fmt_layer = build_fmt_layer(config, io::stdout);
+            
+            Registry::default()
+                .with(env_filter)
+                .with(fmt_layer)
+                .with(otlp_layer)
                 .try_init()
                 .map_err(|_| TracingInitError::AlreadyInitialized)
         }
