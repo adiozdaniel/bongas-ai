@@ -246,9 +246,24 @@ impl BongasEngine {
             }
 
             // 2. Execute all scenarios in the next batch concurrently
-            let results_stream = futures::stream::iter(next_batch);
+            let results_stream = futures::stream::iter(next_batch)
+                .map(|item| {
+                    let engine = engine.clone();
+                    let cp = context_params.clone();
+                    async move {
+                        let res = engine.execute_scenario_with_stats_contextual(
+                            &item.slug,
+                            user_id,
+                            None,
+                            None,
+                            None,
+                            cp,
+                            Some(20),
+                        ).await;
+                        res.map(|(items, _)| (item, items))
+                    }
+                });
             
-            // [Step 3: Future Mapping Pending]
             // [Step 4: Fan-Out Pending]
             // [Step 5: Result Sanitization Pending]
             // [Step 7: Final Atomic Persistence Pending]
