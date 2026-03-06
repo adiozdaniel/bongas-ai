@@ -128,7 +128,11 @@ impl ExecutionContext {
             l2_enabled: false, // Disable Redis for benchmarks
             ..Default::default()
         };
-        let cache_manager = Arc::new(CacheManager::new("redis://localhost", cache_config).await.unwrap());
+        let redis_config = crate::config::RedisConfig {
+            url: "redis://localhost".to_string(),
+            ..Default::default()
+        };
+        let cache_manager = Arc::new(CacheManager::new(redis_config, cache_config).await.unwrap());
         
         let model_repo = Arc::new(ModelRepository::new(resilient_pool.clone(), resilience_metrics.clone()));
         let model_loader = Arc::new(ModelLoader::new(

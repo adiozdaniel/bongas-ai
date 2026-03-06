@@ -6,13 +6,19 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::runtime::Runtime;
 
+use bongas_ai::config::RedisConfig;
+
 fn bench_redis_serialization(c: &mut Criterion) {
     let rt = Runtime::new().unwrap();
     let metrics = Arc::new(CacheMetrics::new());
     
     // Assumes redis is running on localhost:6379
     let redis_url = "redis://127.0.0.1:6379";
-    let cache = match rt.block_on(RedisCache::new(redis_url, metrics)) {
+    let redis_config = RedisConfig {
+        url: redis_url.to_string(),
+        ..Default::default()
+    };
+    let cache = match rt.block_on(RedisCache::new(redis_config, metrics)) {
         Ok(cache) => cache,
         Err(_) => {
             eprintln!("Redis not available, skipping bench_redis_serialization");

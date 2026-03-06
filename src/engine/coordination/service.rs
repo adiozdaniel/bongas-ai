@@ -267,7 +267,7 @@ impl BongasEngine {
             }
 
             // 2. Execute all scenarios in the next batch concurrently
-            let results_stream = futures::stream::iter(next_batch)
+            let results: Vec<serde_json::Value> = futures::stream::iter(next_batch)
                 .map(|item| {
                     let engine = engine.clone();
                     let cp = context_params.clone();
