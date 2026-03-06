@@ -205,6 +205,26 @@ impl BongasEngine {
         self.intelligence.staleness.clone()
     }
 
+    /// 🎼 THE FINALE: Graceful engine shutdown.
+    /// Closes all connection pools and flushes pending telemetry.
+    pub async fn shutdown(&self) {
+        tracing::info!("🎼 Symphony shutdown initiated: Finalizing all concurrent tasks...");
+
+        // 1. Send shutdown signal to background workers
+        let _ = self.shutdown_tx.send(());
+
+        // 2. Close Database Pool (ResilientPool)
+        self.execution.cache_repo.pool().close().await;
+
+        // 3. Close Cache Tiers (Redis)
+        let _ = self.cache.close().await;
+
+        // 4. Flush OTLP traces
+        opentelemetry::global::shutdown_tracer_provider();
+
+        tracing::info!("🎼 Symphony shutdown complete. Encore!");
+    }
+
     /// 👻 GHOST EXECUTION: Server-side look-ahead pre-warming.
     /// Anticipates the user's next scroll by executing the next batch in the background.
     pub fn ghost_prewarm(

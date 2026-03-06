@@ -42,6 +42,11 @@
 
       /// Get cache tier (L1, L2, etc).
       fn tier(&self) -> CacheTier;
+
+      /// Close the cache gracefully.
+      async fn close(&self) -> Result<()> {
+          Ok(())
+      }
   }
 
   /// Cache tier for metrics categorization.

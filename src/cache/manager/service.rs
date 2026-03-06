@@ -194,5 +194,17 @@
           }
           Ok(())
       }
+
+      /// Close all cache tiers gracefully.
+      pub async fn close(&self) -> Result<()> {
+          if let Some(ref l1) = self.l1 {
+              l1.close().await?;
+          }
+          if let Some(ref l2) = self.l2 {
+              l2.close().await?;
+          }
+          tracing::info!("Cache tiers closed gracefully");
+          Ok(())
+      }
   }
 
