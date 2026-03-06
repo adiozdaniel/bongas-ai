@@ -138,13 +138,13 @@ pub async fn genesis(
             let engine = engine_clone.clone();
             let cp = cp_base.clone();
             let rid = rid.clone();
+            let slug = item.slug.clone();
             async move {
                 execute_row(engine, cp, rid, item, user_id).await
             }
+            .instrument(tracing::info_span!("execute_row", %slug))
         })
         .buffered(5);
-
-    // [Step 6: Trace Context Preservation Pending]
 
     let full_stream = stream::iter(vec![Ok(nav_event), Ok(sub_nav_event), Ok(manifest_event)])
         .chain(stream)
