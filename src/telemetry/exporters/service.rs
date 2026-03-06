@@ -248,3 +248,18 @@
           }
       }
   }
+
+  /// Initialize the OTLP tracing pipeline.
+  pub fn init_otlp_pipeline(
+      config: &OtlpExporterConfig,
+  ) -> Result<TracerProvider, opentelemetry::trace::TraceError> {
+      let exporter = opentelemetry_otlp::new_exporter()
+          .http()
+          .with_endpoint(config.endpoint.clone());
+
+      // [Step 5 & 6 refinements will be added here]
+      opentelemetry_otlp::new_pipeline()
+          .tracing()
+          .with_exporter(exporter)
+          .install_batch(runtime::Tokio)
+  }
