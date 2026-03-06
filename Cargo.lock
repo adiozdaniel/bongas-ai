@@ -407,6 +407,7 @@ dependencies = [
  "mockall",
  "ndarray",
  "opentelemetry",
+ "opentelemetry-http",
  "opentelemetry-otlp",
  "opentelemetry_sdk",
  "ort",
