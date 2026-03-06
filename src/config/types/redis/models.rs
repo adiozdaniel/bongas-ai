@@ -25,7 +25,7 @@ impl Default for RedisConfig {
         Self {
             url: "redis://localhost:6379".to_string(),
             cluster_nodes: vec![],
-            pool_size: 10,
+            pool_size: 50, // Increased for concurrent fan-out
             connection_timeout: 5,
             request_timeout: 10,
             max_retries: 3,

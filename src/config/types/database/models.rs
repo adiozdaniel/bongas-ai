@@ -26,8 +26,8 @@ impl Default for DatabaseConfig {
         Self {
             url: None,
             read_replicas: vec![],
-            max_connections: 20,
-            min_connections: 5,
+            max_connections: 100, // Increased for concurrent fan-out
+            min_connections: 20,
             connection_timeout: 30,
             idle_timeout: 600,
             max_lifetime: 1800,
