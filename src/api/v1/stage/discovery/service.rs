@@ -282,19 +282,12 @@ pub async fn get_page_recommendations(
     }
 
     // 2. Stream Batch
-    let stream = stream::unfold(
-        (batch, engine, cp_base, rid, user_id),
-        |(mut items, engine, cp, rid, uid): (Vec<PageCompositionItem>, Arc<BongasEngine>, ContextParams, String, Option<i32>)| async move {
-            if items.is_empty() {
-                return None;
-            }
-            
-            let item = items.remove(0);
-            let event = execute_row(engine.clone(), cp.clone(), rid.clone(), item, uid).await;
-            
-            Some((event, (items, engine, cp, rid, uid)))
-        },
-    );
+    let stream = stream::iter(batch);
+
+    // [Step 3: Future Mapping Pending]
+    // [Step 4: Fan-Out Pending]
+    // [Step 5: Result Wrapping Pending]
+    // [Step 6: Trace Context Preservation Pending]
 
     let full_stream = stream::once(async move { Ok(manifest_event) })
         .chain(stream)
