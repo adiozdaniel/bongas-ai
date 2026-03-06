@@ -207,28 +207,44 @@
       }
   }
 
-  // ─── OTLP Exporter (Future) ─────────────────────────────────────────────────
+  // ─── OTLP Exporter (Live) ───────────────────────────────────────────────────
 
-  /// Placeholder for OTLP exporter configuration.
+  /// Supported OTLP transport protocols.
+  #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+  pub enum OtlpProtocol {
+      /// OTLP over gRPC (high performance).
+      Grpc,
+      /// OTLP over HTTP/JSON (better firewall compatibility).
+      #[default]
+      Http,
+  }
+
+  /// Configuration for the OTLP exporter.
   #[derive(Debug, Clone)]
   pub struct OtlpExporterConfig {
       /// OTLP endpoint URL.
       pub endpoint: String,
-      /// Headers to include in requests.
+      /// The transport protocol to use.
+      pub protocol: OtlpProtocol,
+      /// Headers to include in requests (e.g., API keys).
       pub headers: Vec<(String, String)>,
       /// Request timeout in milliseconds.
       pub timeout_ms: u64,
       /// Batch size for exporting spans.
       pub batch_size: usize,
+      /// Maximum queue size for the span processor.
+      pub max_queue_size: usize,
   }
 
   impl Default for OtlpExporterConfig {
       fn default() -> Self {
           Self {
-              endpoint: String::from("http://localhost:4317"),
+              endpoint: String::from("http://localhost:4318/v1/traces"),
+              protocol: OtlpProtocol::Http,
               headers: Vec::new(),
               timeout_ms: 10000,
               batch_size: 512,
+              max_queue_size: 2048,
           }
       }
   }
