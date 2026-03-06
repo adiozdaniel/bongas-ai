@@ -19,6 +19,7 @@ use crate::db::ResilientPool;
 pub struct UserEvent {
     pub user_id: i32,
     pub profile_id: String,
+    pub request_id: String,
     pub item_id: i32,
     pub interaction_type: String,
     pub scenario_slug: String,
