@@ -9,7 +9,7 @@ use axum::{
 use futures::stream::{self, Stream, StreamExt};
 use std::convert::Infallible;
 use std::sync::Arc;
-use tracing::warn;
+use tracing::{warn, Instrument};
 
 use crate::engine::coordination::service::{BongasEngine, ScenarioDefinition};
 use crate::api::{ContextParams, StandardResponse};
