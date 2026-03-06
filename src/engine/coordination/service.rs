@@ -245,30 +245,13 @@ impl BongasEngine {
                 return;
             }
 
-            // 2. Execute all scenarios in the next batch
-            let mut results = Vec::new();
-            for item in next_batch {
-                let slug = item.slug.clone();
-                let execution_res = engine.execute_scenario_with_stats_contextual(
-                    &slug,
-                    user_id,
-                    None,
-                    None,
-                    None,
-                    context_params.clone(),
-                    Some(20),
-                ).await;
-
-                if let Ok((items, _)) = execution_res {
-                    results.push(serde_json::json!({
-                        "title": item.slug.replace('_', " "),
-                        "row_type": item.row_type,
-                        "row_style": item.row_style,
-                        "scenario": item.slug,
-                        "items": items,
-                    }));
-                }
-            }
+            // 2. Execute all scenarios in the next batch concurrently
+            let results_stream = futures::stream::iter(next_batch);
+            
+            // [Step 3: Future Mapping Pending]
+            // [Step 4: Fan-Out Pending]
+            // [Step 5: Result Sanitization Pending]
+            // [Step 7: Final Atomic Persistence Pending]
 
             // 3. Store the entire batch in the "Ghost Cache"
             if !results.is_empty() {
