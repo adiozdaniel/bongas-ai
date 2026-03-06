@@ -141,9 +141,9 @@ pub async fn genesis(
             async move {
                 execute_row(engine, cp, rid, item, user_id).await
             }
-        });
+        })
+        .buffered(5);
 
-    // [Step 4: Fan-Out Pending]
     // [Step 5: Result Wrapping Pending]
     // [Step 6: Trace Context Preservation Pending]
 
