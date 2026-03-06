@@ -15,7 +15,7 @@ use axum::{
 };
 use sha2::{Sha256, Digest};
 use uuid::Uuid;
-use tracing::{debug, Span};
+use tracing::{debug, Span, Instrument};
 use std::sync::Arc;
 use crate::engine::coordination::service::BongasEngine;
 
@@ -140,16 +140,18 @@ pub async fn identity_middleware(
         profile_id,
     };
 
-    // 7. Inject IdentityContext into extensions
-    debug!(
-        visitor_id = %visitor_id, 
-        device_hash = %identity.device_hash, 
-        profile_id = ?identity.profile_id,
-        "Identity context established"
-    );
+    let identity_clone = identity.clone();
     req.extensions_mut().insert(identity);
 
-    let mut response = next.run(req).await;
+    let span = tracing::info_span!(
+        "identity", 
+        visitor_id = %visitor_id, 
+        device_hash = %identity_clone.device_hash, 
+        profile_id = ?identity_clone.profile_id,
+        device_type = %identity_clone.device_type
+    );
+
+    let mut response = next.run(req).instrument(span).await;
 
     // 8. Set-Cookie if it's a new visitor (Zero-Touch Persistence)
     if is_new_visitor {
