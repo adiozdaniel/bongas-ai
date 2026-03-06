@@ -13,7 +13,11 @@ use tracing_subscriber::{
     EnvFilter, Layer, Registry,
 };
 
+use opentelemetry::{global, trace::TracerProvider as _};
+use tracing_opentelemetry::OpenTelemetryLayer;
+
 use crate::telemetry::config::{ExporterType, OutputFormat, TelemetryConfig};
+use crate::telemetry::exporters::OtlpExporterConfig;
 
 // ─── Initialization ─────────────────────────────────────────────────────────
 
