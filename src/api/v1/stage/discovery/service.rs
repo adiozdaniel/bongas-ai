@@ -287,14 +287,13 @@ pub async fn get_page_recommendations(
             let engine = engine.clone();
             let cp = cp_base.clone();
             let rid = rid.clone();
+            let slug = item.slug.clone();
             async move {
                 execute_row(engine, cp, rid, item, user_id).await
             }
+            .instrument(tracing::info_span!("execute_row", %slug))
         })
         .buffered(5);
-
-    // [Step 5: Result Wrapping Pending]
-    // [Step 6: Trace Context Preservation Pending]
 
     let full_stream = stream::once(async move { Ok(manifest_event) })
         .chain(stream)
