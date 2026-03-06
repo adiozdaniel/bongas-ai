@@ -7,6 +7,14 @@
   use std::path::Path;
   use std::sync::{Arc, Mutex, PoisonError};
 
+  use opentelemetry::{trace::TracerProvider as _, KeyValue};
+  use opentelemetry_otlp::WithExportConfig;
+  use opentelemetry_sdk::{
+      runtime,
+      trace::{self, Sampler, TracerProvider},
+      Resource,
+  };
+
   // ─── Writer Trait ───────────────────────────────────────────────────────────
 
   /// Trait for writers that can be used with tracing.
