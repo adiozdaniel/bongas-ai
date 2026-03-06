@@ -132,20 +132,13 @@ pub async fn genesis(
         end_events.push(Ok(Event::default().event("continuation").json_data(&continuation).unwrap_or_else(|_| Event::default().comment("serial_error"))));
     }
 
-    // Spawn stream
-    let stream = stream::unfold(
-        (initial_batch, engine_clone, cp_base, rid, user_id),
-        |(mut batch, engine, cp, rid, uid): (Vec<PageCompositionItem>, Arc<BongasEngine>, ContextParams, String, Option<i32>)| async move {
-            if batch.is_empty() {
-                return None;
-            }
-            
-            let item = batch.remove(0);
-            let event = execute_row(engine.clone(), cp.clone(), rid.clone(), item, uid).await;
-            
-            Some((event, (batch, engine, cp, rid, uid)))
-        },
-    );
+    // Spawn concurrent stream
+    let stream = stream::iter(initial_batch);
+
+    // [Step 3: Future Mapping Pending]
+    // [Step 4: Fan-Out Pending]
+    // [Step 5: Result Wrapping Pending]
+    // [Step 6: Trace Context Preservation Pending]
 
     let full_stream = stream::iter(vec![Ok(nav_event), Ok(sub_nav_event), Ok(manifest_event)])
         .chain(stream)
