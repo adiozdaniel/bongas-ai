@@ -10,12 +10,14 @@ use serde::{Deserialize, Serialize};
 /// group ID, and topic configurations.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KafkaConfig {
+    pub enabled: bool,
     pub brokers: String,
     pub group_id: String,
     pub profile_topic: String,
     pub reaction_topic: String,
     pub notification_topic: String,
     pub playback_topic: String,
+    pub sync_topic: String,
     pub connection_timeout: u64,
     pub request_timeout: u64,
     pub max_retries: u32,
@@ -25,12 +27,14 @@ pub struct KafkaConfig {
 impl Default for KafkaConfig {
     fn default() -> Self {
         Self {
+            enabled: false,
             brokers: "localhost:9092".to_string(),
             group_id: "bongas-ai-consumers".to_string(),
             profile_topic: "user.profiles".to_string(),
             reaction_topic: "user.reactions".to_string(),
             notification_topic: "notifications".to_string(),
             playback_topic: "playback.sessions".to_string(),
+            sync_topic: "recommendations.sync".to_string(),
             connection_timeout: 10,
             request_timeout: 30,
             max_retries: 3,

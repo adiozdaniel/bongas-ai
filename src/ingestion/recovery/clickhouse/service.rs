@@ -46,6 +46,7 @@ impl From<config_ingestion::ClickHouseSourceConfig> for ClickHouseSourceConfig {
 #[derive(serde::Deserialize, clickhouse::Row)]
 struct ClickHouseEvent {
     pub user_id: i32,
+    pub profile_id: String,
     pub item_id: i32,
     pub interaction_type: String,
     pub scenario_slug: String,
@@ -142,6 +143,7 @@ impl ClickHouseSource {
             let activity = match row.interaction_type.as_str() {
                 "playback" => UserActivity::Playback {
                     user_id: row.user_id,
+                    profile_id: Some(row.profile_id.clone()),
                     item_id: row.item_id,
                     session_id: "clickhouse_backfill".to_string(),
                     visitor_id: None,
@@ -156,6 +158,7 @@ impl ClickHouseSource {
                 },
                 "like" | "dislike" => UserActivity::Reaction {
                     user_id: row.user_id,
+                    profile_id: Some(row.profile_id.clone()),
                     item_id: row.item_id,
                     visitor_id: None,
                     device_hash: None,
@@ -166,6 +169,7 @@ impl ClickHouseSource {
                 },
                 "click" => UserActivity::Click {
                     user_id: row.user_id,
+                    profile_id: Some(row.profile_id.clone()),
                     item_id: row.item_id,
                     visitor_id: None,
                     device_hash: None,
@@ -175,6 +179,7 @@ impl ClickHouseSource {
                 },
                 "impression" => UserActivity::Impression {
                     user_id: row.user_id,
+                    profile_id: Some(row.profile_id.clone()),
                     item_id: row.item_id,
                     visitor_id: None,
                     device_hash: None,

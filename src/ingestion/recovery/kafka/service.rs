@@ -29,6 +29,7 @@ pub struct KafkaSourceConfig {
     pub reaction_topic: String,
     pub profile_topic: String,
     pub notification_topic: String,
+    pub sync_topic: String,
 }
 
 impl From<config_kafka::KafkaConfig> for KafkaSourceConfig {
@@ -40,6 +41,7 @@ impl From<config_kafka::KafkaConfig> for KafkaSourceConfig {
             reaction_topic: config.reaction_topic,
             profile_topic: config.profile_topic,
             notification_topic: config.notification_topic,
+            sync_topic: config.sync_topic,
         }
     }
 }
@@ -123,14 +125,15 @@ impl KafkaSource {
             &self.config.reaction_topic,
             &self.config.profile_topic,
             &self.config.notification_topic,
+            &self.config.sync_topic,
         ];
 
-        let mut topic_names = Vec::new();
+        let mut topic_names: Vec<String> = Vec::new();
         for topic in topics {
             topic_names.push(topic.clone());
+            // Only add .dlq for non-sync topics if needed, or all
             topic_names.push(format!("{}.dlq", topic));
         }
-        topic_names.push("recommendations.sync".to_string());
 
         let mut new_topics = Vec::new();
         for name in &topic_names {
@@ -352,6 +355,7 @@ impl ActivitySource for KafkaSource {
 
                     Some(UserActivity::Playback {
                         user_id: v.get("user_id")?.as_i64()? as i32,
+                        profile_id: v.get("profile_id").and_then(|id| id.as_str()).map(|s| s.to_string()),
                         item_id: v.get("item_id")?.as_i64()? as i32,
                         session_id: v.get("session_id")?.as_str()?.to_string(),
                         visitor_id: v.get("visitor_id").and_then(|id| id.as_str()).map(|s| s.to_string()),
@@ -376,6 +380,7 @@ impl ActivitySource for KafkaSource {
 
                     Some(UserActivity::Reaction {
                         user_id: v.get("user_id")?.as_i64()? as i32,
+                        profile_id: v.get("profile_id").and_then(|id| id.as_str()).map(|s| s.to_string()),
                         item_id: v.get("item_id")?.as_i64()? as i32,
                         visitor_id: v.get("visitor_id").and_then(|id| id.as_str()).map(|s| s.to_string()),
                         device_hash: v.get("device_hash").and_then(|h| h.as_str()).map(|s| s.to_string()),
@@ -396,6 +401,7 @@ impl ActivitySource for KafkaSource {
 
                     Some(UserActivity::ProfileUpdate {
                         user_id: v.get("user_id")?.as_i64()? as i32,
+                        profile_id: v.get("profile_id").and_then(|id| id.as_str()).map(|s| s.to_string()),
                         update_type: v.get("update_type")?.as_str()?.to_string(),
                         data: v.get("data")?.clone(),
                         timestamp: ts,
@@ -412,6 +418,7 @@ impl ActivitySource for KafkaSource {
 
                     Some(UserActivity::Notification {
                         user_id: v.get("user_id")?.as_i64()? as i32,
+                        profile_id: v.get("profile_id").and_then(|id| id.as_str()).map(|s| s.to_string()),
                         notification_type: v.get("notification_type")?.as_str()?.to_string(),
                         title: v.get("title")?.as_str()?.to_string(),
                         body: v.get("body")?.as_str()?.to_string(),

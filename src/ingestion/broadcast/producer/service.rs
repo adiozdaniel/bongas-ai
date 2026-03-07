@@ -41,14 +41,14 @@ impl RecommendationProducer {
             Ok(producer) => {
                 Self {
                     producer: Some(producer),
-                    topic: "recommendations.sync".to_string(),
+                    topic: config.sync_topic.clone(),
                 }
             }
             Err(e) => {
                 error!("Kafka producer creation failed: {:?}. Ecosystem sync disabled.", e);
                 Self {
                     producer: None,
-                    topic: "recommendations.sync".to_string(),
+                    topic: config.sync_topic.clone(),
                 }
             }
         }
