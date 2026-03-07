@@ -117,15 +117,15 @@ impl ActivityProcessor {
         // 2. Sink to ClickHouse (Asynchronous Buffered) - HIGH-VOLUME ANALYTICS
         let analytics_event = AnalyticsEvent {
             user_id: activity.user_id(),
-            profile_id: activity.profile_id().map(|s| s.to_string()).unwrap_or_else(|| "unknown".to_string()), 
+            profile_id: activity.profile_id().map(|s| s.to_string()), 
             request_id: "ingested".to_string(),
             item_id: match activity {
                 UserActivity::Playback { item_id, .. } | UserActivity::Reaction { item_id, .. } | UserActivity::Click { item_id, .. } | UserActivity::Impression { item_id, .. } => item_id,
                 _ => 0,
             },
             interaction_type: activity.kind().to_string(),
-            scenario_slug: activity.scenario_slug().unwrap_or("unknown").to_string(),
-            device_type: activity.device_type().unwrap_or("unknown").to_string(),
+            scenario_slug: activity.scenario_slug().map(|s| s.to_string()),
+            device_type: activity.device_type().map(|s| s.to_string()),
             watch_duration_seconds: match activity {
                 UserActivity::Playback { watch_duration_seconds, .. } => watch_duration_seconds,
                 _ => 0,

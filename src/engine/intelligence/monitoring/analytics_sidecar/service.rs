@@ -18,12 +18,12 @@ use crate::db::ResilientPool;
 #[derive(Debug, Clone, clickhouse::Row, serde::Serialize)]
 pub struct UserEvent {
     pub user_id: i32,
-    pub profile_id: String,
+    pub profile_id: Option<String>,
     pub request_id: String,
     pub item_id: i32,
     pub interaction_type: String,
-    pub scenario_slug: String,
-    pub device_type: String,
+    pub scenario_slug: Option<String>,
+    pub device_type: Option<String>,
     pub watch_duration_seconds: i32,
     pub created_at: u64,
 }
