@@ -329,7 +329,7 @@ impl ItemFeatureService {
                    is_explicit, has_violence, has_strong_language, has_drug_content,
                    available_countries, blocked_countries,
                    seasonal_tags, holiday_tags, themes,
-                   is_award_winner, required_tier, i.is_free,
+                   is_award_winner, required_tier, is_free,
                    view_count, like_count, comment_count, share_count, save_count,
                    completion_rate, trending_score, popularity_score,
                    user_rating, user_rating_count, critic_rating, critic_rating_count,
