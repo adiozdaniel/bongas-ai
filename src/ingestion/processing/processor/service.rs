@@ -79,28 +79,45 @@ impl ActivityProcessor {
         let start = std::time::Instant::now();
 
         // 1. Sink to Postgres (Interaction Repo) - RELATIONAL PERSISTENCE
-        self.interaction_repo.record_interaction(
-            activity.user_id(),
-            activity.profile_id().map(|s| s.to_string()),
-            match activity {
-                UserActivity::Playback { item_id, .. } | UserActivity::Reaction { item_id, .. } | UserActivity::Click { item_id, .. } | UserActivity::Impression { item_id, .. } => item_id,
-                _ => 0,
+        match activity {
+            UserActivity::Playback { 
+                user_id, ref profile_id, item_id, watch_duration_seconds, 
+                watch_percentage, ref scenario_slug, ref visitor_id, ref device_hash, ref device_type, .. 
+            } => {
+                self.interaction_repo.create_implicit_rating(
+                    user_id,
+                    profile_id.clone(),
+                    item_id,
+                    watch_percentage,
+                    watch_duration_seconds,
+                    scenario_slug.as_deref().unwrap_or("unknown"),
+                    visitor_id.clone(),
+                    device_hash.clone(),
+                    device_type.clone(),
+                ).await?;
             },
-            activity.kind(),
-            activity.scenario_slug().unwrap_or("unknown"),
-            match activity {
-                UserActivity::Playback { watch_percentage, .. } => watch_percentage,
-                _ => 1.0,
-            },
-            activity.visitor_id().map(|s| s.to_string()),
-            activity.device_hash().map(|s| s.to_string()),
-            activity.device_type().map(|s| s.to_string()),
-        ).await?;
+            _ => {
+                self.interaction_repo.record_interaction(
+                    activity.user_id(),
+                    activity.profile_id().map(|s| s.to_string()),
+                    match activity {
+                        UserActivity::Reaction { item_id, .. } | UserActivity::Click { item_id, .. } | UserActivity::Impression { item_id, .. } => item_id,
+                        _ => 0,
+                    },
+                    activity.kind(),
+                    activity.scenario_slug().unwrap_or("unknown"),
+                    1.0, // Default weight for non-playback
+                    activity.visitor_id().map(|s| s.to_string()),
+                    activity.device_hash().map(|s| s.to_string()),
+                    activity.device_type().map(|s| s.to_string()),
+                ).await?;
+            }
+        }
 
         // 2. Sink to ClickHouse (Asynchronous Buffered) - HIGH-VOLUME ANALYTICS
         let analytics_event = AnalyticsEvent {
             user_id: activity.user_id(),
-            profile_id: activity.profile_id().unwrap_or("unknown").to_string(), 
+            profile_id: activity.profile_id().map(|s| s.to_string()).unwrap_or_else(|| "unknown".to_string()), 
             request_id: "ingested".to_string(),
             item_id: match activity {
                 UserActivity::Playback { item_id, .. } | UserActivity::Reaction { item_id, .. } | UserActivity::Click { item_id, .. } | UserActivity::Impression { item_id, .. } => item_id,

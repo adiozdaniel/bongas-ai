@@ -87,31 +87,41 @@ impl InteractionRepository {
         item_id: i32,
         rating: f32,
         watch_duration_seconds: i32,
+        scenario_slug: &str,
         visitor_id: Option<String>,
         device_hash: Option<String>,
         device_type: Option<String>,
     ) -> AppResult<()> {
         let start_time = std::time::Instant::now();
         let pid = profile_id.clone();
-        let result = self.pool.execute(|pool| async move {
-            sqlx::query(
-                r#"
-                INSERT INTO user_interactions
-                    (user_id, profile_id, item_id, interaction_type, rating, watch_duration_seconds, visitor_id, device_hash, device_type, created_at)
-                VALUES ($1, $2, $3, 'implicit_rating', $4, $5, $6, $7, $8, NOW())
-                "#,
-            )
-            .bind(user_id)
-            .bind(pid)
-            .bind(item_id)
-            .bind(rating)
-            .bind(watch_duration_seconds)
-            .bind(visitor_id)
-            .bind(device_hash)
-            .bind(device_type)
-            .execute(&pool)
-            .await
-            .map(|_| ())
+        let s_slug = scenario_slug.to_string();
+        let result = self.pool.execute(|pool| {
+            let pid = pid.clone();
+            let s_slug = s_slug.clone();
+            let vid = visitor_id.clone();
+            let dhash = device_hash.clone();
+            let dtype = device_type.clone();
+            async move {
+                sqlx::query(
+                    r#"
+                    INSERT INTO user_interactions
+                        (user_id, profile_id, item_id, interaction_type, rating, watch_duration_seconds, scenario_slug, visitor_id, device_hash, device_type, created_at)
+                    VALUES ($1, $2, $3, 'implicit_rating', $4, $5, $6, $7, $8, $9, NOW())
+                    "#,
+                )
+                .bind(user_id)
+                .bind(pid)
+                .bind(item_id)
+                .bind(rating)
+                .bind(watch_duration_seconds)
+                .bind(s_slug)
+                .bind(vid)
+                .bind(dhash)
+                .bind(dtype)
+                .execute(&pool)
+                .await
+                .map(|_| ())
+            }
         }).await;
 
         let duration = start_time.elapsed();
