@@ -126,24 +126,21 @@
       }
 
       async fn delete_pattern(&self, pattern: &str) -> Result<()> {
-          // Translate glob-like pattern to simple prefix check or exact match
-          let prefix = pattern.trim_end_matches('*');
-          let is_wildcard = pattern.ends_with('*');
+          // Translate glob-like pattern to regex for more flexible matching
+          // Supports: * (any chars), ? (any single char)
+          let regex_pattern = format!("^{}$", pattern.replace(".", "\\.").replace("*", ".*").replace("?", "."));
+          let re = regex::Regex::new(&regex_pattern)?;
 
           for shard in &self.shards {
               let mut cache = shard.write().await;
-              if is_wildcard {
-                  // This is slow (O(N) per shard) but necessary for pattern invalidation in L1
-                  let keys_to_remove: Vec<String> = cache.iter()
-                      .filter(|(k, _)| k.starts_with(prefix))
-                      .map(|(k, _)| k.clone())
-                      .collect();
-                  
-                  for k in keys_to_remove {
-                      cache.pop(&k);
-                  }
-              } else {
-                  cache.pop(pattern);
+              // This is slow (O(N) per shard) but necessary for pattern invalidation in L1
+              let keys_to_remove: Vec<String> = cache.iter()
+                  .filter(|(k, _)| re.is_match(k))
+                  .map(|(k, _)| k.clone())
+                  .collect();
+              
+              for k in keys_to_remove {
+                  cache.pop(&k);
               }
           }
           Ok(())

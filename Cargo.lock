@@ -415,6 +415,7 @@ dependencies = [
  "rand 0.8.5",
  "rdkafka",
  "redis",
+ "regex",
  "reqwest",
  "rkyv",
  "serde",
