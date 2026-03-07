@@ -73,6 +73,32 @@ impl<W: Write> Drop for BufferedWriter<W> {
     }
 }
 
+// ─── File Writer ────────────────────────────────────────────────────────────
+
+/// File writer for tracing.
+pub struct FileWriter {
+    path: std::path::PathBuf,
+}
+
+impl FileWriter {
+    /// Create a new file writer.
+    pub fn new(path: std::path::PathBuf) -> Self {
+        Self { path }
+    }
+}
+
+impl<'a> tracing_subscriber::fmt::writer::MakeWriter<'a> for FileWriter {
+    type Writer = std::fs::File;
+
+    fn make_writer(&self) -> Self::Writer {
+        std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&self.path)
+            .expect("failed to open telemetry file")
+    }
+}
+
 // ─── OTLP Exporter (Live) ───────────────────────────────────────────────────
 
 /// Supported OTLP transport protocols.
@@ -155,8 +181,8 @@ pub fn init_otlp_pipeline(
 
     let provider = TracerProvider::builder()
         .with_batch_exporter(exporter, runtime::Tokio)
-        .with_sampler(Sampler::ParentBased(Box::new(Sampler::TraceIdRatioBased(config.sampling_rate))))
         .with_resource(resource)
+        .with_sampler(Sampler::ParentBased(Box::new(Sampler::TraceIdRatioBased(config.sampling_rate))))
         .build();
 
     Ok(provider)

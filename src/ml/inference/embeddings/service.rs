@@ -152,21 +152,6 @@ impl EmbeddingManager {
         }
     }
 
-    /// Compute cosine similarity between two vectors.
-    pub fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
-        crate::ml::assets::utils::service::cosine_similarity(a, b)
-    }
-
-    /// Compute dot product between two vectors.
-    pub fn dot_product(a: &[f32], b: &[f32]) -> f32 {
-        crate::ml::assets::utils::service::dot_product(a, b)
-    }
-
-    /// Compute euclidean similarity (1 / (1 + distance)).
-    pub fn euclidean_similarity(a: &[f32], b: &[f32]) -> f32 {
-        crate::ml::assets::utils::service::euclidean_similarity(a, b)
-    }
-
     // ── Internal DB queries ──────────────────────────────────────────────────
 
     async fn fetch_embeddings_from_db(
@@ -236,6 +221,4 @@ impl EmbeddingManager {
             .and_then(|r| r.embedding)
             .unwrap_or_else(|| vec![0.0; embedding_dim]))
     }
-
-
 }

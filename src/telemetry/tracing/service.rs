@@ -66,9 +66,9 @@ fn build_and_init(config: &TelemetryConfig) -> Result<(), TracingInitError> {
                 .try_init()
                 .map_err(|_| TracingInitError::AlreadyInitialized)
         }
-        ExporterType::File(_) => {
-            // File: fall back to stdout for now
-            let layer = build_fmt_layer(config, io::stdout);
+        ExporterType::File(path) => {
+            let writer = crate::telemetry::exporters::FileWriter::new(path.clone());
+            let layer = build_fmt_layer(config, writer);
             Registry::default()
                 .with(env_filter)
                 .with(layer)
