@@ -1,12 +1,12 @@
-# 👤 Identity & Context: Zero-Touch Persistence
+# 👤 Identity & Context: Zero-Touch Intelligence 2.0
 
 [🏠 Hub](../HUB.md) | [🏗️ Architecture](./SYMPHONY.md) | [⚡ Streaming](./ORCHESTRATION.md) | [🎨 Pages](./PAGES.md)
 
 ---
 
-## 🎯 The Goal: Seamless Personalization
+## 🎯 The Goal: Frictionless Intelligence
 
-Bongas-AI provides world-class personalization without "Frontend Backlash." Our identity system is **Zero-Touch** for client developers. The backend autonomously handles device recognition, persistence, and identity stitching.
+Bongas-AI provides world-class personalization without requiring complex frontend state management. Our identity system is **Zero-Touch**: the backend autonomously handles device recognition, persistence, identity stitching, and distributed tracing.
 
 ## 🎭 Identity Tiers
 
@@ -14,48 +14,62 @@ Bongas-AI provides world-class personalization without "Frontend Backlash." Our 
 | :--- | :--- | :--- | :--- |
 | **Anonymous** | `device_hash` (IP + UA) | Request-based | Contextual (Device + Time) |
 | **Visitor** | `visitor_id` (Transparent Cookie) | 1 Year (Persistent) | Behavioral (Device History) |
-| **User** | `user_id` (JWT / Auth Profile) | Account-based | Fully Personalized |
+| **Profile** | `profile_id` (JWT / Sub-Account) | Persona-based | Niche (Kid vs Adult) |
+| **User** | `user_id` (Auth Account) | Account-based | Fully Personalized |
 
-## 🧶 The Identity "Stitch"
+## 🧶 The Identity "Stitch" & Propagation
 
-Our `identity_middleware` acts as a silent observer that links anonymous behavior to persistent profiles:
+Our `identity_middleware` acts as a silent observer that links anonymous behavior to persistent profiles while ensuring end-to-end observability.
 
-1.  **Fingerprinting**: Every request is assigned a `device_hash` derived from the IP address and User-Agent. This allows us to recognize a "Living Room TV" even if cookies are disabled.
-2.  **Zero-Touch Cookie**: On the first request, the server issues a `Set-Cookie: visitor_id=UUID`. Most modern HTTP clients store this automatically.
-3.  **Context Injection**: These identifiers are injected into the `IdentityContext` extension and merged into `ContextParams`, making them available to every ML model in the engine.
+### 1. Zero-Touch Device Detection
+
+If the `X-Device-Type` header is missing, the middleware parses the `User-Agent` to categorize the device:
+
+- **TV:** Smart TVs, AppleTV, GoogleTV.
+- **Mobile:** iPhones, Android phones.
+- **Tablet:** iPads, Playbooks.
+- **Web:** Desktop browsers.
+
+### 2. OTLP Shield (Tracing)
+
+Every request participates in a distributed trace.
+
+- **Extraction:** Captures `traceparent` headers from upstream gateways.
+- **Enrichment:** The active span is automatically enriched with `visitor_id`, `device_hash`, and `profile_id`.
+- **Propagation:** These IDs follow the request as it fans out into concurrent scenarios.
+
+### 3. Identity Stitching
+
+The moment a `visitor_id` authenticates with a `user_id` or `profile_id`, the `IdentityStitcher` (in `IntelligencePillar`) retroactively merges their anonymous behavioral history into their persistent profile.
 
 ```mermaid
 sequenceDiagram
     participant C as Client
     participant M as Identity Middleware
+    participant O as OTLP Shield
     participant I as Ingestion Manager
-    participant D as Identity Store
 
     C->>M: GET /page/home (No Cookie)
     M->>M: Generate Device_Hash & Visitor_ID
+    M->>O: Create Span (Enriched with Visitor_ID)
     M->>C: Response + Set-Cookie (visitor_id)
-    C->>I: Action (Implicitly sends Cookie)
-    I->>D: Log behavior for Visitor_ID
-
-    Note over C,D: User Logs In
-    C->>M: GET /page/home (Auth + Cookie)
-    M->>D: Stitch: User_ID == Visitor_ID
-    D->>D: Unify Behavioral History
+    C->>I: Interaction (Implicitly sends Cookie)
+    I->>I: Record event for Visitor_ID in ClickHouse
 ```
 
 ## 🛠️ Technical Implementation
 
-- **Location**: `src/api/middleware/identity.rs`
-- **Logic**: Uses SHA-256 for deterministic `device_hash` generation.
-- **Persistence**: Employs `HttpOnly`, `SameSite=Lax` cookies with a 1-year expiration (`Max-Age=31536000`).
+- **Middleware**: `src/api/middleware/identity/service.rs`
+- **Tracing**: Uses `tracing-opentelemetry` and `opentelemetry-http` for header extraction.
+- **Persistence**: Employs `HttpOnly`, `SameSite=Lax` cookies with a 1-year expiration.
 
 ---
 
 ## 🚀 Next Steps
 
-- Explore the [**Streaming Orchestration**](./ORCHESTRATION.md) model.
-- See how [**Smart Pages**](./PAGES.md) use this identity data.
+- Explore the [**Velocity Engine**](./ORCHESTRATION.md) parallel model.
+- See how [**Smart Pages**](./PAGES.md) use this identity data for row ranking.
 
 ---
 
-[🏠 Hub](../HUB.md) | [🔝 Top](#-identity--context-zero-touch-persistence)
+[🏠 Hub](../HUB.md) | [🔝 Top](#-identity--context-zero-touch-intelligence-20)

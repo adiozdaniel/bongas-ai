@@ -1,4 +1,4 @@
-# ⚡ Streaming & Orchestration: The Velocity Engine
+# ⚡ Streaming & Orchestration: The Velocity Engine 2.0
 
 [🏠 Hub](../HUB.md) | [🏗️ Architecture](./SYMPHONY.md) | [👤 Identity](./IDENTITY.md) | [🎨 Pages](./PAGES.md)
 
@@ -6,71 +6,82 @@
 
 ## 🏎️ The Goal: Zero Perceived Latency
 
-A world-class recommendation engine cannot wait for its slowest model. Bongas-AI uses **Parallel Pipelined Execution** to ensure that the user sees content as fast as the fastest component can deliver it.
+A world-class recommendation engine cannot wait for its slowest model. Symphony 2.0 uses **Concurrent Fan-Out** to ensure that the user sees content as fast as the fastest component can deliver it.
 
-## 🔄 Execution Models: Sequential vs. Parallel
+## 🔄 Concurrent Execution: The Fan-Out Model
 
-### The Legacy Way (Sequential)
+In Symphony 2.0, we have completely eradicated sequential loops. Using Rust's `futures` and `tokio` runtime, we implement a high-concurrency fan-out model.
 
-Each row waits for the previous one. A single slow ML model blocks the entire page.
+### 1. Ordered SSE Streaming (Live)
 
-- **Total Time:** Row 1 + Row 2 + Row 3...
-- **User Experience:** "Stuttering" load.
+For the user's active viewport, we use `.buffered(5)`.
 
-### The Bongas-AI Way (Parallel Pipelined)
+- **Parallel Execution:** Up to 5 scenarios fire simultaneously.
+- **Ordered Delivery:** Rows are emitted to the client in the exact order specified by the Admin Page Layout (e.g., Hero → Continue Watching → Trending).
+- **Impact:** The fastest rows start rendering immediately, and slow rows only delay themselves, not the entire page.
 
-We trigger all rows simultaneously and stream them in a buffered order.
+### 2. Unordered Ghost Execution (Background)
 
-- **Total Time:** Max(Fastest Rows) + Overhead.
-- **User Experience:** "Instant-On" pop.
+For server-side look-ahead, we use `.buffer_unordered(5)`.
+
+- **Max Throughput:** We don't care about the order when writing to the cache.
+- **Background Persistence:** Results are aggregated and written atomically to Redis.
 
 ```mermaid
 graph TD
     A[Page Request] --> B[Fetch Page Layout]
     B --> C[Navigation & Manifest Event]
-    C --> D[Parallel Dispatch]
+    C --> D[Parallel Dispatch: Fan-Out 5]
     
-    subgraph Execution Pool
-        E1[Scenario 1: Continue Watching]
-        E2[Scenario 2: ML Personalization]
-        E3[Scenario 3: Trending Now]
+    subgraph Execution Pool (Tokio)
+        E1[Scenario 1: Hero]
+        E2[Scenario 2: ML Picks]
+        E3[Scenario 3: Trending]
     end
 
     D --> E1
     D --> E2
     D --> E3
 
-    E1 --> F[SSE Stream]
+    E1 --> F[SSE Stream: buffered]
+    E2 --> F
     E3 --> F
-    E2 --(Slow)--> F
 ```
 
-## 🛠️ The "Velocity" Contract
+## 👻 Ghost Execution: Server-Side Anticipation
 
-1. **The Manifest Event**: The first event in the SSE stream tells the client exactly how many rows to expect and which rows to **pre-warm**.
-2. **Buffer Unordered**: We execute scenarios in parallel (Concurrency: 5).
-3. **Ordered Streaming**: While execution is parallel, we maintain a logical "order of importance" where possible, but never allow one slow row to kill the stream.
-4. **Graceful Degradation**: If a scenario exceeds its timeout, the orchestrator emits an **Empty Comment** or a **Fallback Event** (e.g., "Popular") so the UI stays intact.
+We eliminate client-side complex pre-warming logic. The engine automatically anticipates the user's next scroll.
 
-## 🛡️ The Shield: Resilience & Scale
+- **Trigger:** Every `genesis` or paginated request triggers a background task for the *next* batch.
+- **The "Ghost Cache":** Results are stored in Redis with a key format: `ghost:user_{id}:page_{slug}:offset_{offset}`.
+- **TTL:** 5 minutes (300s).
+- **Concurrency:** Uses `buffer_unordered` to maximize pre-warming speed without blocking the main request thread.
 
-To ensure "Netflix-Grade" reliability, Bongas-AI implements three layers of protection:
+## 🛡️ Resilience & Scale
 
-### 1. Fallback Scenarios (Fail-Over)
+### 1. Connection Pool Scaling
 
-Admins can configure a `fallback_slug` for every row. If the primary (personalized) scenario fails, the engine automatically swaps it for a generic, high-performance alternative (e.g., "Trending").
+To handle the 5x concurrency multiplier (1 request = 5 concurrent DB/Redis checkouts), we have hardened our infrastructure:
 
-### 2. Adaptive Rate Limiting
+- **Postgres (sqlx):** Scaled to **100** max connections.
+- **Redis:** Scaled to **50** pool size.
+- **Aggressive Timeouts:** `acquire_timeout` (2s) and `request_timeout` (5s) ensure we fail-fast rather than stalling.
 
-The SSE pool is protected by a visitor-level concurrency tracker. Each `visitor_id` is limited to **3 concurrent connections**, preventing device malfunctions or bot attacks from exhausting server resources.
+### 2. Row-Level Resilience
 
-### 3. Server-Side Look-Ahead (Ghost Execution)
+Every scenario execution is wrapped in a circuit breaker. If a specific scenario fails or times out:
 
-Instead of relying on the client to trigger pre-warming, the engine performs **Anticipatory Execution**. When a user requests a batch of rows, the orchestrator automatically spawns a background "Ghost" task to execute the *next* batch of rows.
+- It emits an SSE comment or an empty fallback row.
+- The rest of the parallel stream continues unaffected.
 
-- **Zero-Latency Fetch**: Results are stored in a high-speed Redis "Ghost Cache" with a 5-minute TTL.
-- **Immediate Response**: When the user scrolls and the client requests the next batch, the server streams the pre-computed results instantly.
-- **Device-Awareness**: The look-ahead depth is dynamically adjusted based on the user's `device_type` (e.g., deeper for TV, shallower for Mobile).
+### 3. Graceful Shutdown
+
+The orchestration engine supports a "The Finale" shutdown sequence:
+
+1. Signal background workers to stop.
+2. Wait for active fan-outs to complete.
+3. Flush all OTLP trace spans.
+4. Close all connection pools explicitly.
 
 ---
 
@@ -81,4 +92,4 @@ Instead of relying on the client to trigger pre-warming, the engine performs **A
 
 ---
 
-[🏠 Hub](../HUB.md) | [🔝 Top](#-streaming--orchestration-the-velocity-engine)
+[🏠 Hub](../HUB.md) | [🔝 Top](#-streaming--orchestration-the-velocity-engine-20)

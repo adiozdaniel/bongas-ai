@@ -1,4 +1,4 @@
-# 🎨 Smart Pages: The SDUI Canvas & Brain
+# 🎨 Smart Pages: The SDUI Canvas & Brain 2.0
 
 [🏠 Hub](../HUB.md) | [🏗️ Architecture](./SYMPHONY.md) | [👤 Identity](./IDENTITY.md) | [⚡ Streaming](./ORCHESTRATION.md)
 
@@ -6,58 +6,55 @@
 
 ## 🏛️ The Philosophy: Living Layouts
 
-A "Page" in Bongas-AI is a **Dynamic Blueprint** that adapts in real-time. Instead of hardcoding what a user sees, admins define **Rules** and **Pools** of content that the engine resolves and optimizes based on user engagement and device context.
+A "Page" in Bongas-AI is a **Dynamic Blueprint** that adapts in real-time. Instead of hardcoding what a user sees, admins define **Rules** and **Pools** of content that the engine resolves and optimizes based on user engagement, device context, and server-side look-ahead.
 
 ## 📐 The Navigation Mesh
 
-The engine assembles a personalized application structure every time a user connects to the root endpoint (`GET /api/v1/recommendation`).
+The engine assembles a personalized application structure every time a user connects to the genesis endpoint (`GET /api/v1/recommendation/page/home`).
 
-### 1. The Landing Page (Singleton)
+### 1. The Genesis Entry Point
+The first request resolves the user's context and finds the appropriate landing page.
+- **Resolver**: Matches `device_type` and `maturity_rating` to a `PageLayout`.
+- **Navigation Events**: The SSE stream immediately emits `navigation` and `sub_navigation` events to unblock client-side routing.
 
-Admins can flag layouts as `is_landing = true`. The engine enforces a **Singleton Constraint** per (Device, Maturity).
-
-- **Resolver**: Finds the single entry point for the user's specific context.
-- **Fall-Over**: If no specific landing page exists, it uses the global `all`-category default.
-
-### 2. Navigation Hierarchy
-
-Pages are categorized into three types:
-
-- **Main**: Global top-level pages (e.g., Home, Live TV, Movies).
-- **Sub**: Contextual hubs (e.g., "Free for You", "Action Universe"). These are **ML-Ranked** based on user affinity.
-- **Hidden**: Accessible only via deep-link or specific buttons (e.g., "Privacy Policy").
+### 2. The Manifest Event (Skeleton UI)
+Immediately following navigation, the engine emits a `manifest` event. This tells the UI:
+- **`total_rows`**: How many rows are coming in this batch.
+- **`batch_size`**: The current concurrency limit.
+- **`prewarming_active`**: Whether "Ghost" pre-warming is active for the next batch.
+- **Impact**: The client can render exactly the right number of "Skeleton Loaders" before the content actually arrives.
 
 ```mermaid
 graph TD
     A[Genesis Request] --> B{Page Resolver}
     B --> C[Fetch Landing Page Composition]
-    B --> D[Assemble Main Nav]
-    B --> E[Assemble Sub Nav]
-    E --> F{ML Ranker}
-    F -->|Affinity| G[Personalized Sub-Nav Mesh]
-    C & D & G --> H[SSE Genesis Stream]
+    B --> D[Assemble Nav Mesh]
+    C & D --> E[SSE Stream]
+    E --> F[Event: navigation]
+    E --> G[Event: manifest]
+    E --> H[Event: row (Parallel)]
 ```
 
 ## 🧠 The Brain: Algorithmic Reordering
 
 Beyond manual admin ordering, Bongas-AI implements **Personalized Layouts**. The engine "learns" from every interaction to promote high-engagement content.
 
-### The Feedback Loop
+### 1. The Real-Time Feedback Loop
+The **Ingestion Manager** streams processed activities (clicks, views, likes) into ClickHouse. The **PagesManager** periodically analyzes these to maintain engagement scores per `visitor_id`.
 
-The **Ingestion Manager** streams processed activities back to the **PagesManager**, which maintains real-time engagement scores per `visitor_id`.
-
-### Sorting Logic
-
-When a user requests a page, the engine performs a **stable sort** of the composition based on the user's specific engagement scores. High-engagement scenarios (like "Recently Watched") automatically bubble to the top.
+### 2. Algorithmic Stable Sort
+When a user requests a page, the engine performs a **stable sort** of the composition.
+- **Affinity Score:** High-engagement scenarios (like "Continue Watching" or "Preferred Genres") automatically bubble to the top.
+- **Persistence:** High-affinity rows are given priority during the **Parallel Fan-Out**, ensuring they arrive at the client first.
 
 ## 📺 Presentation Directives (SDUI)
 
-| Row Type | Client Component | Best For |
+| Row Type | UI Style | Best For |
 | :--- | :--- | :--- |
-| `hero_carousel` | `HeroSlider` | Big promotional items at the top. |
-| `horizontal_list` | `HorizontalScroll` | Standard browsing rows. |
-| `feature_grid` | `Grid` | Category pages or large collections. |
-| `billboard` | `StaticImage` | Static ads or announcements. |
+| `hero` | `carousel` | High-impact promotional content. |
+| `list` | `horizontal` | Standard browsing experience. |
+| `grid` | `standard` | Category exploration. |
+| `billboard` | `tall_cards` | Ads or creator-focused rows. |
 
 ---
 
@@ -68,4 +65,4 @@ When a user requests a page, the engine performs a **stable sort** of the compos
 
 ---
 
-[🏠 Hub](../HUB.md) | [🔝 Top](#-smart-pages-the-sdui-canvas--brain)
+[🏠 Hub](../HUB.md) | [🔝 Top](#-smart-pages-the-sdui-canvas--brain-20)

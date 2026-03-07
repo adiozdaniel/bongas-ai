@@ -1,58 +1,65 @@
-# 🏗️ The Bongas-AI Symphony: Core Architecture
+# 🏗️ The Bongas-AI Symphony 2.0: Core Architecture
 
-[🏠 Hub](../HUB.md) | [👤 Identity](./IDENTITY.md) | [⚡ Streaming](./ORCHESTRATION.md) | [🎨 Pages](./PAGES.md)
+[🏠 Hub](../HUB.md) | [👤 Identity](./IDENTITY.md) | [⚡ Streaming](./ORCHESTRATION.md) | [🎨 Pages](./PAGES.md) | [🔒 Security](./SECURITY.md)
 
 ---
 
-## 🎼 The Paradigm: Server-Driven UI (SDUI)
+## 🎼 The Paradigm: Server-Side Anticipatory Engine
 
-In a traditional API architecture, the client (Mobile/Web) is "smart"—it knows exactly which endpoints to call and how to arrange the data. This creates **rigidity**: updating the UI requires an app store release.
+In Symphony 2.0, we have evolved beyond simple Server-Driven UI (SDUI). Bongas-AI is now an **Anticipatory Engine** that minimizes user-perceived latency through server-side look-ahead and parallel fan-out.
 
 **Bongas-AI flips the script.** The server is the Orchestrator, and the client is the Canvas.
 
 ```mermaid
-graph LR
-    A[Genesis Request: /api/v1/recommendation] --> B[Bongas Engine]
+graph TD
+    A[Genesis Request: /api/v1/page/home] --> B[Middleware: OTLP Shield & Identity]
     B --> C{Symphony Resolver}
-    C --> D[Identify Context]
-    C --> E[Resolve Landing Page & Nav Mesh]
-    E --> F[Scenario Orchestrator]
-    F --> G[Parallel Execution]
-    G --> H[Streaming SSE Results]
-    H --> I[Client Renders Rows as they Arrive]
+    C --> D[Identify Context: Visitor/Device/Profile]
+    C --> E[Resolve Page Composition & Ranking]
+    E --> F[Parallel Execution: Fan-Out factor 5]
+    F --> G[Streaming SSE Results]
+    F --> H[Ghost Pre-warm: Server-Side Look-Ahead]
+    G --> I[Client: Instant-On Rendering]
+    H --> J[(Redis Ghost Cache)]
 ```
 
 ## 🌟 Key Architectural Pillars
 
-### 1. Context-Aware Composition
+### 1. Velocity Engine (Parallel Fan-Out)
 
-Bongas-AI doesn't just return data; it returns a **Composition**. Every response is tailored to the context:
+Symphony 2.0 eliminates sequential bottlenecks. Using Rust's `futures` ecosystem, we execute up to 5 scenarios simultaneously per request.
 
-- **Who is watching?** (Identity & Profile)
-- **Where are they?** (Geolocation/Region)
-- **What are they using?** (Device Type: TV, Mobile, Tablet)
-- **What time is it?** (Temporal Relevance: Breakfast News vs. Late Night Horror)
+- **Ordered Pipelining:** Uses `.buffered(5)` for SSE to maintain UI layout integrity.
+- **Unordered Ghosting:** Uses `.buffer_unordered(5)` for background pre-warming to maximize throughput.
 
-### 2. The Streaming State Machine
+### 2. The OTLP Shield (Observability)
 
-By leveraging Server-Sent Events (SSE) and Rust's `futures` ecosystem, we deliver content as a **continuous flow**.
+Every request is protected and tracked by a "Shield" of distributed tracing.
 
-- **Event: `navigation`**: Sent instantly to render the global navigation bar.
-- **Event: `sub_navigation`**: Personalized sub-hubs ranked by engagement.
-- **Event: `manifest`**: Sent early to allow the frontend to render "Skeleton UI" loaders.
-- **Event: `row`**: Content rows (Horizontals, Grids, Heros) stream in as they are processed.
+- **Trace ID Propagation:** Follows a request from the initial HTTP header, through the SSE fan-out, down to Postgres and Redis.
+- **Identity Enrichment:** Spans are automatically enriched with `visitor_id`, `device_hash`, and `profile_id`.
 
-### 3. Zero-Touch Persistence
+### 3. Server-Side Look-Ahead (Ghost Execution)
 
-We recognize users and devices without requiring intrusive tracking or complex frontend state management. Through smart fingerprinting and cookie-lite strategies, we build a behavioral profile for every "Visitor ID" before they even log in.
+We eliminate client-side complex pre-warming logic. The engine automatically anticipates the user's next scroll based on `prewarm_lookahead` configuration and executes the next batch of rows in the background, caching them in Redis for zero-latency fetch.
 
----
+### 4. Zero-Touch Contextual
 
-## 🚀 Next Steps
+We recognize devices and users passively.
 
-- Learn about our [**Identity Stitching**](./IDENTITY.md).
-- Explore the [**Parallel Pipelined Streaming**](./ORCHESTRATION.md) model.
+- **Device Hash:** Deterministic fingerprinting using IP and User-Agent.
+- **Visitor ID:** Transparent persistence via "Cookie-Lite" (Zero-Touch).
+- **Identity Stitching:** Automatic merging of anonymous behavior into authenticated profiles upon login.
 
 ---
 
-[🏠 Hub](../HUB.md) | [🔝 Top](#️-the-bongas-ai-symphony-core-architecture)
+## 🚀 Architectural Deep-Dives
+
+- **[👤 Identity & Stitching](./IDENTITY.md)**: How we track users without logins.
+- **[⚡ Velocity Orchestration](./ORCHESTRATION.md)**: Parallel pipelining and Ghost execution logic.
+- **[🎨 Page Composition](./PAGES.md)**: Smart layouts, SDUI metadata, and algorithmic ranking.
+- **[🛡️ Resilience & Scale](./SECURITY.md)**: Circuit breakers, high-limit pools, and OTLP.
+
+---
+
+[🏠 Hub](../HUB.md) | [🔝 Top](#️-the-bongas-ai-symphony-20-core-architecture)

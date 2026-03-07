@@ -13,6 +13,7 @@ In the Bongas-AI Symphony, security is not an afterthought—it is a core layer 
 ### 1. Maturity Safety Ceiling (KFCB Compliance)
 
 Bongas-AI implements a hardened safety ceiling for every recommendation scenario.
+
 - **Early Block Logic**: The orchestrator validates the user's `maturity_rating` against the scenario's definition *before* execution.
 - **Strict Defaults**: New scenarios default to KFCB `'18'` (unrestricted) unless explicitly lowered by an administrator.
 - **Audience Protection**: If a user's context (e.g., `'GE'`) doesn't meet the scenario requirement (e.g., `'18'`), the row is instantly blocked and an audit log is generated.
@@ -24,12 +25,14 @@ Every user session is isolated via cryptographically signed JWTs. When the Orche
 ### 3. Stream Integrity
 
 SSE connections are protected against high-frequency reconnect attacks. We use a **Resilience Layer** that includes:
+
 - **Adaptive Rate Limiting**: Throttles requests based on `Visitor_ID` or `User_ID`.
 - **Heartbeat Validation**: Ensures that only valid, persistent connections consume server resources.
 
 ### 4. License & Anti-Debug (The 8-Layer Shield)
 
 The engine includes a deep-level security system that prevents reverse-engineering and unauthorized deployment:
+
 - **Integrity Checks**: Validates that the binary has not been tampered with.
 - **License Binding**: Binds the execution engine to specific hardware or cloud environments.
 
