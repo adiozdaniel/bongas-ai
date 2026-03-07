@@ -29,7 +29,15 @@ SSE connections are protected against high-frequency reconnect attacks. We use a
 - **Adaptive Rate Limiting**: Throttles requests based on `Visitor_ID` or `User_ID`.
 - **Heartbeat Validation**: Ensures that only valid, persistent connections consume server resources.
 
-### 4. License & Anti-Debug (The 8-Layer Shield)
+### 4. Platform Security Shield (API Gatekeeper)
+
+Bongas-AI enforces strict platform-level access control via middleware.
+
+- **Header Validation**: Every request must provide `X-Platform` (e.g., `mobile`, `web`, `tv`) and a corresponding `X-Platform-Key`.
+- **Dynamic Key Mapping**: Keys are loaded from the `SecurityConfig` and validated in the middleware layer before reaching the business logic.
+- **Zero-Trust for "MASTER_KEY"**: We have explicitly eliminated backdoor access. All credentials, including system-level access, must be configured and validated against the secure key store.
+
+### 5. License & Anti-Debug (The 8-Layer Shield)
 
 The engine includes a deep-level security system that prevents reverse-engineering and unauthorized deployment:
 

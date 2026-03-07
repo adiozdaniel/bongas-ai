@@ -57,6 +57,19 @@ We eliminate client-side complex pre-warming logic. The engine automatically ant
 - **TTL:** 5 minutes (300s).
 - **Concurrency:** Uses `buffer_unordered` to maximize pre-warming speed without blocking the main request thread.
 
+## 🎻 The Middleware Symphony
+
+Every request passes through a coordinated stack of global middlewares before reaching the Orchestrator. This ensures that the engine only processes valid, safe, and traceable traffic.
+
+### 1. The Global Pipeline Stack
+
+1.  **Identity Shield**: passive fingerprinting and context extraction.
+2.  **Adaptive Rate Limiter**: Multi-tier (L1/L2) protection against scrapers.
+3.  **Platform Security**: Signature and key validation for trusted clients.
+4.  **Bulkhead (Global)**: Enforces hard concurrency limits on the entire API surface.
+5.  **Circuit Breaker (Global)**: Trips on high error rates to protect downstream pools.
+6.  **OTLP Instrumented**: End-to-end tracing injection.
+
 ## 🛡️ Resilience & Scale
 
 ### 1. Connection Pool Scaling

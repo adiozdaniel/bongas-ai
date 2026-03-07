@@ -32,12 +32,15 @@ Symphony 2.0 eliminates sequential bottlenecks. Using Rust's `futures` ecosystem
 - **Ordered Pipelining:** Uses `.buffered(5)` for SSE to maintain UI layout integrity.
 - **Unordered Ghosting:** Uses `.buffer_unordered(5)` for background pre-warming to maximize throughput.
 
-### 2. The OTLP Shield (Observability)
+### 2. The OTLP Shield (High-Performance Observability)
 
-Every request is protected and tracked by a "Shield" of distributed tracing.
+Every request is protected and tracked by a "Shield" of distributed tracing, optimized for high throughput.
 
-- **Trace ID Propagation:** Follows a request from the initial HTTP header, through the SSE fan-out, down to Postgres and Redis.
-- **Identity Enrichment:** Spans are automatically enriched with `visitor_id`, `device_hash`, and `profile_id`.
+- **Trace ID Propagation**: Follows a request from the initial HTTP header, through the SSE fan-out, down to Postgres and Redis.
+- **Identity Enrichment**: Spans are automatically enriched with `visitor_id`, `device_hash`, and `profile_id`.
+- **Netflix-Scale Batching**: Telemetry is buffered and exported in configurable batches (`batch_size`, `max_queue_size`) to minimize the impact on the engine's performance.
+- **Standard Protocol Support**: Supports both gRPC and HTTP OTLP protocols with custom header injection.
+
 
 ### 3. Server-Side Look-Ahead (Ghost Execution)
 
