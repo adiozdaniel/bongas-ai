@@ -12,7 +12,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use anyhow::Result;
-use ndarray::Array2;
+use ndarray::{Array2};
 use ort::session::Session;
 use ort::session::builder::GraphOptimizationLevel;
 use ort::value::Value;
@@ -323,7 +323,7 @@ impl OnnxInferenceEngine {
             ModelError::InferenceFailed(format!("session run: {e}"))
         })?;
 
-        // Extract tensor (ort 2.0 returns a tuple in this configuration)
+        // Extract tensor (ort 2.0 rc.11 returns a tuple in this environment)
         let extracted = outputs[0]
             .try_extract_tensor::<f32>()
             .map_err(|e| ModelError::InferenceFailed(format!("extract tensor: {e}")))?;
