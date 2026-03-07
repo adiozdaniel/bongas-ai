@@ -29,6 +29,7 @@ pub async fn ingest_activity(
     let activity = match payload.event.as_str() {
         "click" => UserActivity::Click {
             user_id: payload.user_id.unwrap_or(0),
+            profile_id: identity.profile_id.clone(),
             item_id: payload.item_id,
             visitor_id: Some(identity.visitor_id.clone()),
             device_hash: Some(identity.device_hash.clone()),
@@ -38,6 +39,7 @@ pub async fn ingest_activity(
         },
         "playback" => UserActivity::Playback {
             user_id: payload.user_id.unwrap_or(0),
+            profile_id: identity.profile_id.clone(),
             item_id: payload.item_id,
             session_id: uuid::Uuid::new_v4().to_string(),
             visitor_id: Some(identity.visitor_id.clone()),
@@ -52,6 +54,7 @@ pub async fn ingest_activity(
         },
         "reaction" => UserActivity::Reaction {
             user_id: payload.user_id.unwrap_or(0),
+            profile_id: identity.profile_id.clone(),
             item_id: payload.item_id,
             visitor_id: Some(identity.visitor_id.clone()),
             device_hash: Some(identity.device_hash.clone()),
@@ -62,6 +65,7 @@ pub async fn ingest_activity(
         },
         _ => UserActivity::Impression {
             user_id: payload.user_id.unwrap_or(0),
+            profile_id: identity.profile_id.clone(),
             item_id: payload.item_id,
             visitor_id: Some(identity.visitor_id.clone()),
             device_hash: Some(identity.device_hash.clone()),
@@ -93,6 +97,7 @@ pub async fn ingest_activities(
         let activity = match event.event.as_str() {
             "click" => UserActivity::Click {
                 user_id: event.user_id.unwrap_or(0),
+                profile_id: identity.profile_id.clone(),
                 item_id: event.item_id,
                 visitor_id: Some(identity.visitor_id.clone()),
                 device_hash: Some(identity.device_hash.clone()),
@@ -102,6 +107,7 @@ pub async fn ingest_activities(
             },
             "playback" => UserActivity::Playback {
                 user_id: event.user_id.unwrap_or(0),
+                profile_id: identity.profile_id.clone(),
                 item_id: event.item_id,
                 session_id: uuid::Uuid::new_v4().to_string(),
                 visitor_id: Some(identity.visitor_id.clone()),
@@ -116,6 +122,7 @@ pub async fn ingest_activities(
             },
             "reaction" => UserActivity::Reaction {
                 user_id: event.user_id.unwrap_or(0),
+                profile_id: identity.profile_id.clone(),
                 item_id: event.item_id,
                 visitor_id: Some(identity.visitor_id.clone()),
                 device_hash: Some(identity.device_hash.clone()),
@@ -126,6 +133,7 @@ pub async fn ingest_activities(
             },
             _ => UserActivity::Impression {
                 user_id: event.user_id.unwrap_or(0),
+                profile_id: identity.profile_id.clone(),
                 item_id: event.item_id,
                 visitor_id: Some(identity.visitor_id.clone()),
                 device_hash: Some(identity.device_hash.clone()),

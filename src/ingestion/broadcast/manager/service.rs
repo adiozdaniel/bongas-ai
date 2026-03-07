@@ -20,6 +20,7 @@ use crate::ingestion::recovery::kafka::service::KafkaSource;
 use crate::ingestion::recovery::api::service::ApiSource;
 use crate::ingestion::recovery::clickhouse::service::ClickHouseSource;
 use crate::engine::governance::orchestration::manager::service::PagesManager;
+use crate::config::types::KafkaConfig;
 
 /// Channel buffer size for the activity pipeline.
 const ACTIVITY_CHANNEL_BUFFER: usize = 10_000;
@@ -42,7 +43,7 @@ impl IngestionManager {
         resilience_metrics: Arc<ResilienceMetricsCollector>,
         staleness_engine: Arc<StalenessEngine>,
         pages_manager: Arc<PagesManager>,
-        kafka_brokers: String,
+        kafka_config: KafkaConfig,
     ) -> anyhow::Result<Self> {
         let (tx, rx) = mpsc::channel(ACTIVITY_CHANNEL_BUFFER);
         
@@ -52,16 +53,9 @@ impl IngestionManager {
         ];
 
         // Add Kafka if configured
-        if !kafka_brokers.is_empty() {
-            let kafka_config = crate::ingestion::recovery::kafka::service::KafkaSourceConfig {
-                brokers: kafka_brokers,
-                playback_topic: "user-activities-playback".into(),
-                reaction_topic: "user-activities-reaction".into(),
-                profile_topic: "user-activities-profile".into(),
-                notification_topic: "user-activities-notification".into(),
-                group_id: "bongas-ingestion".to_string(),
-            };
-            let kafka = KafkaSource::new(kafka_config, breaker_registry.clone());
+        if kafka_config.enabled {
+            let kafka_source_config = crate::ingestion::recovery::kafka::service::KafkaSourceConfig::from(kafka_config);
+            let kafka = KafkaSource::new(kafka_source_config, breaker_registry.clone());
             sources.push(Arc::new(kafka));
         }
 

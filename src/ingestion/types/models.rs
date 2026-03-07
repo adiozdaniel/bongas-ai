@@ -19,6 +19,7 @@ pub enum UserActivity {
     /// User watched content (playback session).
     Playback {
         user_id: i32,
+        profile_id: Option<String>,
         item_id: i32,
         session_id: String,
         visitor_id: Option<String>,
@@ -35,6 +36,7 @@ pub enum UserActivity {
     /// User liked/disliked content.
     Reaction {
         user_id: i32,
+        profile_id: Option<String>,
         item_id: i32,
         visitor_id: Option<String>,
         device_hash: Option<String>,
@@ -48,6 +50,7 @@ pub enum UserActivity {
     /// User profile was updated.
     ProfileUpdate {
         user_id: i32,
+        profile_id: Option<String>,
         /// "preferences", "settings", "demographics", "subscription"
         update_type: String,
         data: serde_json::Value,
@@ -57,6 +60,7 @@ pub enum UserActivity {
     /// A notification-worthy event occurred.
     Notification {
         user_id: i32,
+        profile_id: Option<String>,
         notification_type: String,
         title: String,
         body: String,
@@ -69,6 +73,7 @@ pub enum UserActivity {
     /// User clicked on a content item.
     Click {
         user_id: i32,
+        profile_id: Option<String>,
         item_id: i32,
         visitor_id: Option<String>,
         device_hash: Option<String>,
@@ -80,6 +85,7 @@ pub enum UserActivity {
     /// Content was shown to a user (impression tracking).
     Impression {
         user_id: i32,
+        profile_id: Option<String>,
         item_id: i32,
         visitor_id: Option<String>,
         device_hash: Option<String>,
@@ -99,6 +105,18 @@ impl UserActivity {
             | Self::Notification { user_id, .. }
             | Self::Click { user_id, .. }
             | Self::Impression { user_id, .. } => *user_id,
+        }
+    }
+
+    /// The profile ID associated with this activity.
+    pub fn profile_id(&self) -> Option<&str> {
+        match self {
+            Self::Playback { profile_id, .. }
+            | Self::Reaction { profile_id, .. }
+            | Self::ProfileUpdate { profile_id, .. }
+            | Self::Notification { profile_id, .. }
+            | Self::Click { profile_id, .. }
+            | Self::Impression { profile_id, .. } => profile_id.as_deref(),
         }
     }
 
