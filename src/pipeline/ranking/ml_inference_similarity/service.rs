@@ -56,19 +56,16 @@ impl PipelineStage for MLInferenceSimilarityStage {
             .get_item_features_batch(&all_item_ids_in_input)
             .await?;
 
-        // Filter out seed items and items without tfidf_vector
-        // The original query also ordered by trending_score DESC LIMIT 500.
-        // This logic would ideally be in a dedicated ItemFeatureService method for candidate selection.
-        // For now, we proceed with the available filtered candidates.
+        // Filter out seed items and items without dense embedding
         let candidates_features: Vec<ItemFeatureRow> = all_item_features_map.into_values()
-            .filter(|feature_row| !seed_ids.contains(&feature_row.item_id) && feature_row.tfidf_vector.is_some())
+            .filter(|feature_row| !seed_ids.contains(&feature_row.item_id) && feature_row.embedding.is_some())
             .collect();
 
         // Score candidates by average similarity to all seeds
         let mut results: Vec<ScoredItem> = Vec::new();
 
         for cand_feature in candidates_features {
-            let cand_emb: Vec<f32> = cand_feature.tfidf_vector
+            let cand_emb: Vec<f32> = cand_feature.embedding
                 .and_then(|v| serde_json::from_value(v).ok())
                 .unwrap_or_else(|| vec![0.0; 128]);
 
