@@ -75,8 +75,39 @@ impl PipelineStage for MLInferenceBERT4RecStage {
             return Ok(vec![]);
         }
 
-        // In production, this would run ONNX inference with the BERT4Rec model
-        // For now, fetch items similar to the most recent items in the sequence
+        if use_onnx {
+            if let Ok(engine) = context.model_loader.get_model("bert4rec").await {
+                // Convert item IDs to floats for ONNX input (simplified)
+                let sequence_f32: Vec<f32> = sequence.iter().map(|&id| id as f32).collect();
+                
+                // For BERT4Rec, we typically use the sequence to predict scores for all candidates
+                // For this implementation, we use predict_multi_action where actions are candidates
+                let mut candidate_matrix = Vec::with_capacity(input.len() * 1);
+                for item in &input {
+                    candidate_matrix.push(item.item_id as f32);
+                }
+
+                // Sequence: 1 x SeqLen, Candidates: input.len() x 1
+                // This is a simplification of BERT4Rec input
+                let user_array = ndarray::Array2::from_shape_vec((1, sequence_f32.len()), sequence_f32)?;
+                let item_array = ndarray::Array2::from_shape_vec((input.len(), 1), candidate_matrix)?;
+
+                let scores: Vec<Vec<f32>> = engine.predict_multi_action(user_array, item_array).await?;
+                
+                let mut results = Vec::with_capacity(input.len());
+                for (i, mut item) in input.into_iter().enumerate() {
+                    item.score = scores[i][0];
+                    item.metadata["model"] = json!("bert4rec");
+                    item.metadata["inference_engine"] = json!("onnx");
+                    results.push(item);
+                }
+                results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+                results.truncate(params.top_k);
+                return Ok(results);
+            }
+        }
+
+        // Fallback: fetch items similar to the most recent items in the sequence
         let recent_items = &sequence[..std::cmp::min(5, sequence.len())];
 
         let mut candidates_features: Vec<ItemFeatureRow> = Vec::new();

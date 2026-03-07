@@ -6,13 +6,13 @@ use crate::ml::assets::pillar::service::AssetsPillar;
 /// 🧬 THE CORTEX: The central ML coordination handle for BONGAS-AI.
 /// 
 /// Orchestrates Inference, Training, and ML Assets into a unified Discovery Cortex.
-pub struct DiscoveryCortex {
+pub struct MlPillar {
     pub inference: Arc<InferencePillar>,
     pub training: Arc<TrainingPillar>,
     pub assets: Arc<AssetsPillar>,
 }
 
-impl DiscoveryCortex {
+impl MlPillar {
     pub fn new(
         inference: Arc<InferencePillar>,
         training: Arc<TrainingPillar>,

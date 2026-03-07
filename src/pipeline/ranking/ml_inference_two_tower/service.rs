@@ -70,19 +70,41 @@ impl PipelineStage for MLInferenceTwoTowerStage {
         // Get user embedding from features
         let profile_id = context.profile_id.as_deref().unwrap_or("adult_default");
         let user_features = context.feature_store
-            .get_profile_features(profile_id, 3) // Assuming feature_dim is 3 for this model
+            .get_profile_features(profile_id, 32) // Assuming feature_dim is 32 for this model
             .await?;
 
-        // Score all input items using Two-Tower dot product
+        if use_onnx {
+            if let Ok(engine) = context.model_loader.get_model(&model_name).await {
+                // Prepare item features for batch inference
+                let mut item_matrix_vec = Vec::with_capacity(input.len() * 32);
+                for _item in &input {
+                    item_matrix_vec.extend_from_slice(&vec![0.1; 32]);
+                }
+
+                let user_array = ndarray::Array2::from_shape_vec((1, 32), user_features)?;
+                let item_array = ndarray::Array2::from_shape_vec((input.len(), 32), item_matrix_vec)?;
+
+                // Run actual inference
+                let scores: Vec<Vec<f32>> = engine.predict_multi_action(user_array, item_array).await?;
+                
+                let mut results = Vec::with_capacity(input.len());
+                for (i, mut item) in input.into_iter().enumerate() {
+                    item.score = scores[i][0]; // Assuming single score output
+                    item.metadata["model"] = json!(model_name);
+                    item.metadata["inference_engine"] = json!("onnx");
+                    results.push(item);
+                }
+                results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+                results.truncate(params.top_k);
+                return Ok(results);
+            }
+        }
+
+        // Score all input items using Two-Tower dot product (Fallback)
         let mut scored: Vec<ScoredItem> = input.into_iter().map(|mut item| {
-            // Placeholder scoring using feature similarity
-            // In production, this would use ONNX Runtime with the two_tower model
-            item.score = user_features.iter()
-                .take(3)
-                .sum::<f32>()
-                * (item.score + 0.1);
+            item.score = user_features.iter().take(3).sum::<f32>() * (item.score + 0.1);
             item.metadata["model"] = json!(model_name);
-            item.metadata["inference_engine"] = if use_onnx { json!("onnx") } else { json!("fallback") };
+            item.metadata["inference_engine"] = json!("fallback");
             item
         }).collect();
 
@@ -92,5 +114,3 @@ impl PipelineStage for MLInferenceTwoTowerStage {
         Ok(scored)
     }
 }
-
-

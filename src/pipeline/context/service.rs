@@ -132,7 +132,7 @@ impl ExecutionContext {
             url: "redis://localhost".to_string(),
             ..Default::default()
         };
-        let cache_manager = Arc::new(CacheManager::new(redis_config, cache_config).await.unwrap());
+        let cache_manager = Arc::new(CacheManager::new(redis_config, cache_config, None).await.unwrap());
         
         let model_repo = Arc::new(ModelRepository::new(resilient_pool.clone(), resilience_metrics.clone()));
         let model_loader = Arc::new(ModelLoader::new(

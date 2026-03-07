@@ -207,8 +207,7 @@ impl VersionedModelRegistry {
 
         for entries in versions.values() {
             for entry in entries {
-                let breaker_name: &'static str = Box::leak(format!("model.{}", entry.model_name).into_boxed_str());
-                let breaker_id = CircuitBreakerId::new(breaker_name);
+                let breaker_id = CircuitBreakerId::new(format!("model.{}", entry.model_name));
                 let breaker_state = self.breaker_registry
                     .get(&breaker_id)
                     .map(|b| format!("{:?}", b.current_state()))

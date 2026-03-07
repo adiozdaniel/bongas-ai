@@ -66,7 +66,7 @@ impl PipelineStage for MLInferenceSimilarityStage {
 
         for cand_feature in candidates_features {
             let cand_emb: Vec<f32> = cand_feature.embedding
-                .and_then(|v| serde_json::from_value(v).ok())
+                .and_then(|v| serde_json::from_value(serde_json::Value::from(v)).ok())
                 .unwrap_or_else(|| vec![0.0; 128]);
 
             let avg_sim: f32 = seed_embeddings.iter()
