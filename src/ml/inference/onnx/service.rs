@@ -306,15 +306,15 @@ impl OnnxInferenceEngine {
         })?;
 
         // Extract tensor
-        let (shape, scores_slice) = outputs[0]
+        let scores = outputs[0]
             .try_extract_tensor::<f32>()
             .map_err(|e| ModelError::InferenceFailed(format!("extract tensor: {e}")))?;
 
-        if shape.is_empty() {
-            return Err(ModelError::InferenceFailed("Model returned empty shape".to_string()));
+        if scores.is_empty() {
+            return Err(ModelError::InferenceFailed("Model returned empty scores".to_string()));
         }
 
-        Ok(scores_slice.to_vec())
+        Ok(scores.as_slice().unwrap_or_default().to_vec())
     }
 
     /// Run multi-action inference (multi-head output).
@@ -374,21 +374,23 @@ impl OnnxInferenceEngine {
                 })?;
 
                 // Extract multi-dimensional output (Batch x Actions)
-                let (shape, flat_scores) = outputs[0]
+                let flat_scores = outputs[0]
                     .try_extract_tensor::<f32>()
                     .map_err(|e| ModelError::InferenceFailed(format!("extract tensor: {e}")))?;
 
+                let shape = flat_scores.shape();
                 if shape.len() < 2 {
                     return Err(ModelError::InferenceFailed(format!("Unexpected output shape: {:?}", shape)));
                 }
 
-                let actions_dim = shape[1] as usize;
+                let actions_dim = shape[1];
                 let mut results = Vec::with_capacity(batch_size);
+                let scores_slice = flat_scores.as_slice().unwrap_or_default();
                 
                 for i in 0..batch_size {
                     let start = i * actions_dim;
                     let end = start + actions_dim;
-                    results.push(flat_scores[start..end].to_vec());
+                    results.push(scores_slice[start..end].to_vec());
                 }
                 Ok(results)
             }).await.map_err(|e| ModelError::InferenceFailed(format!("spawn_blocking failed: {e}")))?
