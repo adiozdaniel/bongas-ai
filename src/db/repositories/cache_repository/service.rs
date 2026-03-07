@@ -199,6 +199,52 @@ impl CacheRepository {
         .map(|r| r.rows_affected())
     }
 
+    /// Delete a specific cache entry.
+    pub async fn delete(&self, cache_key: &str) -> AppResult<()> {
+        let key = cache_key.to_string();
+        self.pool.execute(|pool| {
+            let key = key.clone();
+            async move {
+                sqlx::query("DELETE FROM recommendation_cache_l2 WHERE cache_key = $1")
+                    .bind(key)
+                    .execute(&pool)
+                    .await
+            }
+        })
+        .await
+        .map_err(|e| {
+            AppError::Postgres(PostgresError::Query {
+                message: format!("Failed to delete cache entry: {}", e),
+                source: None,
+            })
+        })
+        .map(|_| ())
+    }
+
+    /// Delete multiple cache entries matching a prefix/pattern.
+    pub async fn delete_pattern(&self, pattern: &str) -> AppResult<()> {
+        // Convert L1 glob-like pattern to Postgres LIKE pattern
+        let pg_pattern = pattern.replace("*", "%").replace("?", "_");
+        
+        self.pool.execute(|pool| {
+            let p = pg_pattern.clone();
+            async move {
+                sqlx::query("DELETE FROM recommendation_cache_l2 WHERE cache_key LIKE $1")
+                    .bind(p)
+                    .execute(&pool)
+                    .await
+            }
+        })
+        .await
+        .map_err(|e| {
+            AppError::Postgres(PostgresError::Query {
+                message: format!("Failed to delete cache pattern: {}", e),
+                source: None,
+            })
+        })
+        .map(|_| ())
+    }
+
     /// Delete expired cache entries (called by cleanup worker).
     pub async fn cleanup_expired(&self) -> AppResult<u64> {
         self.pool.execute(|pool| async move {

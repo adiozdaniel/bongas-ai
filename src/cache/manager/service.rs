@@ -186,7 +186,9 @@ impl CacheManager {
         if let Some(ref l2) = self.l2 {
             let _ = l2.delete(key).await;
         }
-        // L3 delete is usually handled by cleanup worker or specific repo call
+        if let Some(ref l3) = self.l3 {
+            let _ = l3.delete(key).await;
+        }
         Ok(())
     }
 
@@ -197,6 +199,9 @@ impl CacheManager {
         }
         if let Some(ref l2) = self.l2 {
             let _ = l2.delete_pattern(pattern).await;
+        }
+        if let Some(ref l3) = self.l3 {
+            let _ = l3.delete_pattern(pattern).await;
         }
         Ok(())
     }
