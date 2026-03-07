@@ -94,8 +94,9 @@ impl ExperimentCoordinator {
                 }
                 experiment.variants.first()
             }
-            AssignmentMethod::Random => {
-                // In production, we prefer Hash for consistency, but Random is useful for stateless tests
+            AssignmentMethod::Random | AssignmentMethod::ThompsonSampling => {
+                // In production, we prefer Hash for consistency, but Random is useful for stateless tests.
+                // ThompsonSampling is currently implemented as Random until the Bandit worker is fully wired.
                 let mut hasher = DefaultHasher::new();
                 std::time::Instant::now().hash(&mut hasher);
                 user_id.hash(&mut hasher);
@@ -110,7 +111,6 @@ impl ExperimentCoordinator {
                 }
                 experiment.variants.first()
             }
-            _ => experiment.variants.first(), // Fallback
         }
     }
 

@@ -44,4 +44,10 @@ impl IntelligencePillar {
     pub async fn record_event(&self, event: UserEvent) {
         self.monitoring.record_event(event).await;
     }
+
+    /// Inject engine reference into sub-components.
+    pub fn set_engine(&self, engine: std::sync::Weak<crate::engine::coordination::service::BongasEngine>) {
+        self.hive_mind.set_engine(engine.clone());
+        self.monitoring.set_engine(engine);
+    }
 }

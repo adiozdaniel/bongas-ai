@@ -53,7 +53,7 @@ impl HiveMindConnector {
     }
 
     pub fn set_engine(&self, engine: Weak<BongasEngine>) {
-        let mut guard = self.engine.lock().unwrap();
+        let mut guard = self.engine.lock().unwrap_or_else(|e| e.into_inner());
         *guard = Some(engine);
     }
 
@@ -179,7 +179,7 @@ impl HiveMindConnector {
 
     async fn evaluate_and_approve(&self, suggestion_id: i32) -> Result<()> {
         let engine_arc: Option<Arc<BongasEngine>> = {
-            let guard = self.engine.lock().unwrap();
+            let guard = self.engine.lock().unwrap_or_else(|e| e.into_inner());
             guard.as_ref().and_then(|w: &Weak<BongasEngine>| w.upgrade())
         };
 

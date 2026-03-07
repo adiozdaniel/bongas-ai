@@ -99,7 +99,7 @@ impl AnalyticsSidecar {
 
     /// Set the engine reference (must be called after BongasEngine is created).
     pub fn set_engine(&self, engine: Weak<BongasEngine>) {
-        let mut guard = self.engine.lock().unwrap();
+        let mut guard = self.engine.lock().unwrap_or_else(|e| e.into_inner());
         *guard = Some(engine);
     }
 
@@ -137,7 +137,7 @@ impl AnalyticsSidecar {
         debug!("Running hourly self-performance analysis...");
 
         let engine_arc: Option<Arc<BongasEngine>> = {
-            let guard = self.engine.lock().unwrap();
+            let guard = self.engine.lock().unwrap_or_else(|e| e.into_inner());
             guard.as_ref().and_then(|w: &Weak<BongasEngine>| w.upgrade())
         };
 

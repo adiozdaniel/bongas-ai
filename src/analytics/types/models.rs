@@ -85,7 +85,7 @@ impl BusinessStats {
 
     #[inline]
     pub fn increment_feature_usage(&self, feature: &str) {
-        let mut usage = self.feature_usage.write().unwrap();
+        let mut usage = self.feature_usage.write().unwrap_or_else(|e| e.into_inner());
         let counter = usage.entry(feature.to_string()).or_insert_with(|| AtomicU64::new(0));
         counter.fetch_add(1, Ordering::Relaxed);
     }
@@ -107,7 +107,7 @@ impl BusinessStats {
 
     #[inline]
     pub fn get_feature_usage(&self, feature: &str) -> u64 {
-        let usage = self.feature_usage.read().unwrap();
+        let usage = self.feature_usage.read().unwrap_or_else(|e| e.into_inner());
         usage.get(feature).map_or(0, |counter| counter.load(Ordering::Relaxed))
     }
 }
@@ -131,7 +131,7 @@ impl PerformanceStats {
 
     #[inline]
     pub fn record_response_time(&self, _metric_key: &str, duration_ms: u64) {
-        let mut times = self.response_times.write().unwrap();
+        let mut times = self.response_times.write().unwrap_or_else(|e| e.into_inner());
         times.push_back(duration_ms);
         
         if times.len() > 1000 {
@@ -146,14 +146,14 @@ impl PerformanceStats {
 
     #[inline]
     pub fn increment_error(&self, metric_key: &str) {
-        let mut errors = self.error_counts.write().unwrap();
+        let mut errors = self.error_counts.write().unwrap_or_else(|e| e.into_inner());
         let counter = errors.entry(metric_key.to_string()).or_insert_with(|| AtomicU64::new(0));
         counter.fetch_add(1, Ordering::Relaxed);
     }
 
     #[inline]
     pub fn get_avg_response_time(&self) -> Option<f64> {
-        let times = self.response_times.read().unwrap();
+        let times = self.response_times.read().unwrap_or_else(|e| e.into_inner());
         if times.is_empty() {
             None
         } else {
@@ -169,7 +169,7 @@ impl PerformanceStats {
 
     #[inline]
     pub fn get_error_count(&self, error_type: &str) -> u64 {
-        let errors = self.error_counts.read().unwrap();
+        let errors = self.error_counts.read().unwrap_or_else(|e| e.into_inner());
         errors.get(error_type).map_or(0, |counter| counter.load(Ordering::Relaxed))
     }
 }
