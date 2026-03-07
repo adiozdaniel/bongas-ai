@@ -6,53 +6,61 @@ use axum::{
 };
 use tracing::error;
 use crate::error::classification::{ErrorClassification, ErrorClassifier};
-use crate::error::domain::*;
+use crate::error::domain::{PostgresError, RedisError, ClickHouseError, ModelError, ScenarioError, SecurityError, MiddlewareError, MetricsError};
+use crate::error::retry::RetryHint;
 
+/// Composite error type for the entire application.
+///
+/// Implements IntoResponse for seamless integration with Axum and
+/// ErrorClassifier for integration with resilience patterns.
 #[derive(Debug, Error)]
 pub enum AppError {
-    #[error(transparent)]
-    Redis(#[from] RedisError),
-    #[error(transparent)]
+    #[error("database error: {0}")]
     Postgres(#[from] PostgresError),
-    #[error(transparent)]
+
+    #[error("cache error: {0}")]
+    Redis(#[from] RedisError),
+
+    #[error("analytics storage error: {0}")]
     ClickHouse(#[from] ClickHouseError),
-    #[error(transparent)]
-    Ingestion(#[from] IngestionError),
-    #[error(transparent)]
-    Cache(#[from] CacheError),
-    #[error(transparent)]
-    Pipeline(#[from] PipelineError),
-    #[error(transparent)]
+
+    #[error("model error: {0}")]
     Model(#[from] ModelError),
-    #[error(transparent)]
+
+    #[error("scenario error: {0}")]
     Scenario(#[from] ScenarioError),
-    #[error(transparent)]
+
+    #[error("security error: {0}")]
     Security(#[from] SecurityError),
-    #[error(transparent)]
+
+    #[error("middleware error: {0}")]
     Middleware(#[from] MiddlewareError),
-    #[error(transparent)]
+
+    #[error("metrics error: {0}")]
     Metrics(#[from] MetricsError),
-    #[error(transparent)]
-    Anyhow(#[from] anyhow::Error),
-    #[error("internal error: {0}")]
-    Internal(String),
+
     #[error("not found: {0}")]
     NotFound(String),
+
     #[error("unauthorized: {0}")]
     Unauthorized(String),
+
     #[error("forbidden: {0}")]
     Forbidden(String),
+
+    #[error("internal server error: {0}")]
+    Internal(String),
+
+    #[error(transparent)]
+    Anyhow(#[from] anyhow::Error),
 }
 
 impl ErrorClassifier for AppError {
     fn classify(&self) -> ErrorClassification {
         match self {
-            AppError::Redis(e) => e.classify(),
             AppError::Postgres(e) => e.classify(),
+            AppError::Redis(e) => e.classify(),
             AppError::ClickHouse(e) => e.classify(),
-            AppError::Ingestion(e) => e.classify(),
-            AppError::Cache(e) => e.classify(),
-            AppError::Pipeline(e) => e.classify(),
             AppError::Model(e) => e.classify(),
             AppError::Scenario(e) => e.classify(),
             AppError::Security(e) => e.classify(),
@@ -65,6 +73,20 @@ impl ErrorClassifier for AppError {
             AppError::Forbidden(_) => ErrorClassification::Permanent,
         }
     }
+
+    fn retry_hint(&self) -> RetryHint {
+        match self {
+            AppError::Postgres(e) => e.retry_hint(),
+            AppError::Redis(e) => e.retry_hint(),
+            AppError::ClickHouse(e) => e.retry_hint(),
+            AppError::Model(e) => e.retry_hint(),
+            AppError::Scenario(e) => e.retry_hint(),
+            AppError::Security(e) => e.retry_hint(),
+            AppError::Middleware(e) => e.retry_hint(),
+            AppError::Metrics(e) => e.retry_hint(),
+            _ => RetryHint::no_retry(),
+        }
+    }
 }
 
 pub type AppResult<T> = Result<T, AppError>;
@@ -72,44 +94,49 @@ pub type AppResult<T> = Result<T, AppError>;
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         let classification = self.classify();
-        let (status, error_code, message) = match &self {
-            AppError::NotFound(msg) => (StatusCode::NOT_FOUND, "RESOURCE_NOT_FOUND", msg.clone()),
-            AppError::Unauthorized(msg) => (StatusCode::UNAUTHORIZED, "UNAUTHORIZED", msg.clone()),
-            AppError::Forbidden(msg) => (StatusCode::FORBIDDEN, "FORBIDDEN", msg.clone()),
-            
-            AppError::Scenario(ScenarioError::NotFound(slug)) => {
-                (StatusCode::NOT_FOUND, "SCENARIO_NOT_FOUND", format!("Scenario '{}' not found", slug))
-            }
-            
-            AppError::Middleware(MiddlewareError::RateLimitExceeded) => {
-                (StatusCode::TOO_MANY_REQUESTS, "RATE_LIMIT_EXCEEDED", "Rate limit exceeded. Please slow down.".to_string())
-            }
-
-            AppError::Postgres(PostgresError::CircuitOpen) | AppError::Redis(RedisError::PoolExhausted) => {
-                (StatusCode::SERVICE_UNAVAILABLE, "SERVICE_OVERLOADED", "Internal system resources are currently overwhelmed".to_string())
-            }
-
-            _ => match classification {
-                ErrorClassification::Permanent => (StatusCode::BAD_REQUEST, "CLIENT_ERROR", format!("{}", self)),
-                ErrorClassification::Transient => (StatusCode::SERVICE_UNAVAILABLE, "SERVICE_UNAVAILABLE", "Service is temporarily unavailable".to_string()),
-                ErrorClassification::Timeout => (StatusCode::GATEWAY_TIMEOUT, "GATEWAY_TIMEOUT", "The request timed out".to_string()),
-                ErrorClassification::Overload => (StatusCode::TOO_MANY_REQUESTS, "SYSTEM_OVERLOAD", "System is under heavy load".to_string()),
-                ErrorClassification::Degraded | ErrorClassification::PartialFailure => (StatusCode::MULTI_STATUS, "PARTIAL_SUCCESS", "Operation completed with partial results".to_string()),
+        let status = match self {
+            AppError::NotFound(_) => StatusCode::NOT_FOUND,
+            AppError::Unauthorized(_) => StatusCode::UNAUTHORIZED,
+            AppError::Forbidden(_) => StatusCode::FORBIDDEN,
+            AppError::Security(_) => StatusCode::UNAUTHORIZED,
+            _ => {
+                match classification {
+                    ErrorClassification::Overload => StatusCode::SERVICE_UNAVAILABLE,
+                    ErrorClassification::Timeout => StatusCode::GATEWAY_TIMEOUT,
+                    ErrorClassification::Permanent => StatusCode::BAD_REQUEST,
+                    _ => StatusCode::INTERNAL_SERVER_ERROR,
+                }
             }
         };
 
-        error!(
-            error = ?self,
-            classification = ?classification,
-            status_code = %status,
-            error_code = error_code,
-            "AppError converted to HTTP response"
-        );
+        // Standard response formatting
+        let message = self.to_string();
+        let error_code = match self {
+            AppError::Postgres(_) => "DATABASE_ERROR",
+            AppError::Redis(_) => "CACHE_ERROR",
+            AppError::ClickHouse(_) => "ANALYTICS_ERROR",
+            AppError::Model(_) => "MODEL_ERROR",
+            AppError::Scenario(_) => "SCENARIO_ERROR",
+            AppError::Security(_) => "SECURITY_ERROR",
+            AppError::Middleware(_) => "MIDDLEWARE_ERROR",
+            AppError::Metrics(_) => "METRICS_ERROR",
+            AppError::NotFound(_) => "NOT_FOUND",
+            AppError::Unauthorized(_) => "UNAUTHORIZED",
+            AppError::Forbidden(_) => "FORBIDDEN",
+            _ => "INTERNAL_SERVER_ERROR",
+        };
 
         let retry_hint = self.retry_hint();
         let retry_after = retry_hint.retry_after.map(|d| d.as_millis() as u64);
 
-        // Use StandardResponse for consistent serialization
+        error!(
+            error = ?self,
+            status = %status,
+            error_code = error_code,
+            classification = ?classification,
+            "Application error occurred"
+        );
+
         let mut response = crate::api::StandardResponse::<()>::error(
             message,
             error_code,

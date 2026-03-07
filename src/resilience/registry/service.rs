@@ -209,17 +209,12 @@ impl MetricsRegistry {
             }
         }
 
-        // Insert new breaker
+        // Insert new breaker if it doesn't exist and return a reference
         self.breakers
             .entry(breaker_id.to_string())
             .or_default();
 
-        // Safe: we just inserted it
-        self.breakers
-            .get(breaker_id)
-            .unwrap_or_else(|| self.breakers.iter().next().map(|e| {
-                self.breakers.get(e.key()).unwrap()
-            }).unwrap())
+        self.breakers.get(breaker_id).expect("Breaker must exist after insertion")
     }
 
     /// Update throughput rates for all breakers.

@@ -5,13 +5,12 @@
   //! by limiting concurrent requests per endpoint.
 
   use axum::{
-      body::Body,
       extract::{Request, Extension},
       http::StatusCode,
       middleware::Next,
       response::{IntoResponse, Response},
+      Json,
   };
-  use serde_json::json;
   use std::collections::HashMap;
   use std::sync::Arc;
   use tokio::sync::{Semaphore, RwLock};
@@ -165,18 +164,17 @@
 
   /// Create rejection response when bulkhead is full.
   fn create_bulkhead_rejection_response() -> Response {
-      let body = json!({
-          "success": false,
-          "error": "Too many concurrent requests",
-          "code": "BULKHEAD_FULL",
-          "message": "The service is currently handling too many concurrent requests. Please try again later.",
-          "retry_after_seconds": 1,
-          "timestamp": chrono::Utc::now().to_rfc3339(),
-      });
+      let response_body = crate::api::StandardResponse::<()>::error(
+          "The service is currently handling too many concurrent requests. Please try again later.",
+          "BULKHEAD_FULL",
+          "Overload",
+          true,
+      )
+      .with_retry_after(1000);
 
       let mut response = (
           StatusCode::SERVICE_UNAVAILABLE,
-          Body::from(body.to_string()),
+          Json(response_body),
       )
       .into_response();
 
