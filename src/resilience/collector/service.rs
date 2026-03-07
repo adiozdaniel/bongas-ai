@@ -55,6 +55,20 @@ impl ResilienceMetricsCollector {
     }
 }
 
+use crate::ml::training::online::service::{FeedbackWriter, FeedbackEvent};
+
+#[async_trait::async_trait]
+impl FeedbackWriter for ResilienceMetricsCollector {
+    async fn write_batch(&self, events: &[FeedbackEvent]) -> anyhow::Result<()> {
+        // Record batch feedback in metrics
+        let metrics = self.registry.get_or_create("ml_feedback_batch");
+        for _ in events {
+            metrics.successes.increment();
+        }
+        Ok(())
+    }
+}
+
 impl ResilienceObserver for ResilienceMetricsCollector {
     fn on_event(&self, event: &CircuitBreakerEvent) {
         match event {
