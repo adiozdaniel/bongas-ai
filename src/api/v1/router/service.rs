@@ -63,8 +63,6 @@ pub fn routes(_engine: Arc<BongasEngine>, _config: Arc<AppConfig>) -> Router {
     // ─── THE PULSE: Operational Pillar ───────────────────────────────────
     // Fast paths for health probes and real-time observability.
     let pulse_router = Router::new()
-        .route("/health", get(pulse::health::service::liveness_check))
-        .route("/ready", get(pulse::health::service::readiness_check))
         .nest("/metrics", Router::new()
             .route("/system", get(pulse::metrics::service::get_system_stats))
             .route("/cache", get(pulse::metrics::service::get_cache_performance))
