@@ -323,12 +323,12 @@ impl OnnxInferenceEngine {
             ModelError::InferenceFailed(format!("session run: {e}"))
         })?;
 
-        // Extract tensor (ort 2.0 rc.11 try_extract_tensor returns a tuple)
+        // Extract tensor (ort 2.0 returns a tuple in this configuration)
         let extracted = outputs[0]
             .try_extract_tensor::<f32>()
             .map_err(|e| ModelError::InferenceFailed(format!("extract tensor: {e}")))?;
 
-        let (_, scores_slice) = extracted;
+        let (_shape, scores_slice) = extracted;
 
         if scores_slice.is_empty() {
             return Err(ModelError::InferenceFailed("Model returned empty scores".to_string()));
