@@ -179,8 +179,17 @@ pub fn init_otlp_pipeline(
         KeyValue::new("deployment.environment", environment),
     ]);
 
+    let batch_config = opentelemetry_sdk::trace::BatchConfigBuilder::default()
+        .with_max_export_batch_size(config.batch_size)
+        .with_max_queue_size(config.max_queue_size)
+        .build();
+
+    let processor = opentelemetry_sdk::trace::BatchSpanProcessor::builder(exporter, runtime::Tokio)
+        .with_batch_config(batch_config)
+        .build();
+
     let provider = TracerProvider::builder()
-        .with_batch_exporter(exporter, runtime::Tokio)
+        .with_span_processor(processor)
         .with_resource(resource)
         .with_sampler(Sampler::ParentBased(Box::new(Sampler::TraceIdRatioBased(config.sampling_rate))))
         .build();

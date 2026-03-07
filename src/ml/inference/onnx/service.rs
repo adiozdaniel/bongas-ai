@@ -323,13 +323,12 @@ impl OnnxInferenceEngine {
             ModelError::InferenceFailed(format!("session run: {e}"))
         })?;
 
-        // Extract tensor (ort 2.0 returns a tuple if ndarray feature is used)
+        // Extract tensor (ort 2.0 rc.11 try_extract_tensor returns a tuple)
         let extracted = outputs[0]
             .try_extract_tensor::<f32>()
             .map_err(|e| ModelError::InferenceFailed(format!("extract tensor: {e}")))?;
 
-        // Destructure tuple correctly
-        let (_shape, scores_slice) = extracted;
+        let (_, scores_slice) = extracted;
 
         if scores_slice.is_empty() {
             return Err(ModelError::InferenceFailed("Model returned empty scores".to_string()));
@@ -400,6 +399,7 @@ impl OnnxInferenceEngine {
                     .map_err(|e| ModelError::InferenceFailed(format!("extract tensor: {e}")))?;
 
                 let (shape, scores_slice) = extracted;
+
                 if shape.len() < 2 {
                     return Err(ModelError::InferenceFailed(format!("Unexpected output shape: {:?}", shape)));
                 }
