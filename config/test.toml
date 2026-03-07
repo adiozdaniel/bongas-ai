@@ -1,16 +1,20 @@
 # Test Configuration for BONGAS-AI
 
+[server]
+host = "127.0.0.1"
+port = 8081
+environment = "test"
+
 [database]
 url = "postgresql://postgres:password@localhost:5433/bongas_ai_test"
 max_connections = 10
-acquire_timeout = 30
-connection_timeout = 10
+connection_timeout = 30
 
 [redis]
 url = "redis://localhost:6380"
+pool_size = 20
 connection_timeout = 5
 request_timeout = 10
-max_connections = 20
 
 [clickhouse]
 url = "http://localhost:8124"
@@ -18,43 +22,31 @@ connection_timeout = 10
 request_timeout = 30
 
 [kafka]
+enabled = false
 brokers = "localhost:9093"
-consumer_group = "bongas_ai_test"
-enable_auto_commit = false
-auto_offset_reset = "earliest"
-session_timeout = 30000
-heartbeat_interval = 3000
+group_id = "bongas_ai_test"
 
 [cache]
+l1_enabled = true
+l2_enabled = false
 l1_ttl = 300
 l2_ttl = 3600
-l1_max_size = 1000
-l2_max_size = 10000
 
 [ml]
-model_dir = "models"
-onnx_execution_provider = "CPUExecutionProvider"
-onnx_intra_op_num_threads = 1
-onnx_inter_op_num_threads = 1
+model_path = "models"
+batch_size = 32
+onnx_intra_threads = 1
 
 [pipeline]
-max_stages = 20
-default_timeout = 5000
-enable_metrics = true
-enable_tracing = true
+stage_breaker_enabled = false
+pipeline_timeout = 30
 
 [security]
 license_key = "test-license-key"
-hardware_id = "test-hardware-id"
 anti_debug_enabled = false
 
-[monitoring]
-metrics_enabled = true
-metrics_port = 9091
-health_check_interval = 30
-log_level = "debug"
+[logging]
+level = "debug"
 
-[testing]
-test_timeout = 30000
-retry_attempts = 3
-cleanup_on_exit = true
+[experiments]
+enabled = false
