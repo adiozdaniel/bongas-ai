@@ -82,11 +82,13 @@ pub async fn execute_and_map(
         let vid = visitor_id.clone();
         let dhash = device_hash.clone();
         let dtype = device_type.clone();
+        let pid = profile_id.clone();
         let slug_clone = scenario_slug.to_string();
         
         let activities: Vec<UserActivity> = final_items.iter().map(|item| {
             UserActivity::Impression {
                 user_id: uid,
+                profile_id: pid.clone(),
                 item_id: item.item_id,
                 visitor_id: vid.clone(),
                 device_hash: dhash.clone(),

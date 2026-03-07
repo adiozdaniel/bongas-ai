@@ -118,9 +118,13 @@ impl CacheStrategy for RedisCache {
     async fn delete(&self, key: &str) -> Result<()> {
         let mut conn = self.client.clone();
         let key_owned = self.prefixed_key(key);
+        let timeout_dur = Duration::from_secs(self.config.request_timeout);
 
         let result = self.circuit_breaker.call(|| async {
-            conn.del::<_, ()>(&key_owned).await.map_err(RedisError::from)?;
+            tokio::time::timeout(
+                timeout_dur,
+                conn.del::<_, ()>(&key_owned)
+            ).await.map_err(|_| RedisError::Timeout(timeout_dur))??;
             Ok::<_, RedisError>(())
         }).await;
 
@@ -134,6 +138,7 @@ impl CacheStrategy for RedisCache {
     async fn delete_pattern(&self, pattern: &str) -> Result<()> {
         let mut conn = self.client.clone();
         let full_pattern = self.prefixed_key(pattern);
+        let timeout_dur = Duration::from_secs(self.config.request_timeout);
 
         // Fix #10, C1, M2, N1: Use an iterative SCAN approach instead of KEYS
         // This avoids blocking Redis for O(N) operations and prevents Lua stack limits.
@@ -153,10 +158,10 @@ impl CacheStrategy for RedisCache {
                 return count
             "#);
             
-            script.arg(&full_pattern)
-                .invoke_async::<()>(&mut conn)
-                .await
-                .map_err(RedisError::from)?;
+            tokio::time::timeout(
+                timeout_dur,
+                script.arg(&full_pattern).invoke_async::<()>(&mut conn)
+            ).await.map_err(|_| RedisError::Timeout(timeout_dur))??;
             
             Ok::<_, RedisError>(())
         }).await;
@@ -171,9 +176,13 @@ impl CacheStrategy for RedisCache {
     async fn exists(&self, key: &str) -> Result<bool> {
         let mut conn = self.client.clone();
         let key_owned = self.prefixed_key(key);
+        let timeout_dur = Duration::from_secs(self.config.request_timeout);
 
         let result = self.circuit_breaker.call(|| async {
-            let exists: bool = conn.exists(&key_owned).await.map_err(RedisError::from)?;
+            let exists: bool = tokio::time::timeout(
+                timeout_dur,
+                conn.exists(&key_owned)
+            ).await.map_err(|_| RedisError::Timeout(timeout_dur))??;
             Ok::<_, RedisError>(exists)
         }).await;
 
