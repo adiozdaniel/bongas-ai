@@ -36,37 +36,62 @@ pub struct SecurityConfig {
     pub jwt_secret_key: String,
 
     // Per-layer circuit breaker configuration
+    #[serde(default = "default_true")]
     pub circuit_breaker_enabled: bool,
+    #[serde(default = "default_failure_rate")]
     pub license_server_failure_rate: f64,
+    #[serde(default = "default_failure_rate")]
     pub license_server_slow_call_rate: f64,
+    #[serde(default = "default_recovery_timeout")]
     pub license_server_recovery_timeout: Duration,
+    #[serde(default = "default_failure_rate")]
     pub revocation_check_failure_rate: f64,
+    #[serde(default = "default_failure_rate")]
     pub revocation_check_slow_call_rate: f64,
+    #[serde(default = "default_recovery_timeout")]
     pub revocation_check_recovery_timeout: Duration,
+    #[serde(default = "default_failure_rate")]
     pub heartbeat_failure_rate: f64,
+    #[serde(default = "default_failure_rate")]
     pub heartbeat_slow_call_rate: f64,
+    #[serde(default = "default_recovery_timeout")]
     pub heartbeat_recovery_timeout: Duration,
 
     // Per-layer timeouts
+    #[serde(default = "default_validation_timeout")]
     pub server_validation_timeout: Duration,
+    #[serde(default = "default_revocation_timeout")]
     pub revocation_check_timeout: Duration,
+    #[serde(default = "default_heartbeat_interval")]
     pub heartbeat_interval: Duration,
 
     // Bulkhead configuration
+    #[serde(default = "default_max_validations")]
     pub max_concurrent_validations: usize,
 
     // Fallback configuration
+    #[serde(default = "default_true")]
     pub fallback_on_server_timeout: bool,
+    #[serde(default = "default_true")]
     pub fallback_on_server_error: bool,
+    #[serde(default = "default_true")]
     pub allow_degraded_mode: bool,
 
     // Analytics configuration
+    #[serde(default = "default_true")]
     pub analytics_enabled: bool,
+    #[serde(default = "default_true")]
     pub analytics_per_layer: bool,
 }
 
 fn default_true() -> bool { true }
 fn default_interval() -> u64 { 3600 }
+fn default_failure_rate() -> f64 { 0.5 }
+fn default_recovery_timeout() -> Duration { Duration::from_secs(30) }
+fn default_validation_timeout() -> Duration { Duration::from_secs(10) }
+fn default_revocation_timeout() -> Duration { Duration::from_secs(5) }
+fn default_heartbeat_interval() -> Duration { Duration::from_secs(60) }
+fn default_max_validations() -> usize { 10 }
 
 impl std::fmt::Debug for SecurityConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
