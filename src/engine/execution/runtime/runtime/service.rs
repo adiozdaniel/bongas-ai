@@ -1,25 +1,22 @@
 use anyhow::{Result, Context};
 use std::sync::Arc;
-use tokio::time::Instant;
 use tokio::net::TcpListener;
 use tracing::{info, warn};
 
 use crate::{ConfigLoader, AppConfig, initialize_telemetry, TelemetryConfig};
 use crate::engine::coordination::{BongasEngine, DiscoverySymphony};
 use crate::api::create_router;
+use crate::api::ConnectionTracker;
 
 /// High-level application orchestrator
 pub struct BongasRuntime {
     config: Arc<AppConfig>,
     engine: Arc<BongasEngine>,
-    start_time: Instant,
 }
 
 impl BongasRuntime {
     /// Initialize and bootstrap the application using the DiscoverySymphony factory.
     pub async fn init() -> Result<Self> {
-        let start_time = Instant::now();
-
         // 1. Load Configuration
         let config = Arc::new(ConfigLoader::new().load()?);
 
@@ -45,7 +42,6 @@ impl BongasRuntime {
         Ok(Self {
             config,
             engine,
-            start_time,
         })
     }
 
@@ -57,14 +53,15 @@ impl BongasRuntime {
 
         // Extract shared state from engine for the router
         let redis_client = Arc::new(redis::Client::open(self.config.redis.url.clone())?);
+        let tracker = Arc::new(ConnectionTracker::new(10)); // Default limit
 
         let app = create_router(
             self.engine.clone(),
             self.config.clone(),
             redis_client,
-            self.engine.resilience_metrics.clone(), 
-            self.engine.execution.circuit_breaker_registry.clone(),
-            Arc::new(self.start_time),
+            self.engine.resilience_metrics.clone(),
+            self.engine.circuit_breaker_registry(),
+            tracker,
         );
 
         info!("🚀 Symphony 2.0 serving at http://{}", addr);

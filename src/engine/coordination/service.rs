@@ -9,8 +9,15 @@ use crate::db::PipelineDefinition;
 use crate::pipeline::types::models::ExecutablePipeline;
 use crate::security::SecurityManager;
 use crate::cache::CacheManager;
-use crate::ingestion::IngestionManager;
+use crate::ingestion::{IngestionManager, IngestionHealth};
 use crate::resilience::ResilienceMetricsCollector;
+use crate::cache::CacheMetricsSnapshot;
+use crate::db::repositories::feature_repository::service::FeatureRepository;
+use crate::db::repositories::cache_repository::service::CacheRepository;
+use crate::circuit_breaker::CircuitBreakerRegistry;
+use crate::engine::intelligence::monitoring::staleness_engine::service::StalenessEngine;
+use crate::engine::governance::factory::scenario_factory::service::ScenarioFactory;
+use crate::error::{AppResult, AppError, ScenarioError};
 
 use crate::engine::execution::pillar::service::ExecutionPillar;
 use crate::engine::governance::pillar::service::GovernancePillar;
@@ -75,16 +82,50 @@ pub struct BongasEngine {
     pub shutdown_tx: broadcast::Sender<()>,
 }
 
-use crate::error::{AppResult, AppError, ScenarioError};
-use crate::ingestion::IngestionHealth;
-use crate::cache::CacheMetricsSnapshot;
-use crate::db::repositories::feature_repository::service::FeatureRepository;
-use crate::db::repositories::cache_repository::service::CacheRepository;
-use crate::circuit_breaker::CircuitBreakerRegistry;
-use crate::engine::intelligence::monitoring::staleness_engine::service::StalenessEngine;
-use crate::engine::governance::factory::scenario_factory::service::ScenarioFactory;
-
 impl BongasEngine {
+    pub async fn new(
+        config: Arc<AppConfig>,
+        execution: Arc<ExecutionPillar>,
+        governance: Arc<GovernancePillar>,
+        _ml_pillar: Arc<crate::ml::coordination::service::MlPillar>,
+        intelligence: Arc<IntelligencePillar>,
+        cache: Arc<CacheManager>,
+        shutdown_tx: broadcast::Sender<()>,
+        resilience_metrics: Arc<ResilienceMetricsCollector>,
+    ) -> anyhow::Result<Self> {
+        // Create security manager
+        let security = Arc::new(SecurityManager::new(
+            config.security.clone(),
+            &config.server.environment,
+            execution.circuit_breaker_registry.clone(),
+            resilience_metrics.clone(),
+            None,
+        ).await.map_err(|e| anyhow::anyhow!("Security init error: {}", e))?);
+
+        // Create ingestion manager
+        let ingestion_mgr = IngestionManager::bootstrap(
+            execution.cache_repo.pool(),
+            intelligence.clone(),
+            execution.circuit_breaker_registry.clone(),
+            resilience_metrics.clone(),
+            intelligence.staleness.clone(),
+            governance.orchestration.clone(),
+            config.ingestion.kafka.clone(),
+        ).await.map_err(|e| anyhow::anyhow!("Ingestion bootstrap error: {}", e))?;
+
+        Ok(Self {
+            config,
+            resilience_metrics,
+            execution,
+            governance,
+            intelligence,
+            security,
+            cache,
+            ingestion: Arc::new(RwLock::new(ingestion_mgr)),
+            shutdown_tx,
+        })
+    }
+
     /// Proxy: Execute scenario and return recommendations
     pub async fn execute_scenario(
         &self,
@@ -151,7 +192,7 @@ impl BongasEngine {
 
     /// Proxy: List loaded scenario slugs
     pub async fn list_scenarios(&self) -> Vec<String> {
-        let scenarios: tokio::sync::RwLockReadGuard<'_, std::collections::HashMap<String, ScenarioDefinition>> = self.governance.scenarios.scenarios.read().await;
+        let scenarios = self.governance.scenarios.scenarios.read().await;
         scenarios.keys().cloned().collect()
     }
 
