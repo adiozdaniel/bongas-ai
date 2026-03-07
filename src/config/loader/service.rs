@@ -7,6 +7,7 @@ use crate::config::types::{
     HiveMindConfig, SlidingWindowType, BackoffStrategy, ExportFormat,
     experiments::ExperimentsConfig, resilience::{ResilienceDefaults, RetryConfig},
 };
+use crate::experiments::models::AssignmentMethod;
 use crate::resilience::ResilienceMetricsConfig;
 use crate::config::validation::validate_app_config as validate_config_fn;
 use std::collections::HashMap;
@@ -108,8 +109,8 @@ impl ConfigLoader {
             read_replicas: config_map.get("database.read_replicas")
                 .map(|s| s.split(',').map(|s| s.trim().to_string()).collect())
                 .unwrap_or_default(),
-            max_connections: parse_u32("database.max_connections", 20)?,
-            min_connections: parse_u32("database.min_connections", 5)?,
+            max_connections: parse_u32("database.max_connections", 100)?,
+            min_connections: parse_u32("database.min_connections", 20)?,
             connection_timeout: parse_u64("database.connection_timeout", 30)?,
             idle_timeout: parse_u64("database.idle_timeout", 600)?,
             max_lifetime: parse_u64("database.max_lifetime", 1800)?,
@@ -123,7 +124,7 @@ impl ConfigLoader {
             cluster_nodes: config_map.get("redis.cluster_nodes")
                 .map(|s| s.split(',').map(|s| s.trim().to_string()).collect())
                 .unwrap_or_default(),
-            pool_size: parse_u32("redis.pool_size", 10)?,
+            pool_size: parse_u32("redis.pool_size", 50)?,
             connection_timeout: parse_u64("redis.connection_timeout", 5)?,
             request_timeout: parse_u64("redis.request_timeout", 10)?,
             max_retries: parse_u32("redis.max_retries", 3)?,
@@ -145,12 +146,14 @@ impl ConfigLoader {
         // Ingestion
         let ingestion = IngestionConfig {
             kafka: KafkaConfig {
+                enabled: parse_bool("kafka.enabled", false)?,
                 brokers: parse_val("kafka.brokers", "localhost:9092"),
                 group_id: parse_val("kafka.group_id", "bongas-ai-consumers"),
                 profile_topic: parse_val("kafka.profile_topic", "user.profiles"),
                 reaction_topic: parse_val("kafka.reaction_topic", "user.reactions"),
                 notification_topic: parse_val("kafka.notification_topic", "notifications"),
                 playback_topic: parse_val("kafka.playback_topic", "playback.sessions"),
+                sync_topic: parse_val("kafka.sync_topic", "recommendations.sync"),
                 connection_timeout: parse_u64("kafka.connection_timeout", 10)?,
                 request_timeout: parse_u64("kafka.request_timeout", 30)?,
                 max_retries: parse_u32("kafka.max_retries", 3)?,
@@ -167,6 +170,88 @@ impl ConfigLoader {
             },
             buffer_size: parse_u32("ingestion.buffer_size", 10_000)? as usize,
             processing_timeout_secs: parse_u64("ingestion.processing_timeout_secs", 30)?,
+        };
+
+        // ML
+        let ml = MlConfig {
+            model_path: PathBuf::from(parse_val("ml.model_path", "./models")),
+            batch_size: parse_u32("ml.batch_size", 64)? as usize,
+            onnx_enabled: parse_bool("ml.onnx_enabled", true)?,
+            onnx_execution_provider: parse_val("ml.onnx_execution_provider", "cpu"),
+            onnx_graph_optimization: parse_bool("ml.onnx_graph_optimization", true)?,
+            onnx_memory_map: parse_bool("ml.onnx_memory_map", true)?,
+            onnx_intra_threads: parse_u32("ml.onnx_intra_threads", 4)? as usize,
+            feature_store_enabled: parse_bool("ml.feature_store_enabled", true)?,
+            feature_cache_ttl: Duration::from_secs(parse_u64("ml.feature_cache_ttl_secs", 300)?),
+            feature_fetch_timeout: Duration::from_millis(parse_u64("ml.feature_fetch_timeout_ms", 500)?),
+            model_cache_size: parse_u32("ml.model_cache_size", 100)? as usize,
+            canary_enabled: parse_bool("ml.canary_enabled", false)?,
+            canary_traffic_percent: parse_f64("ml.canary_traffic_percent", 5.0)?,
+            shadow_mode_enabled: parse_bool("ml.shadow_mode_enabled", false)?,
+            online_learning_enabled: parse_bool("ml.online_learning_enabled", false)?,
+            feedback_batch_size: parse_u32("ml.feedback_batch_size", 256)? as usize,
+            feedback_flush_interval: Duration::from_secs(parse_u64("ml.feedback_flush_interval_secs", 30)?),
+            inference_breaker_failure_rate: parse_f64("ml.inference_breaker_failure_rate", 0.5)?,
+            inference_breaker_slow_call_rate: parse_f64("ml.inference_breaker_slow_call_rate", 0.5)?,
+            inference_breaker_slow_call_duration: Duration::from_secs(parse_u64("ml.inference_breaker_slow_call_duration_secs", 2)?),
+            inference_breaker_minimum_calls: parse_u64("ml.inference_breaker_minimum_calls", 10)?,
+            inference_breaker_recovery_timeout: Duration::from_secs(parse_u64("ml.inference_breaker_recovery_timeout_secs", 30)?),
+            inference_breaker_half_open_calls: parse_u32("ml.inference_breaker_half_open_calls", 3)? as usize,
+            inference_max_concurrent: parse_u32("ml.inference_max_concurrent", 16)? as usize,
+            feature_fetch_max_concurrent: parse_u32("ml.feature_fetch_max_concurrent", 32)? as usize,
+            worker_queue_depth: parse_u32("ml.worker_queue_depth", 1024)? as usize,
+            model_load_max_retries: parse_u32("ml.model_load_max_retries", 3)? as usize,
+            model_load_base_backoff: Duration::from_millis(parse_u64("ml.model_load_base_backoff_ms", 100)?),
+            model_load_max_backoff: Duration::from_secs(parse_u64("ml.model_load_max_backoff_secs", 5)?),
+            feature_fetch_max_retries: parse_u32("ml.feature_fetch_max_retries", 2)? as usize,
+            inference_timeout: Duration::from_secs(parse_u64("ml.inference_timeout_secs", 5)?),
+            model_load_timeout: Duration::from_secs(parse_u64("ml.model_load_timeout_secs", 30)?),
+            fallback_to_stale_model: parse_bool("ml.fallback_to_stale_model", true)?,
+            fallback_cold_start_score: parse_f64("ml.fallback_cold_start_score", 0.5)? as f32,
+            fallback_max_stale_age: Duration::from_secs(parse_u64("ml.fallback_max_stale_age_secs", 3600)?),
+            analytics_enabled: parse_bool("ml.analytics_enabled", true)?,
+            analytics_sample_rate: parse_f64("ml.analytics_sample_rate", 1.0)?,
+            central_server_url: parse_val("ml.central_server_url", "https://ml.bongas-ai.com"),
+        };
+
+        // Pipeline
+        let pipeline = PipelineConfig {
+            stage_breaker_enabled: parse_bool("pipeline.stage_breaker_enabled", true)?,
+            stage_breaker_failure_rate: parse_f64("pipeline.stage_breaker_failure_rate", 0.5)?,
+            stage_breaker_slow_call_rate: parse_f64("pipeline.stage_breaker_slow_call_rate", 0.5)?,
+            stage_breaker_slow_call_duration: Duration::from_secs(parse_u64("pipeline.stage_breaker_slow_call_duration_secs", 2)?),
+            stage_breaker_minimum_calls: parse_u64("pipeline.stage_breaker_minimum_calls", 10)?,
+            stage_breaker_recovery_timeout: Duration::from_secs(parse_u64("pipeline.stage_breaker_recovery_timeout_secs", 30)?),
+            stage_breaker_half_open_calls: parse_u32("pipeline.stage_breaker_half_open_calls", 3)? as usize,
+            stage_timeout_default: Duration::from_secs(parse_u64("pipeline.stage_timeout_default_secs", 5)?),
+            fetch_stage_timeout: Duration::from_secs(parse_u64("pipeline.fetch_stage_timeout_secs", 3)?),
+            ml_stage_timeout: Duration::from_secs(parse_u64("pipeline.ml_stage_timeout_secs", 10)?),
+            filter_stage_timeout: Duration::from_secs(parse_u64("pipeline.filter_stage_timeout_secs", 2)?),
+            pipeline_timeout: Duration::from_secs(parse_u64("pipeline.pipeline_timeout_secs", 30)?),
+            stage_max_concurrent: parse_u32("pipeline.stage_max_concurrent", 32)? as usize,
+            fetch_max_concurrent: parse_u32("pipeline.fetch_max_concurrent", 16)? as usize,
+            ml_max_concurrent: parse_u32("pipeline.ml_max_concurrent", 8)? as usize,
+            fallback_enabled: parse_bool("pipeline.fallback_enabled", true)?,
+            fallback_on_stage_timeout: parse_bool("pipeline.fallback_on_stage_timeout", true)?,
+            fallback_on_stage_error: parse_bool("pipeline.fallback_on_stage_error", true)?,
+            fallback_pass_through_input: parse_bool("pipeline.fallback_pass_through_input", true)?,
+            analytics_enabled: parse_bool("pipeline.analytics_enabled", true)?,
+            analytics_per_stage: parse_bool("pipeline.analytics_per_stage", true)?,
+            analytics_sample_rate: parse_f64("pipeline.analytics_sample_rate", 1.0)?,
+        };
+
+        // Observability
+        let observability = ObservabilityConfig {
+            tracing_enabled: parse_bool("observability.tracing_enabled", true)?,
+            metrics_enabled: parse_bool("observability.metrics_enabled", true)?,
+            log_level: parse_val("logging.level", "info"),
+            jaeger_endpoint: config_map.get("observability.jaeger_endpoint").cloned(),
+            prometheus_endpoint: config_map.get("observability.prometheus_endpoint").cloned(),
+            otlp_endpoint: parse_val("tracing.otlp_endpoint", "http://localhost:4318/v1/traces"),
+            otlp_protocol: parse_val("tracing.otlp_protocol", "http"),
+            sampling_rate: parse_f64("tracing.sampling_rate", 1.0)?,
+            batch_size: parse_u32("tracing.batch_size", 512)? as usize,
+            max_queue_size: parse_u32("tracing.max_queue_size", 2048)? as usize,
         };
 
         // Create a normalized map for case-insensitive lookup
@@ -196,21 +281,17 @@ impl ConfigLoader {
             ..SecurityConfig::default()
         };
 
-        // ML
-        let mut ml = MlConfig::default();
-        if let Some(v) = config_map.get("ml.model_path") { ml.model_path = PathBuf::from(v); }
-
-        // Pipeline
-        let mut pipeline = PipelineConfig::default();
-        pipeline.stage_breaker_enabled = parse_bool("pipeline.stage_breaker_enabled", true)?;
-
         // Experiments
         let experiments = ExperimentsConfig {
             enabled: parse_bool("experiments.enabled", false)?,
-            assignment_method: parse_val("experiments.assignment_method", "random"),
+            assignment_method: match parse_val("experiments.assignment_method", "random").as_str() {
+                "hash" => AssignmentMethod::Hash,
+                "thompson_sampling" => AssignmentMethod::ThompsonSampling,
+                _ => AssignmentMethod::Random,
+            },
         };
 
-        // Resilience (Fix #12: Exposed to config)
+        // Resilience
         let circuit_breaker = CircuitBreakerConfig {
             enabled: parse_bool("resilience.circuit_breaker.enabled", true)?,
             failure_rate_threshold: parse_f64("resilience.circuit_breaker.failure_rate_threshold", 0.5)?,
@@ -230,7 +311,7 @@ impl ConfigLoader {
             recovery_timeout: Duration::from_secs(60),
             half_open_max_calls: 10,
             call_timeout: Duration::from_secs(30),
-            max_concurrent_calls: 0,
+            max_concurrent_calls: parse_u32("bulkhead.max_concurrent_calls", 100)? as usize,
             consecutive_failure_threshold: None,
         };
 
@@ -314,7 +395,7 @@ impl ConfigLoader {
 
         Ok(AppConfig::new(
             server, database, redis, clickhouse, ingestion, security, ml, pipeline,
-            circuit_breaker, error, analytics, ObservabilityConfig::default(),
+            circuit_breaker, error, analytics, observability,
             resilience, ResilienceMetricsConfig::default(), experiments, hive_mind,
         ))
     }
