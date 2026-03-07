@@ -50,14 +50,11 @@ pub async fn platform_security_middleware(
     };
 
     if let (Some(provided), Some(expected)) = (platform_key, config_key) {
-        // Log lengths for final confirmation
-        warn!("Comparing provided (len {}) with expected (len {})", provided.len(), expected.len());
-        
-        if provided == expected || provided == "MASTER_KEY" {
+        if provided == expected {
             return Ok(next.run(req).await);
         } else {
             warn!(path = %path, "Security: Platform key mismatch");
-            return Err(AppError::Forbidden(format!("Mismatch: provided len {}, expected len {}", provided.len(), expected.len())));
+            return Err(AppError::Forbidden("Invalid platform credentials".to_string()));
         }
     }
 
@@ -102,7 +99,7 @@ pub async fn system_security_middleware(
     }
 
     if let Some(key) = platform_key {
-        if key == config.security.system_api_key || key == "MASTER_KEY" {
+        if key == config.security.system_api_key {
             return Ok(next.run(req).await);
         } else {
             warn!(path = %path, "Backstage Security: System key mismatch");
