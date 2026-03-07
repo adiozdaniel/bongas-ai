@@ -44,12 +44,6 @@ pub struct FeedRow {
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub struct HomeFeedResponse {
-    pub rows: Vec<FeedRow>,
-    pub experiment_id: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize)]
 pub struct DiscoveryManifest {
     pub total_rows: usize,
     pub batch_size: i32,

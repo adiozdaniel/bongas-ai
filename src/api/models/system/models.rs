@@ -31,17 +31,6 @@ pub struct KafkaMetricsResponse {
 }
 
 #[derive(Debug, Serialize)]
-pub struct KafkaHealthResponse {
-    pub healthy: bool,
-    pub total_consumers: usize,
-    pub unhealthy_consumers: Vec<String>,
-    pub total_lag: u64,
-    pub global_success_rate: f64,
-    pub status: String,
-    pub brokers_online: usize,
-}
-
-#[derive(Debug, Serialize)]
 pub struct ModelReloadResponse {
     pub model_count: usize,
     pub message: String,

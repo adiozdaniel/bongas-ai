@@ -6,6 +6,13 @@
 //! 3. Shadow Ban: Misleading 200 OK responses with empty feeds.
 
 use axum::http::StatusCode;
+use axum::{
+    body::Body,
+    extract::Request,
+    middleware::Next,
+    response::{IntoResponse, Response},
+    extract::Extension,
+};
 use std::sync::Arc;
 use std::time::{Instant, Duration};
 use dashmap::DashMap;
@@ -98,6 +105,29 @@ impl RateLimiter {
         });
 
         limiter
+    }
+
+    pub async fn layer(
+        Extension(state): Extension<Arc<Self>>,
+        req: Request<Body>,
+        next: Next,
+    ) -> Response {
+        let ip = req.extensions()
+            .get::<axum::extract::ConnectInfo<std::net::SocketAddr>>()
+            .map(|axum::extract::ConnectInfo(addr)| addr.ip().to_string())
+            .unwrap_or_else(|| "127.0.0.1".to_string());
+
+        match state.check(&ip).await {
+            RateLimitResult::Allowed => next.run(req).await,
+            RateLimitResult::ShadowBan => {
+                // Shadow ban: return 200 OK but with misleading empty body
+                // For recommendations, this would be an empty feed
+                StatusCode::OK.into_response()
+            }
+            RateLimitResult::RateLimited(_) => {
+                StatusCode::TOO_MANY_REQUESTS.into_response()
+            }
+        }
     }
 
     async fn get_redis_conn(&self) -> Result<ConnectionManager, RateLimitError> {

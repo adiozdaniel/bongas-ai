@@ -1,5 +1,5 @@
 use axum::{
-      extract::Request,
+      extract::{Request, Extension},
       middleware::Next,
       response::Response,
       body::Body,
@@ -108,10 +108,10 @@ use axum::{
       }
 
       pub async fn layer(
-          self: Arc<Self>,
+          Extension(state): Extension<Arc<Self>>,
           req: Request<Body>,
           next: Next,
-      ) -> Response<Body> {
+      ) -> Response {
           let path = req.uri().path().to_string();
 
           let start = Instant::now();
@@ -123,7 +123,7 @@ use axum::{
 
           // Update endpoint stats
           {
-              let mut stats_map = self.endpoint_stats.lock().await;
+              let mut stats_map = state.endpoint_stats.lock().await;
               let stats = stats_map.entry(path.clone()).or_insert_with(|| EndpointStats {
                   total_requests: 0,
                   success_requests: 0,

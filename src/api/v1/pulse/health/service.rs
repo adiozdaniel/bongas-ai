@@ -46,18 +46,3 @@ pub async fn readiness_check(
     };
     Json(StandardResponse::success(data).with_request_id(request_id))
 }
-
-/// Generic health check for simple monitoring.
-pub async fn health_check(
-    Extension(start_time): Extension<Arc<Instant>>,
-    headers: HeaderMap,
-) -> Json<StandardResponse<HealthResponse>> {
-    let request_id = extract_request_id_from_headers(&headers);
-    let data = HealthResponse {
-        status: "healthy".to_string(),
-        version: env!("CARGO_PKG_VERSION").to_string(),
-        timestamp: chrono::Utc::now(),
-        uptime_seconds: start_time.elapsed().as_secs(),
-    };
-    Json(StandardResponse::success(data).with_request_id(request_id))
-}
