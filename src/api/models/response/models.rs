@@ -5,24 +5,6 @@ use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
 use std::collections::HashMap;
 
-// ─── Request Types ──────────────────────────────────────────────────────────
-
-/// Standard pagination parameters for list-based endpoints.
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct PaginationParams {
-    pub limit: Option<usize>,
-    pub offset: Option<usize>,
-}
-
-impl Default for PaginationParams {
-    fn default() -> Self {
-        Self {
-            limit: Some(20),
-            offset: Some(0),
-        }
-    }
-}
-
 // ─── Response Envelope ──────────────────────────────────────────────────────
 
 /// The unified response envelope for all Bongas-AI API endpoints.
@@ -75,18 +57,6 @@ pub struct ResponseMeta {
     pub duration_ms: Option<u64>,
     /// API/Service version.
     pub version: String,
-    /// Pagination metadata for collection responses.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub pagination: Option<PaginationMeta>,
-}
-
-/// Pagination metadata for list-based responses.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PaginationMeta {
-    pub total: usize,
-    pub page: usize,
-    pub per_page: usize,
-    pub pages: usize,
 }
 
 // ─── Implementation ─────────────────────────────────────────────────────────
@@ -104,7 +74,6 @@ impl<T> StandardResponse<T> {
                 timestamp: Utc::now(),
                 duration_ms: None,
                 version: env!("CARGO_PKG_VERSION").to_string(),
-                pagination: None,
             },
         }
     }
@@ -112,24 +81,6 @@ impl<T> StandardResponse<T> {
     /// Primary constructor for successful responses.
     pub fn success(data: T) -> Self {
         Self::new(true, Some(data), None)
-    }
-
-    /// Constructor for paginated collection responses.
-    pub fn paginated(data: T, total: usize, page: usize, per_page: usize) -> Self {
-        let pages = if per_page > 0 {
-            ((total as f64) / (per_page as f64)).ceil() as usize
-        } else {
-            0
-        };
-
-        let mut resp = Self::new(true, Some(data), None);
-        resp.meta.pagination = Some(PaginationMeta {
-            total,
-            page,
-            per_page,
-            pages,
-        });
-        resp
     }
 
     /// Primary constructor for error responses.

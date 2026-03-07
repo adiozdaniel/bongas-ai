@@ -220,9 +220,9 @@ pub async fn get_page_recommendations(
                 Ok(Event::default().event("row").json_data(&r).unwrap_or_else(|_| Event::default().comment("serial_error")))
             });
 
-            let full_stream = stream::once(async move { Ok(Event::default().event("manifest").json_data(&manifest).unwrap()) })
+            let full_stream = stream::once(async move { Ok(Event::default().event("manifest").json_data(&manifest).unwrap_or_else(|_| Event::default().comment("serial_error"))) })
                 .chain(stream)
-                .chain(stream::once(async move { Ok(Event::default().event("continuation").json_data(&continuation).unwrap()) }));
+                .chain(stream::once(async move { Ok(Event::default().event("continuation").json_data(&continuation).unwrap_or_else(|_| Event::default().comment("serial_error"))) }));
 
             return Sse::new(full_stream.boxed()).keep_alive(KeepAlive::default());
         }

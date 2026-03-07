@@ -11,13 +11,12 @@
   //! - **Registry**: CircuitBreakerRegistry manages all breakers
 
   use axum::{
-      body::Body,
       extract::{Request, Extension},
       http::StatusCode,
       middleware::Next,
       response::{IntoResponse, Response},
+      Json,
   };
-  use serde_json::json;
   use std::sync::Arc;
   use tracing::{error, warn};
 
@@ -249,18 +248,17 @@
   fn create_rejection_response(state: CircuitState, retry_after: Option<std::time::Duration>) -> Response {
       let retry_after_secs = retry_after.map(|d| d.as_secs()).unwrap_or(60);
 
-      let body = json!({
-          "success": false,
-          "error": "Service temporarily unavailable",
-          "code": "CIRCUIT_BREAKER_OPEN",
-          "message": format!("Circuit breaker is {:?}. Please try again later.", state),
-          "retry_after_seconds": retry_after_secs,
-          "timestamp": chrono::Utc::now().to_rfc3339(),
-      });
+      let response_body = crate::api::StandardResponse::<()>::error(
+          format!("Circuit breaker is {:?}. Please try again later.", state),
+          "CIRCUIT_BREAKER_OPEN",
+          "Overload",
+          true,
+      )
+      .with_retry_after(retry_after_secs * 1000);
 
       let mut response = (
           StatusCode::SERVICE_UNAVAILABLE,
-          Body::from(body.to_string()),
+          Json(response_body),
       )
       .into_response();
 
@@ -275,17 +273,16 @@
 
   /// Create timeout response.
   fn create_timeout_response(timeout: std::time::Duration) -> Response {
-      let body = json!({
-          "success": false,
-          "error": "Request timeout",
-          "code": "GATEWAY_TIMEOUT",
-          "message": format!("Request timed out after {}ms", timeout.as_millis()),
-          "timestamp": chrono::Utc::now().to_rfc3339(),
-      });
+      let response_body = crate::api::StandardResponse::<()>::error(
+          format!("Request timed out after {}ms", timeout.as_millis()),
+          "GATEWAY_TIMEOUT",
+          "Timeout",
+          true,
+      );
 
       (
           StatusCode::GATEWAY_TIMEOUT,
-          Body::from(body.to_string()),
+          Json(response_body),
       )
       .into_response()
   }
