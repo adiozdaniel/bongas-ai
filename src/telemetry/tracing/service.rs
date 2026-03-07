@@ -79,6 +79,7 @@ fn build_and_init(config: &TelemetryConfig) -> Result<(), TracingInitError> {
             // Live OTLP Initialization
             let otlp_config = OtlpExporterConfig {
                 endpoint: endpoint.clone(),
+                sampling_rate: config.sampling_rate(),
                 ..Default::default()
             };
 

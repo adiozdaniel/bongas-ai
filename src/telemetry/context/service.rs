@@ -133,6 +133,8 @@
               "request",
               otel.name = name,
               request_id = %self.request_id,
+              user_id = tracing::field::Empty,
+              session_id = tracing::field::Empty,
           );
 
           if let Some(ref user_id) = self.user_id {
