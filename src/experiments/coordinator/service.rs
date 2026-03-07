@@ -94,10 +94,26 @@ impl ExperimentCoordinator {
                 }
                 experiment.variants.first()
             }
-            AssignmentMethod::Random | AssignmentMethod::ThompsonSampling => {
-                // In production, we prefer Hash for consistency, but Random is useful for stateless tests.
-                // ThompsonSampling currently uses weighted random as a baseline until the Bandit 
-                // feedback loop (online learning) is fully integrated.
+            AssignmentMethod::Random => {
+                // Random assignment based on variant weights
+                let mut hasher = DefaultHasher::new();
+                std::time::Instant::now().hash(&mut hasher);
+                user_id.hash(&mut hasher);
+                let hash_val = (hasher.finish() % 100) as f32 / 100.0;
+
+                let mut cumulative_weight = 0.0;
+                for variant in &experiment.variants {
+                    cumulative_weight += variant.weight;
+                    if hash_val <= cumulative_weight {
+                        return Some(variant);
+                    }
+                }
+                experiment.variants.first()
+            }
+            AssignmentMethod::ThompsonSampling => {
+                // ThompsonSampling: In a production environment, this would pull from 
+                // the bandit_scores table (Phase 14). For now, we use a weighted random 
+                // selection as the probability matching baseline.
                 let mut hasher = DefaultHasher::new();
                 std::time::Instant::now().hash(&mut hasher);
                 user_id.hash(&mut hasher);
