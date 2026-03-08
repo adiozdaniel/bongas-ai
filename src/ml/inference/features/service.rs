@@ -76,7 +76,7 @@ impl FeatureStore {
 
         // L1: Cache
         let cache_key = format!("profile_features:{}", profile_id);
-        if let Ok(Some(features)) = self.cache_manager.get::<Vec<f32>>(&cache_key).await {
+        if let Ok(Some(features)) = self.cache_manager.get::<Vec<f32>>(&cache_key, "ml_features", None, Some(profile_id)).await {
             debug!(profile_id = %profile_id, "Profile features from cache");
             if let Some(ref a) = self.analytics {
                 a.increment_throughput(&format!("{}.cache_hit", metric_key));
@@ -96,7 +96,7 @@ impl FeatureStore {
         match features {
             Ok(feats) => {
                 // Write-back to cache (fire-and-forget)
-                let _ = self.cache_manager.set(&cache_key, &feats).await;
+                let _ = self.cache_manager.set(&cache_key, &feats, "ml_features", None, Some(profile_id)).await;
                 Ok(crate::ml::assets::utils::service::pad_or_truncate(feats, feature_dim))
             }
             Err(e) => {

@@ -190,7 +190,7 @@ pub async fn get_page_recommendations(
     let cache_key = format!("ghost:user_{:?}:page_{}:offset_{}", user_id, page_slug, offset);
 
     // 1. Try Ghost Cache first
-    if let Ok(Some(results)) = engine.cache.get::<Vec<serde_json::Value>>(&cache_key).await {
+    if let Ok(Some(results)) = engine.cache.get::<Vec<serde_json::Value>>(&cache_key, "ghost_cache", user_id, cp_base.profile_id.as_deref()).await {
         if !results.is_empty() {
             let total_rows_est = offset + batch_size + 10; // Estimated
             let manifest = DiscoveryManifest {

@@ -105,6 +105,7 @@ impl CacheRepository {
         cache_key: &str,
         scenario_slug: &str,
         user_id: Option<i32>,
+        profile_id: Option<String>,
         context_hash: Option<&str>,
         recommendations: JsonValue,
         ttl_seconds: i32,
@@ -117,16 +118,17 @@ impl CacheRepository {
         self.pool.execute(|pool| {
             let cache_key = cache_key.clone();
             let scenario_slug = scenario_slug.clone();
+            let profile_id = profile_id.clone();
             let context_hash = context_hash.clone();
             let recommendations = recommendations.clone();
             async move {
                 sqlx::query(
                     r#"
                     INSERT INTO recommendation_cache_l2 (
-                        cache_key, scenario_slug, user_id, context_hash,
+                        cache_key, scenario_slug, user_id, profile_id, context_hash,
                         recommendations, expires_at
                     )
-                    VALUES ($1, $2, $3, $4, $5, $6)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7)
                     ON CONFLICT (cache_key) DO UPDATE SET
                         recommendations = EXCLUDED.recommendations,
                         cached_at = NOW(),
@@ -138,6 +140,7 @@ impl CacheRepository {
                 .bind(&cache_key)
                 .bind(&scenario_slug)
                 .bind(user_id)
+                .bind(profile_id)
                 .bind(&context_hash)
                 .bind(&recommendations)
                 .bind(expires_at)
@@ -155,38 +158,44 @@ impl CacheRepository {
         .map(|_| ())
     }
 
-    /// Mark cache entries as stale for a user.
+    /// Mark cache entries as stale for a user/profile.
     pub async fn mark_stale(
         &self,
-        user_id: i32,
+        user_id: Option<i32>,
+        profile_id: Option<&str>,
         scenario_slug: Option<&str>,
         reason: &str,
     ) -> AppResult<u64> {
         let scenario_slug = scenario_slug.map(|s| s.to_string());
+        let profile_id = profile_id.map(|s| s.to_string());
         let reason = reason.to_string();
 
         self.pool.execute(|pool| {
             let scenario_slug = scenario_slug.clone();
+            let profile_id = profile_id.clone();
             let reason = reason.clone();
             async move {
-                if let Some(slug) = scenario_slug {
-                    sqlx::query(
-                        "UPDATE recommendation_cache_l2 SET is_stale = true, staleness_reason = $3 WHERE user_id = $1 AND scenario_slug = $2",
-                    )
-                    .bind(user_id)
-                    .bind(&slug)
-                    .bind(&reason)
-                    .execute(&pool)
-                    .await
-                } else {
-                    sqlx::query(
-                        "UPDATE recommendation_cache_l2 SET is_stale = true, staleness_reason = $2 WHERE user_id = $1",
-                    )
-                    .bind(user_id)
-                    .bind(&reason)
-                    .execute(&pool)
-                    .await
+                let mut query_str = "UPDATE recommendation_cache_l2 SET is_stale = true, staleness_reason = $1 WHERE 1=1".to_string();
+                let mut arg_idx = 2;
+                
+                if user_id.is_some() {
+                    query_str.push_str(&format!(" AND user_id = ${}", arg_idx));
+                    arg_idx += 1;
                 }
+                if profile_id.is_some() {
+                    query_str.push_str(&format!(" AND profile_id = ${}", arg_idx));
+                    arg_idx += 1;
+                }
+                if scenario_slug.is_some() {
+                    query_str.push_str(&format!(" AND scenario_slug = ${}", arg_idx));
+                }
+
+                let mut q = sqlx::query(&query_str).bind(&reason);
+                if let Some(uid) = user_id { q = q.bind(uid); }
+                if let Some(pid) = profile_id { q = q.bind(pid); }
+                if let Some(slug) = scenario_slug { q = q.bind(slug); }
+
+                q.execute(&pool).await
             }
         })
         .await
@@ -239,6 +248,23 @@ impl CacheRepository {
         .map_err(|e| {
             AppError::Postgres(PostgresError::Query {
                 message: format!("Failed to delete cache pattern: {}", e),
+                source: None,
+            })
+        })
+        .map(|_| ())
+    }
+
+    /// Clear all entries in the cache table.
+    pub async fn clear(&self) -> AppResult<()> {
+        self.pool.execute(|pool| async move {
+            sqlx::query("DELETE FROM recommendation_cache_l2")
+                .execute(&pool)
+                .await
+        })
+        .await
+        .map_err(|e| {
+            AppError::Postgres(PostgresError::Query {
+                message: format!("Failed to clear cache: {}", e),
                 source: None,
             })
         })

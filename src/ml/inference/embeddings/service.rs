@@ -120,7 +120,7 @@ impl EmbeddingManager {
 
         // Cache check
         let cache_key = format!("profile_embedding:{}", profile_id);
-        if let Ok(Some(embedding)) = self.cache_manager.get::<Vec<f32>>(&cache_key).await {
+        if let Ok(Some(embedding)) = self.cache_manager.get::<Vec<f32>>(&cache_key, "ml_embeddings", None, Some(profile_id)).await {
             debug!(profile_id = %profile_id, "Profile embedding from cache");
             if let Some(ref a) = self.analytics {
                 a.increment_throughput(&format!("{}.cache_hit", metric_key));
@@ -139,7 +139,7 @@ impl EmbeddingManager {
 
         match result {
             Ok(embedding) => {
-                let _ = self.cache_manager.set(&cache_key, &embedding).await;
+                let _ = self.cache_manager.set(&cache_key, &embedding, "ml_embeddings", None, Some(profile_id)).await;
                 Ok(crate::ml::assets::utils::service::pad_or_truncate(embedding, embedding_dim))
             }
             Err(e) => {

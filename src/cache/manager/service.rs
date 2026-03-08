@@ -68,6 +68,9 @@ impl CacheManager {
         &self,
         key: &str,
         compute: F,
+        scenario: &str,
+        user_id: Option<i32>,
+        profile_id: Option<&str>,
     ) -> Result<T>
     where
         T: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone,
@@ -85,9 +88,7 @@ impl CacheManager {
         if let Some(ref l2) = self.l2 {
             if let Some(value) = l2.get::<T>(key).await? {
                 // Backfill L1
-                if let Some(ref l1) = self.l1 {
-                    let _ = l1.set(key, &value, self.config.l1_ttl).await;
-                }
+                let _ = self.set_with_ttl(key, &value, self.config.l1_ttl, scenario, user_id, profile_id).await;
                 return Ok(value);
             }
         }
@@ -99,12 +100,8 @@ impl CacheManager {
                     .context("Failed to deserialize L3 cache entry")?;
                 
                 // Backfill L2 & L1
-                if let Some(ref l2) = self.l2 {
-                    let _ = l2.set(key, &value, self.config.l2_ttl).await;
-                }
-                if let Some(ref l1) = self.l1 {
-                    let _ = l1.set(key, &value, self.config.l1_ttl).await;
-                }
+                let _ = self.set_with_ttl(key, &value, self.config.l2_ttl, scenario, user_id, profile_id).await;
+                let _ = self.set_with_ttl(key, &value, self.config.l1_ttl, scenario, user_id, profile_id).await;
                 return Ok(value);
             }
         }
@@ -113,13 +110,19 @@ impl CacheManager {
         let value = compute().await?;
 
         // Store in all caches
-        self.set(key, &value).await?;
-
+        self.set(key, &value, scenario, user_id, profile_id).await?;
         Ok(value)
     }
 
+
     /// Get a value from cache only (no compute).
-    pub async fn get<T>(&self, key: &str) -> Result<Option<T>>
+    pub async fn get<T>(
+        &self, 
+        key: &str, 
+        scenario: &str, 
+        user_id: Option<i32>,
+        profile_id: Option<&str>,
+    ) -> Result<Option<T>>
     where
         T: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone,
     {
@@ -134,9 +137,7 @@ impl CacheManager {
         if let Some(ref l2) = self.l2 {
             if let Some(value) = l2.get::<T>(key).await? {
                 // Backfill L1
-                if let Some(ref l1) = self.l1 {
-                    let _ = l1.set(key, &value, self.config.l1_ttl).await;
-                }
+                let _ = self.set_with_ttl(key, &value, self.config.l1_ttl, scenario, user_id, profile_id).await;
                 return Ok(Some(value));
             }
         }
@@ -145,6 +146,10 @@ impl CacheManager {
         if let Some(ref l3) = self.l3 {
             if let Ok(Some(entry)) = l3.get(key).await {
                 let value: T = serde_json::from_value(entry.recommendations)?;
+                
+                // Backfill L2 & L1
+                let _ = self.set_with_ttl(key, &value, self.config.l2_ttl, scenario, user_id, profile_id).await;
+                let _ = self.set_with_ttl(key, &value, self.config.l1_ttl, scenario, user_id, profile_id).await;
                 return Ok(Some(value));
             }
         }
@@ -153,13 +158,22 @@ impl CacheManager {
     }
 
     /// Set a value in all cache tiers with a specific TTL.
-    pub async fn set_with_ttl<T>(&self, key: &str, value: &T, ttl: std::time::Duration) -> Result<()>
+    pub async fn set_with_ttl<T>(
+        &self, 
+        key: &str, 
+        value: &T, 
+        ttl: std::time::Duration,
+        scenario: &str,
+        user_id: Option<i32>,
+        profile_id: Option<&str>,
+    ) -> Result<()>
     where
         T: Serialize + Send + Sync,
     {
         if let Some(ref l3) = self.l3 {
             let json_val = serde_json::to_value(value)?;
-            let _ = l3.set(key, "unknown", None, None, json_val, ttl.as_secs() as i32).await;
+            let pid = profile_id.map(|s| s.to_string());
+            let _ = l3.set(key, scenario, user_id, pid, None, json_val, ttl.as_secs() as i32).await;
         }
         if let Some(ref l2) = self.l2 {
             let _ = l2.set(key, value, ttl).await;
@@ -171,11 +185,18 @@ impl CacheManager {
     }
 
     /// Set a value in all cache tiers using default TTLs.
-    pub async fn set<T>(&self, key: &str, value: &T) -> Result<()>
+    pub async fn set<T>(
+        &self, 
+        key: &str, 
+        value: &T, 
+        scenario: &str, 
+        user_id: Option<i32>,
+        profile_id: Option<&str>,
+    ) -> Result<()>
     where
         T: Serialize + Send + Sync,
     {
-        self.set_with_ttl(key, value, self.config.l2_ttl).await
+        self.set_with_ttl(key, value, self.config.l2_ttl, scenario, user_id, profile_id).await
     }
 
     /// Delete a value from all cache tiers.
@@ -216,13 +237,54 @@ impl CacheManager {
         Arc::clone(&self.metrics)
     }
 
-    /// Clear all caches.
+    /// Mark cache entries as stale across all tiers.
+    pub async fn mark_stale(
+        &self,
+        user_id: Option<i32>,
+        profile_id: Option<&str>,
+        scenario_slug: Option<&str>,
+        reason: &str,
+    ) -> Result<()> {
+        // 1. Invalidate L1/L2 via pattern (best effort)
+        let key_pattern = if let Some(slug) = scenario_slug {
+            if let Some(pid) = profile_id {
+                format!("rec:{}:p_{}:*", slug, pid)
+            } else if let Some(uid) = user_id {
+                format!("rec:{}:u_{}:*", slug, uid)
+            } else {
+                format!("rec:{}:*", slug)
+            }
+        } else {
+            if let Some(pid) = profile_id {
+                format!("rec:*:p_{}:*", pid)
+            } else if let Some(uid) = user_id {
+                format!("rec:*:u_{}:*", uid)
+            } else {
+                "rec:*".to_string()
+            }
+        };
+
+        let _ = self.delete_pattern(&key_pattern).await;
+        self.metrics.record_invalidation();
+
+        // 2. Mark L3 cache as stale
+        if let Some(ref l3) = self.l3 {
+            let _ = l3.mark_stale(user_id, profile_id, scenario_slug, reason).await;
+        }
+
+        Ok(())
+    }
+
+    /// Clear all cache tiers.
     pub async fn clear(&self) -> Result<()> {
         if let Some(ref l1) = self.l1 {
-            l1.clear().await?;
+            let _ = l1.clear().await;
         }
         if let Some(ref l2) = self.l2 {
-            l2.clear().await?;
+            let _ = l2.clear().await;
+        }
+        if let Some(ref l3) = self.l3 {
+            let _ = l3.clear().await;
         }
         Ok(())
     }

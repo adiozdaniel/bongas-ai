@@ -252,6 +252,7 @@ CREATE TABLE IF NOT EXISTS recommendation_cache_l2 (
     cache_key VARCHAR(500) UNIQUE NOT NULL,
     scenario_slug VARCHAR(100) NOT NULL,
     user_id INTEGER,
+    profile_id VARCHAR(100),
     context_hash VARCHAR(64),
     recommendations JSONB NOT NULL,
     cached_at TIMESTAMP DEFAULT NOW(),
