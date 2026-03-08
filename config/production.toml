@@ -16,7 +16,7 @@ environment = "production"
 [database]
 # Primary database connection
 url = "postgresql://postgres:password@db-primary.example.com:5432/baze_catalog"
-# 5x increase from dev (20 -> 100)
+# Production database connection limits
 max_connections = 100
 min_connections = 20
 connection_timeout = 30
@@ -35,7 +35,7 @@ statement_timeout = 300
 [redis]
 # Single Redis for simple deployments
 url = "redis://redis.example.com:6379"
-# 5x increase from dev (10 -> 50)
+# Production Redis pool size
 pool_size = 50
 connection_timeout = 5
 request_timeout = 10
@@ -51,9 +51,9 @@ retry_backoff = 100
 # ]
 
 [clickhouse]
-url = "http://54.217.162.34:8123/?socket_timeout=60000&connection_timeout=30000&max_execution_time=60&retry_on_failure=2&failover=3"
+url = "http://${CLICKHOUSE_HOST}:8123/?socket_timeout=60000&connection_timeout=30000&max_execution_time=60&retry_on_failure=2&failover=3"
 user = "default"
-password = "Zr4G3g6sjglvbrj9YkO3w1Q"
+password = "${CLICKHOUSE_PASSWORD}"
 database = "baze_reports"
 
 [kafka]

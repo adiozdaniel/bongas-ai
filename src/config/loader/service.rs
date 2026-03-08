@@ -7,6 +7,7 @@ use crate::config::types::{
     HiveMindConfig, SlidingWindowType, BackoffStrategy, ExportFormat,
     experiments::ExperimentsConfig, resilience::{ResilienceDefaults, RetryConfig},
 };
+use crate::cache::CacheConfig;
 use crate::experiments::models::AssignmentMethod;
 use crate::resilience::ResilienceMetricsConfig;
 use crate::config::validation::validate_app_config as validate_config_fn;
@@ -149,10 +150,10 @@ impl ConfigLoader {
                 enabled: parse_bool("kafka.enabled", false)?,
                 brokers: parse_val("kafka.brokers", "localhost:9092"),
                 group_id: parse_val("kafka.group_id", "bongas-ai-consumers"),
-                profile_topic: parse_val("kafka.profile_topic", "user.profiles"),
-                reaction_topic: parse_val("kafka.reaction_topic", "user.reactions"),
-                notification_topic: parse_val("kafka.notification_topic", "notifications"),
-                playback_topic: parse_val("kafka.playback_topic", "playback.sessions"),
+                profile_topic: parse_val("kafka.profile_topic", "profile.events"),
+                reaction_topic: parse_val("kafka.reaction_topic", "reaction.events"),
+                notification_topic: parse_val("kafka.notification_topic", "notification.events"),
+                playback_topic: parse_val("kafka.playback_topic", "playback.events"),
                 sync_topic: parse_val("kafka.sync_topic", "recommendations.sync"),
                 connection_timeout: parse_u64("kafka.connection_timeout", 10)?,
                 request_timeout: parse_u64("kafka.request_timeout", 30)?,
@@ -176,11 +177,11 @@ impl ConfigLoader {
         let ml = MlConfig {
             model_path: PathBuf::from(parse_val("ml.model_path", "./models")),
             batch_size: parse_u32("ml.batch_size", 64)? as usize,
-            onnx_enabled: parse_bool("ml.onnx_enabled", true)?,
-            onnx_execution_provider: parse_val("ml.onnx_execution_provider", "cpu"),
-            onnx_graph_optimization: parse_bool("ml.onnx_graph_optimization", true)?,
-            onnx_memory_map: parse_bool("ml.onnx_memory_map", true)?,
-            onnx_intra_threads: parse_u32("ml.onnx_intra_threads", 4)? as usize,
+            onnx_enabled: parse_bool("onnx.enabled", true)?,
+            onnx_execution_provider: parse_val("onnx.execution_provider", "cpu"),
+            onnx_graph_optimization: parse_bool("onnx.graph_optimization", true)?,
+            onnx_memory_map: parse_bool("onnx.memory_map", true)?,
+            onnx_intra_threads: parse_u32("onnx.intra_threads", 4)? as usize,
             feature_store_enabled: parse_bool("ml.feature_store_enabled", true)?,
             feature_cache_ttl: Duration::from_secs(parse_u64("ml.feature_cache_ttl_secs", 300)?),
             feature_fetch_timeout: Duration::from_millis(parse_u64("ml.feature_fetch_timeout_ms", 500)?),
@@ -240,11 +241,31 @@ impl ConfigLoader {
             analytics_sample_rate: parse_f64("pipeline.analytics_sample_rate", 1.0)?,
         };
 
+        // Cache
+        let cache = CacheConfig {
+            l1_enabled: true,
+            l1_max_entries: 10000,
+            l1_ttl: Duration::from_secs(parse_u64("cache.l1_ttl_seconds", 300)?),
+            l2_enabled: true,
+            l2_ttl: Duration::from_secs(parse_u64("cache.l2_ttl_seconds", 3600)?),
+            warming_enabled: true,
+            warming_interval: Duration::from_secs(parse_u64("cache.warming_interval_minutes", 30)? * 60),
+            warm_scenarios: config_map.get("cache.warm_scenarios")
+                .map(|s| s.split(',').map(|s| s.trim().to_string()).collect())
+                .unwrap_or_else(|| vec![
+                    "personalized_home".into(),
+                    "continue_watching".into(),
+                    "trending_now".into(),
+                    "live_tv".into(),
+                ]),
+        };
+
         // Observability
         let observability = ObservabilityConfig {
             tracing_enabled: parse_bool("observability.tracing_enabled", true)?,
             metrics_enabled: parse_bool("observability.metrics_enabled", true)?,
             log_level: parse_val("logging.level", "info"),
+            log_format: parse_val("logging.format", "text"),
             jaeger_endpoint: config_map.get("observability.jaeger_endpoint").cloned(),
             prometheus_endpoint: config_map.get("observability.prometheus_endpoint").cloned(),
             otlp_endpoint: parse_val("tracing.otlp_endpoint", "http://localhost:4318/v1/traces"),
@@ -313,6 +334,8 @@ impl ConfigLoader {
             call_timeout: Duration::from_secs(30),
             max_concurrent_calls: parse_u32("bulkhead.max_concurrent_calls", 100)? as usize,
             consecutive_failure_threshold: None,
+            bulkhead_enabled: parse_bool("bulkhead.enabled", true)?,
+            bulkhead_per_endpoint: parse_bool("bulkhead.per_endpoint", true)?,
         };
 
         let error = ErrorConfig {
@@ -394,7 +417,7 @@ impl ConfigLoader {
         };
 
         Ok(AppConfig::new(
-            server, database, redis, clickhouse, ingestion, security, ml, pipeline,
+            server, database, redis, clickhouse, ingestion, security, ml, pipeline, cache,
             circuit_breaker, error, analytics, observability,
             resilience, ResilienceMetricsConfig::default(), experiments, hive_mind,
         ))

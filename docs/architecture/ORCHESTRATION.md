@@ -78,7 +78,7 @@ To handle the 5x concurrency multiplier (1 request = 5 concurrent DB/Redis check
 
 - **Postgres (sqlx):** Scaled to **100** max connections.
 - **Redis:** Scaled to **50** pool size.
-- **Aggressive Timeouts:** `acquire_timeout` (2s) and `request_timeout` (5s) ensure we fail-fast rather than stalling.
+- **Aggressive Timeouts:** `connection_timeout` (5s) and `request_timeout` (10s) ensure we fail-fast rather than stalling.
 
 ### 2. Row-Level Resilience
 

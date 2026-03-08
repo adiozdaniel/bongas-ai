@@ -1,6 +1,6 @@
 //! Telemetry exporters for various output targets.
 //!
-//! Provides exporters for stdout, stderr, file, and future OTLP support.
+//! Provides exporters for stdout, stderr, file, and OTLP support.
 
 use std::io::{self, Write};
 
