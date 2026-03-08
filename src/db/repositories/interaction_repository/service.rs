@@ -50,7 +50,7 @@ impl InteractionRepository {
                 sqlx::query(
                     r#"
                     INSERT INTO user_interactions
-                        (user_id, profile_id, item_id, interaction_type, rating, scenario_slug, visitor_id, device_hash, device_type, created_at)
+                        (user_id, profile_id, item_id, interaction_type, implicit_rating, scenario_slug, visitor_id, device_hash, device_type, created_at)
                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
                     "#,
                 )
@@ -105,7 +105,7 @@ impl InteractionRepository {
                 sqlx::query(
                     r#"
                     INSERT INTO user_interactions
-                        (user_id, profile_id, item_id, interaction_type, rating, watch_duration_seconds, scenario_slug, visitor_id, device_hash, device_type, created_at)
+                        (user_id, profile_id, item_id, interaction_type, implicit_rating, watch_duration_seconds, scenario_slug, visitor_id, device_hash, device_type, created_at)
                     VALUES ($1, $2, $3, 'implicit_rating', $4, $5, $6, $7, $8, $9, NOW())
                     "#,
                 )
@@ -151,7 +151,7 @@ impl InteractionRepository {
         self.pool.execute(|pool| async move {
             sqlx::query(
                 r#"
-                INSERT INTO user_interactions (user_id, item_id, interaction_type, rating, watch_duration_seconds, visitor_id, device_hash, device_type, created_at)
+                INSERT INTO user_interactions (user_id, item_id, interaction_type, implicit_rating, watch_duration_seconds, visitor_id, device_hash, device_type, created_at)
                 SELECT * FROM unnest($1::int[], $2::int[], $3::text[], $4::float4[], $5::int[], $6::text[], $7::text[], $8::text[], $9::timestamptz[])
                 "#
             )

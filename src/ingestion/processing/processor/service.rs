@@ -137,8 +137,14 @@ impl ActivityProcessor {
 
         // 3. Notify Staleness Engine (Real-time cache invalidation)
         let event = match activity {
-            UserActivity::Playback { user_id, item_id, watch_percentage, .. } => Some(StalenessEvent::WatchEvent { user_id, item_id, completion_rate: watch_percentage }),
-            UserActivity::Reaction { user_id, item_id, ref reaction_type, .. } => Some(StalenessEvent::ExplicitFeedback { user_id, item_id, rating: if reaction_type == "like" { 1.0 } else { -1.0 } }),
+            UserActivity::Playback { user_id, ref profile_id, item_id, watch_percentage, .. } => {
+                let pid = profile_id.clone().unwrap_or_else(|| "default".to_string());
+                Some(StalenessEvent::WatchEvent { user_id, profile_id: pid, item_id, completion_rate: watch_percentage })
+            },
+            UserActivity::Reaction { user_id, ref profile_id, item_id, ref reaction_type, .. } => {
+                let pid = profile_id.clone().unwrap_or_else(|| "default".to_string());
+                Some(StalenessEvent::ExplicitFeedback { user_id, profile_id: pid, item_id, rating: if reaction_type == "like" { 1.0 } else { -1.0 } })
+            },
             _ => None,
         };
 

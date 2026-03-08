@@ -1,88 +1,90 @@
 //! Coordinator for A/B testing and experimentation.
 //!
-//! Uses consistent hashing for O(1) user assignment and ArcSwap for
+//! Uses simple hashing for O(1) user assignment and ArcSwap for
 //! zero-lock read access in the hot path.
+//!
+//! # Thompson Sampling Implementation
+//! For multi-armed bandits, we use Bernoulli Thompson Sampling with Beta distribution
+//! priors (Alpha=1, Beta=1). Success is defined as a positive interaction (implicit_rating > 0).
 
 use std::collections::HashMap;
 use std::sync::Arc;
 use arc_swap::ArcSwap;
-use tracing::info;
+use tracing::{info, debug};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
+use rand::prelude::*;
+use rand_distr::{Beta, Distribution};
 
-use crate::experiments::models::{Experiment, Assignment, AssignmentMethod, ExperimentStatus, Variant};
-use crate::config::ExperimentsConfig;
+use crate::experiments::models::{Experiment, Variant, AssignmentMethod};
 
+/// Statistics for Bernoulli Thompson Sampling.
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
+pub struct BanditStats {
+    pub successes: f64, // alpha - 1
+    pub failures: f64,  // beta - 1
+}
+
+impl Default for BanditStats {
+    fn default() -> Self {
+        Self { successes: 1.0, failures: 1.0 } // Uniform prior
+    }
+}
+
+/// Orchestrates experiment assignment and variant management.
 pub struct ExperimentCoordinator {
-    config: ExperimentsConfig,
-    /// Active experiments indexed by scenario slug (one scenario can have multiple experiments)
+    /// Zero-lock map of active experiments per scenario.
     active_experiments: ArcSwap<HashMap<String, Vec<Experiment>>>,
+    
+    /// Real-time statistics for Thompson Sampling (Bandit learning).
+    /// Map: experiment_id -> (variant_id -> stats)
+    bandit_stats: ArcSwap<HashMap<i32, HashMap<String, BanditStats>>>,
 }
 
 impl ExperimentCoordinator {
-    pub fn new(config: ExperimentsConfig) -> Self {
+    pub fn new() -> Self {
         Self {
-            config,
             active_experiments: ArcSwap::from_pointee(HashMap::new()),
+            bandit_stats: ArcSwap::from_pointee(HashMap::new()),
         }
     }
 
-    /// Assign a user to variants for a given scenario.
-    /// Returns a list of assignments and a combined map of parameter overrides.
-    pub fn assign(
-        &self,
-        scenario_slug: &str,
-        user_id: i32,
-    ) -> (Vec<Assignment>, HashMap<String, serde_json::Value>) {
-        if !self.config.enabled {
-            return (Vec::new(), HashMap::new());
-        }
-
-        let experiments_map = self.active_experiments.load();
-        let experiments = match experiments_map.get(scenario_slug) {
-            Some(exps) => exps,
-            None => return (Vec::new(), HashMap::new()),
-        };
-
-        let mut assignments = Vec::new();
-        let mut combined_overrides = HashMap::new();
-
-        for exp in experiments {
-            if exp.status != ExperimentStatus::Running {
-                continue;
-            }
-
-            if let Some(variant) = self.select_variant(exp, user_id) {
-                let assignment = Assignment {
-                    experiment_id: exp.id,
-                    experiment_slug: exp.slug.clone(),
-                    variant_id: variant.id.clone(),
-                    overrides: variant.overrides.clone(),
-                };
-
-                // Merge overrides
-                for (key, value) in &variant.overrides {
-                    combined_overrides.insert(key.clone(), value.clone());
+    /// Assign a profile to a variant for a specific scenario.
+    ///
+    /// Returns (variant_id, overrides) if the user is assigned to an experiment.
+    pub fn assign(&self, scenario: &str, profile_id: &str) -> (Option<String>, HashMap<String, serde_json::Value>) {
+        let experiments = self.active_experiments.load();
+        
+        if let Some(experiment_list) = experiments.get(scenario) {
+            for experiment in experiment_list {
+                if let Some(variant) = self.select_variant(experiment, profile_id) {
+                    debug!(
+                        scenario = %scenario,
+                        profile_id = %profile_id,
+                        experiment = %experiment.slug,
+                        variant = %variant.id,
+                        "Profile assigned to experiment variant"
+                    );
+                    return (Some(variant.id.clone()), variant.overrides.clone());
                 }
-
-                assignments.push(assignment);
             }
         }
 
-        (assignments, combined_overrides)
+        (None, HashMap::new())
     }
 
-    fn select_variant<'a>(&self, experiment: &'a Experiment, user_id: i32) -> Option<&'a Variant> {
+    /// Select a variant using the configured assignment method.
+    fn select_variant<'a>(&self, experiment: &'a Experiment, profile_id: &str) -> Option<&'a Variant> {
         if experiment.variants.is_empty() {
             return None;
         }
 
         match experiment.assignment_method {
             AssignmentMethod::Hash => {
-                // Consistent Hashing: hash(user_id + experiment_id) % 100
+                // Consistent hashing based on profile_id and experiment_id
                 let mut hasher = DefaultHasher::new();
-                user_id.hash(&mut hasher);
                 experiment.id.hash(&mut hasher);
+                profile_id.hash(&mut hasher);
                 let hash_val = (hasher.finish() % 100) as f32 / 100.0;
 
                 let mut cumulative_weight = 0.0;
@@ -95,11 +97,8 @@ impl ExperimentCoordinator {
                 experiment.variants.first()
             }
             AssignmentMethod::Random => {
-                // Random assignment based on variant weights
-                let mut hasher = DefaultHasher::new();
-                std::time::Instant::now().hash(&mut hasher);
-                user_id.hash(&mut hasher);
-                let hash_val = (hasher.finish() % 100) as f32 / 100.0;
+                let mut rng = thread_rng();
+                let hash_val: f32 = rng.gen();
 
                 let mut cumulative_weight = 0.0;
                 for variant in &experiment.variants {
@@ -111,24 +110,51 @@ impl ExperimentCoordinator {
                 experiment.variants.first()
             }
             AssignmentMethod::ThompsonSampling => {
-                // ThompsonSampling: In a production environment, this would pull from 
-                // the bandit_scores table (Phase 14). For now, we use a weighted random 
-                // selection as the probability matching baseline.
-                let mut hasher = DefaultHasher::new();
-                std::time::Instant::now().hash(&mut hasher);
-                user_id.hash(&mut hasher);
-                let hash_val = (hasher.finish() % 100) as f32 / 100.0;
+                // Actual Thompson Sampling using Beta distribution draws.
+                // We pick the variant with the highest probability of being the best.
+                let stats_map = self.bandit_stats.load();
+                let exp_stats = stats_map.get(&experiment.id);
+                
+                let mut best_variant = None;
+                let mut max_draw = -1.0;
+                let mut rng = thread_rng();
 
-                let mut cumulative_weight = 0.0;
                 for variant in &experiment.variants {
-                    cumulative_weight += variant.weight;
-                    if hash_val <= cumulative_weight {
-                        return Some(variant);
+                    let stats = exp_stats
+                        .and_then(|m| m.get(&variant.id))
+                        .cloned()
+                        .unwrap_or_default();
+                    
+                    // Draw from Beta(successes, failures)
+                    let beta = Beta::new(stats.successes, stats.failures).unwrap_or_else(|_| Beta::new(1.0, 1.0).unwrap());
+                    let draw = beta.sample(&mut rng);
+
+                    if draw > max_draw {
+                        max_draw = draw;
+                        best_variant = Some(variant);
                     }
                 }
-                experiment.variants.first()
+                
+                best_variant.or_else(|| experiment.variants.first())
             }
         }
+    }
+
+    /// Record feedback for a variant (success/failure).
+    /// Called by the Ingestion Processor or Analytics Sidecar.
+    pub fn record_feedback(&self, experiment_id: i32, variant_id: &str, success: bool) {
+        let mut new_stats = (**self.bandit_stats.load()).clone();
+        let exp_entry = new_stats.entry(experiment_id).or_default();
+        let stats = exp_entry.entry(variant_id.to_string()).or_default();
+        
+        if success {
+            stats.successes += 1.0;
+        } else {
+            stats.failures += 1.0;
+        }
+
+        self.bandit_stats.store(Arc::new(new_stats));
+        debug!(experiment_id, variant_id, success, "Bandit feedback recorded");
     }
 
     /// Refresh the active experiments map (called by background worker)
@@ -136,5 +162,11 @@ impl ExperimentCoordinator {
         let count: usize = new_map.values().map(|v| v.len()).sum();
         self.active_experiments.store(Arc::new(new_map));
         info!(active_experiments = count, "Experiment Coordinator refreshed");
+    }
+}
+
+impl Default for ExperimentCoordinator {
+    fn default() -> Self {
+        Self::new()
     }
 }
