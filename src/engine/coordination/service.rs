@@ -344,7 +344,8 @@ impl BongasEngine {
             // 3. Store the entire batch in the "Ghost Cache"
             if !results.is_empty() {
                 let ttl = std::time::Duration::from_secs(ttl_seconds as u64);
-                let _ = engine.cache.set_with_ttl(&cache_key, &results, ttl).await;
+                let pid = context_params.get("profile_id").and_then(|v| v.as_str());
+                let _ = engine.cache.set_with_ttl(&cache_key, &results, ttl, "ghost_prewarm", user_id, pid).await;
                 tracing::debug!(request_id = %rid, "Ghost pre-warm complete and cached in Redis");
             }
         }.instrument(span));

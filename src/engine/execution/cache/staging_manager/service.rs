@@ -52,13 +52,14 @@ impl StagingManager {
         &self,
         scenario_slug: &str,
         user_id: Option<i32>,
+        profile_id: Option<&str>,
         context_hash: &str,
     ) -> Result<Option<Vec<ScoredItem>>> {
-        let cache_key = Self::build_cache_key(scenario_slug, user_id, context_hash);
+        let cache_key = Self::build_cache_key(scenario_slug, user_id, profile_id, context_hash);
         let start_time = Instant::now();
 
         // Try L1 (LRU) and L2 (Redis) via CacheManager
-        if let Some(items) = self.cache_manager.get::<Vec<ScoredItem>>(&cache_key).await? {
+        if let Some(items) = self.cache_manager.get::<Vec<ScoredItem>>(&cache_key, scenario_slug, user_id, profile_id).await? {
             let duration = start_time.elapsed();
             info!(
                 cache_key = %cache_key,
@@ -78,7 +79,7 @@ impl StagingManager {
             );
 
             // Promote to L1/L2
-            let _ = self.cache_manager.set(&cache_key, &items).await;
+            let _ = self.cache_manager.set(&cache_key, &items, scenario_slug, user_id, profile_id).await;
 
             return Ok(Some(items));
         }
@@ -97,22 +98,25 @@ impl StagingManager {
         &self,
         scenario_slug: &str,
         user_id: Option<i32>,
+        profile_id: Option<&str>,
         context_hash: &str,
         items: &[ScoredItem],
         ttl_seconds: i32,
     ) -> Result<()> {
-        let cache_key = Self::build_cache_key(scenario_slug, user_id, context_hash);
+        let cache_key = Self::build_cache_key(scenario_slug, user_id, profile_id, context_hash);
 
         // Save to L1/L2 via CacheManager
-        self.cache_manager.set(&cache_key, &items.to_vec()).await?;
+        self.cache_manager.set(&cache_key, &items.to_vec(), scenario_slug, user_id, profile_id).await?;
 
         // Save to L3 (PostgreSQL) with longer TTL (12x)
         let l3_ttl = ttl_seconds * 12;
         let items_json = serde_json::to_value(items)?;
+        let pid_owned = profile_id.map(|s| s.to_string());
         self.cache_repo.set(
             &cache_key,
             scenario_slug,
             user_id,
+            pid_owned,
             Some(context_hash),
             items_json,
             l3_ttl,
@@ -127,63 +131,48 @@ impl StagingManager {
         Ok(())
     }
 
-    /// Mark cache entries as stale (called by Staleness Engine)
+    /// Mark cache entries as stale across all tiers (L1, L2, L3).
     pub async fn mark_stale(
         &self,
         user_id: i32,
+        profile_id: Option<&str>,
         scenario_slug: Option<&str>,
         reason: &str,
     ) -> Result<()> {
-        // Invalidate L1/L2 via pattern (best effort)
-        let key_pattern = if let Some(slug) = scenario_slug {
-            format!("rec:{}:{}:*", slug, user_id)
-        } else {
-            format!("rec:*:{}:*", user_id)
-        };
-        let _ = self.cache_manager.delete_pattern(&key_pattern).await;
-        self.cache_manager.metrics_handle().record_invalidation();
-
-        // Mark L3 cache as stale
-        let rows_affected = self.cache_repo.mark_stale(user_id, scenario_slug, reason).await?;
+        // Use coordinated CacheManager invalidation
+        self.cache_manager.mark_stale(Some(user_id), profile_id, scenario_slug, reason).await?;
 
         info!(
             user_id = user_id,
+            profile_id = ?profile_id,
             scenario_slug = ?scenario_slug,
             reason = reason,
-            rows_affected = rows_affected,
-            "Cache marked as stale"
+            "Coordinated cache invalidation complete"
         );
 
         Ok(())
     }
 
-    /// Invalidate cache for a specific scenario + user
+    /// Invalidate cache for a specific scenario + user/profile
     pub async fn invalidate(
         &self,
         scenario_slug: &str,
         user_id: i32,
+        profile_id: Option<&str>,
     ) -> Result<()> {
         let start_time = Instant::now();
 
-        // Invalidate L1/L2 - specific key patterns
-        let key = format!("rec:{}:{}:*", scenario_slug, user_id);
-        let _ = self.cache_manager.delete_pattern(&key).await;
-
-        let default_key = format!("rec:{}:{}:default", scenario_slug, user_id);
-        let _ = self.cache_manager.delete(&default_key).await;
-        self.cache_manager.metrics_handle().record_invalidation();
-
-        // Invalidate L3 (PostgreSQL)
-        let rows_affected = self.cache_repo.mark_stale(user_id, Some(scenario_slug), "invalidate").await?;
+        // Use coordinated CacheManager invalidation
+        self.cache_manager.mark_stale(Some(user_id), profile_id, Some(scenario_slug), "invalidate").await?;
 
         let duration = start_time.elapsed();
 
         info!(
             scenario_slug = scenario_slug,
             user_id = user_id,
-            rows_affected = rows_affected,
+            profile_id = ?profile_id,
             duration_ms = duration.as_millis(),
-            "Invalidated all cache tiers"
+            "Invalidated all cache tiers (Coordinated)"
         );
 
         Ok(())
@@ -229,9 +218,13 @@ impl StagingManager {
     }
 
     /// Build cache key
-    fn build_cache_key(scenario_slug: &str, user_id: Option<i32>, context_hash: &str) -> String {
-        let user_part = user_id.map(|id| id.to_string()).unwrap_or_else(|| "anon".to_string());
-        format!("rec:{}:{}:{}", scenario_slug, user_part, context_hash)
+    fn build_cache_key(scenario_slug: &str, user_id: Option<i32>, profile_id: Option<&str>, context_hash: &str) -> String {
+        let id_part = if let Some(pid) = profile_id {
+            format!("p_{}", pid)
+        } else {
+            format!("u_{}", user_id.map(|id| id.to_string()).unwrap_or_else(|| "anon".to_string()))
+        };
+        format!("rec:{}:{}:{}", scenario_slug, id_part, context_hash)
     }
 
     /// Hash context parameters
@@ -242,7 +235,7 @@ impl StagingManager {
     }
 
     /// Record a negative signal (Skip) and update genre penalty state.
-    pub async fn record_negative_signal(&self, user_id: i32, genres: Vec<String>) -> Result<()> {
+    pub async fn record_negative_signal(&self, user_id: i32, profile_id: Option<&str>, genres: Vec<String>) -> Result<()> {
         // Fix #17: Acquire per-user lock for atomic update
         let lock = self.penalty_locks.entry(user_id)
             .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(())))
@@ -252,8 +245,9 @@ impl StagingManager {
         let _guard = lock.lock().await;
 
         for genre in genres {
-            let key = format!("penalty:{}:{}", user_id, genre);
-            let mut state: PenaltyState = self.cache_manager.get(&key).await?.unwrap_or(PenaltyState {
+            let id_part = profile_id.unwrap_or("default");
+            let key = format!("penalty:{}:{}:{}", user_id, id_part, genre);
+            let mut state: PenaltyState = self.cache_manager.get(&key, "genre_penalty", Some(user_id), profile_id).await?.unwrap_or(PenaltyState {
                 consecutive_skips: 0,
                 is_burned: false,
                 burned_at: None,
@@ -263,27 +257,28 @@ impl StagingManager {
             if state.consecutive_skips >= 3 {
                 state.is_burned = true;
                 state.burned_at = Some(chrono::Utc::now());
-                info!(user_id, genre, "Genre BURNED for 60 minutes");
+                info!(user_id, profile_id = ?profile_id, genre, "Genre BURNED for 60 minutes");
             }
 
             // Save penalty with 60-minute TTL
-            self.cache_manager.set(&key, &state).await?;
+            self.cache_manager.set(&key, &state, "genre_penalty", Some(user_id), profile_id).await?;
 
             // Update combined penalty map for the Ranker
             if state.is_burned {
-                let map_key = format!("penalties:{}", user_id);
-                let mut penalties: HashMap<String, f32> = self.cache_manager.get(&map_key).await?.unwrap_or_default();
+                let map_key = format!("penalties:{}:{}", user_id, id_part);
+                let mut penalties: HashMap<String, f32> = self.cache_manager.get(&map_key, "genre_penalty_map", Some(user_id), profile_id).await?.unwrap_or_default();
                 penalties.insert(genre, 0.1); // 0.1x multiplier
-                self.cache_manager.set(&map_key, &penalties).await?;
+                self.cache_manager.set(&map_key, &penalties, "genre_penalty_map", Some(user_id), profile_id).await?;
             }
         }
         Ok(())
     }
 
-    /// Get all active genre penalties for a user.
-    pub async fn get_genre_penalties(&self, user_id: i32) -> Result<HashMap<String, f32>> {
-        let map_key = format!("penalties:{}", user_id);
-        Ok(self.cache_manager.get(&map_key).await?.unwrap_or_default())
+    /// Get all active genre penalties for a user/profile.
+    pub async fn get_genre_penalties(&self, user_id: i32, profile_id: Option<&str>) -> Result<HashMap<String, f32>> {
+        let id_part = profile_id.unwrap_or("default");
+        let map_key = format!("penalties:{}:{}", user_id, id_part);
+        Ok(self.cache_manager.get(&map_key, "genre_penalty_map", Some(user_id), profile_id).await?.unwrap_or_default())
     }
 
     /// Fix #M5, N2: Periodically clear unused penalty locks to prevent memory leak

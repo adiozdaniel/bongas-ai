@@ -17,6 +17,7 @@ pub enum UserEvent {
     /// User watched content (playback session)
     WatchEvent {
         user_id: i32,
+        profile_id: String,
         item_id: i32,
         completion_rate: f32,
     },
@@ -24,6 +25,7 @@ pub enum UserEvent {
     /// User liked/disliked content
     ExplicitFeedback {
         user_id: i32,
+        profile_id: String,
         item_id: i32,
         rating: f32,
     },
@@ -31,6 +33,7 @@ pub enum UserEvent {
     /// User completed watching content (>90% completion)
     CompleteWatch {
         user_id: i32,
+        profile_id: String,
         item_id: i32,
     },
 
@@ -42,6 +45,7 @@ pub enum UserEvent {
     /// User explicitly skipped content (negative signal)
     NegativeSignal {
         user_id: i32,
+        profile_id: String,
         item_id: i32,
     },
 
@@ -124,20 +128,20 @@ impl StalenessEngine {
     /// Process user event and invalidate caches if needed
     pub async fn process_event(&self, event: &UserEvent) -> Result<()> {
         match event {
-            UserEvent::WatchEvent { user_id, item_id, completion_rate } => {
-                self.handle_watch_event(*user_id, *item_id, *completion_rate).await?;
+            UserEvent::WatchEvent { user_id, profile_id, item_id, completion_rate } => {
+                self.handle_watch_event(*user_id, profile_id, *item_id, *completion_rate).await?;
             }
-            UserEvent::ExplicitFeedback { user_id, item_id, rating } => {
-                self.handle_explicit_feedback(*user_id, *item_id, *rating).await?;
+            UserEvent::ExplicitFeedback { user_id, profile_id, item_id, rating } => {
+                self.handle_explicit_feedback(*user_id, profile_id, *item_id, *rating).await?;
             }
-            UserEvent::CompleteWatch { user_id, item_id } => {
-                self.handle_complete_watch(*user_id, *item_id).await?;
+            UserEvent::CompleteWatch { user_id, profile_id, item_id } => {
+                self.handle_complete_watch(*user_id, profile_id, *item_id).await?;
             }
             UserEvent::NewContentInGenre { genre } => {
                 self.handle_new_content(genre).await?;
             }
-            UserEvent::NegativeSignal { user_id, item_id } => {
-                self.handle_negative_signal(*user_id, *item_id).await?;
+            UserEvent::NegativeSignal { user_id, profile_id, item_id } => {
+                self.handle_negative_signal(*user_id, profile_id, *item_id).await?;
             }
             UserEvent::HourlyTick => {
                 self.handle_hourly_tick().await?;
@@ -155,11 +159,13 @@ impl StalenessEngine {
     async fn handle_watch_event(
         &self,
         user_id: i32,
+        profile_id: &str,
         item_id: i32,
         completion_rate: f32,
     ) -> Result<()> {
         debug!(
             user_id = user_id,
+            profile_id = %profile_id,
             item_id = item_id,
             completion_rate = completion_rate,
             "Processing watch event"
@@ -168,9 +174,10 @@ impl StalenessEngine {
         for rule in &self.rules {
             if let StalenessRule::OnNewWatchEvent { scenarios } = rule {
                 for scenario_slug in scenarios {
-                    self.staging_manager.invalidate(scenario_slug, user_id).await?;
+                    self.staging_manager.invalidate(scenario_slug, user_id, Some(profile_id)).await?;
                     info!(
                         user_id = user_id,
+                        profile_id = %profile_id,
                         item_id = item_id,
                         scenario_slug = %scenario_slug,
                         completion_rate = completion_rate,
@@ -182,7 +189,7 @@ impl StalenessEngine {
 
         // If completion is high (>90%), also treat as complete watch
         if completion_rate > 0.9 {
-            self.handle_complete_watch(user_id, item_id).await?;
+            self.handle_complete_watch(user_id, profile_id, item_id).await?;
         }
 
         Ok(())
@@ -191,11 +198,13 @@ impl StalenessEngine {
     async fn handle_explicit_feedback(
         &self,
         user_id: i32,
+        profile_id: &str,
         item_id: i32,
         rating: f32,
     ) -> Result<()> {
         info!(
             user_id = user_id,
+            profile_id = %profile_id,
             item_id = item_id,
             rating = rating,
             "Processing explicit feedback"
@@ -204,9 +213,10 @@ impl StalenessEngine {
         for rule in &self.rules {
             if let StalenessRule::OnExplicitFeedback { scenarios } = rule {
                 for scenario_slug in scenarios {
-                    self.staging_manager.invalidate(scenario_slug, user_id).await?;
+                    self.staging_manager.invalidate(scenario_slug, user_id, Some(profile_id)).await?;
                     info!(
                         user_id = user_id,
+                        profile_id = %profile_id,
                         item_id = item_id,
                         rating = rating,
                         scenario_slug = %scenario_slug,
@@ -219,11 +229,12 @@ impl StalenessEngine {
         Ok(())
     }
 
-    async fn handle_complete_watch(&self, user_id: i32, item_id: i32) -> Result<()> {
-        debug!(user_id = user_id, item_id = item_id, "Complete watch event");
+    async fn handle_complete_watch(&self, user_id: i32, profile_id: &str, item_id: i32) -> Result<()> {
+        debug!(user_id = user_id, profile_id = %profile_id, item_id = item_id, "Complete watch event");
 
         self.staging_manager.mark_stale(
             user_id,
+            Some(profile_id),
             Some("continue_watching"),
             "completed_watch",
         ).await?;
@@ -258,13 +269,14 @@ impl StalenessEngine {
     async fn handle_negative_signal(
         &self,
         user_id: i32,
+        profile_id: &str,
         item_id: i32,
     ) -> Result<()> {
-        info!(user_id, item_id, "Processing negative signal (Skip)");
+        info!(user_id, profile_id = %profile_id, item_id, "Processing negative signal (Skip)");
         
         // 1. Invalidate caches immediately
-        self.staging_manager.invalidate("supreme_ranker", user_id).await?;
-        self.staging_manager.invalidate("for_you_personalized", user_id).await?;
+        self.staging_manager.invalidate("supreme_ranker", user_id, Some(profile_id)).await?;
+        self.staging_manager.invalidate("for_you_personalized", user_id, Some(profile_id)).await?;
 
         // 2. Fetch actual genres for the skipped item
         let genres = match self.item_feature_service.get_item_features_batch(&[item_id]).await {
@@ -281,7 +293,7 @@ impl StalenessEngine {
         };
 
         // 3. Record penalty (Genre Burn)
-        self.staging_manager.record_negative_signal(user_id, genres).await?;
+        self.staging_manager.record_negative_signal(user_id, Some(profile_id), genres).await?;
 
         Ok(())
     }

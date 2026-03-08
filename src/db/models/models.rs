@@ -280,7 +280,7 @@ pub struct PageLayout {
     pub updated_at: DateTime<Utc>,
 }
 
-// ============================================================================
+// = ===========================================================================
 // 9. DiscoveryConfig (Device-Specific Orchestration)
 // ============================================================================
 
@@ -292,5 +292,43 @@ pub struct DiscoveryConfig {
     pub prewarm_lookahead: i32,
     pub ghost_ttl_seconds: i32,
     pub cache_ttl_seconds: i32,
+    pub updated_at: DateTime<Utc>,
+}
+
+// ============================================================================
+// 10. Missing Event & System Models
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct UserInteraction {
+    pub id: i64,
+    pub user_id: i32,
+    pub item_id: i32,
+    pub interaction_type: String,
+    pub visitor_id: Option<String>,
+    pub device_hash: Option<String>,
+    pub watch_duration_seconds: Option<i32>,
+    pub completion_percentage: Option<f32>,
+    pub implicit_rating: Option<f32>,
+    pub explicit_rating: Option<i32>,
+    pub scenario_slug: Option<String>,
+    pub device_type: Option<String>,
+    pub profile_id: Option<String>,
+    pub context: JsonValue,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct UserArrivalPattern {
+    pub user_id: i32,
+    pub hour_mask: i64,
+    pub last_active_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct SystemSetting {
+    pub key: String,
+    pub value: JsonValue,
+    pub description: Option<String>,
     pub updated_at: DateTime<Utc>,
 }
