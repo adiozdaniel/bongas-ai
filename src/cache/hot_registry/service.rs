@@ -6,7 +6,7 @@
 //!                                                       │
 //! API Request (Hot Path) ──────> get_top_k ─────────> [HotRegistry] ──> Sub-millisecond return
 //!                                                       │
-//!                                                       └─> DashMap (Sharded RAM)
+//!                                                       └─> ArcSwap<HashMap> (Lock-Free)
 //! ```
 //!
 //! Provides zero-latency access to the top N (e.g., 10,000) items that drive 

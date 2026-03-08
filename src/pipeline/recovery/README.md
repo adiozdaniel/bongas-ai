@@ -21,15 +21,15 @@ Recovery stages represent the "Stage" of the pipeline, where initial data is bro
 | Stage | Description | Source |
 | :--- | :--- | :--- |
 | [**👤 User Preferences**](./fetch_user_preferences/README.md) | Fetches items based on explicit user profile interests. | Postgres |
-| [**🔍 Similar Content**](./fetch_similar_content/README.md) | Vector-search based retrieval for "More like this". | Redis |
+| [**🔍 Similar Content**](./fetch_similar_content/README.md) | Vector-search based retrieval for "More like this". | Postgres |
 | [**🆕 New Releases**](./fetch_new_releases/README.md) | Time-based retrieval for recently published items. | Postgres |
-| [**📈 Popular Content**](./fetch_popular_content/README.md) | Global trending items from ClickHouse or Redis. | ClickHouse |
+| [**📈 Popular Content**](./fetch_popular_content/README.md) | Global trending items from Postgres or ClickHouse. | Postgres |
 | [**📺 Because You Watched**](./fetch_because_you_watched/README.md) | Collaborative filtering based on user interaction. | Postgres |
 | [**📂 By Category**](./fetch_by_category/README.md) | Targeted retrieval for specific content taxonomies. | Postgres |
 | [**🏗️ ClickHouse Trending**](./fetch_clickhouse_trending/README.md) | High-volume analytical retrieval. | ClickHouse |
 | [**⏳ Watch Progress**](./fetch_clickhouse_watch_progress/README.md) | Resumes items the user has partially consumed. | ClickHouse |
-| [**🗓️ Seasonal**](./fetch_seasonal_content/README.md) | Context-aware retrieval for specific events. | Redis |
-| [**⏪ Recent Watches**](./fetch_recent_watches/README.md) | Retrieves the user's most recent activity history. | Redis |
+| [**🗓️ Seasonal**](./fetch_seasonal_content/README.md) | Context-aware retrieval for specific events. | Postgres |
+| [**⏪ Recent Watches**](./fetch_recent_watches/README.md) | Retrieves the user's most recent activity history. | Postgres |
 
 ---
 

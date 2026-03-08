@@ -12,7 +12,7 @@ In Symphony 2.0, we have evolved beyond simple Server-Driven UI (SDUI). Bongas-A
 
 ```mermaid
 graph TD
-    A[Genesis Request: /api/v1/page/home] --> B[Middleware: OTLP Shield & Identity]
+    A[Genesis Request: /api/v1/recommendation/page/home] --> B[Middleware: OTLP Shield & Identity]
     B --> C{Symphony Resolver}
     C --> D[Identify Context: Visitor/Device/Profile]
     C --> E[Resolve Page Composition & Ranking]

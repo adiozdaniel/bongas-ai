@@ -72,7 +72,7 @@
               warmed_at: chrono::Utc::now().timestamp(),
           };
 
-          self.cache_manager.set(&cache_key, &warm_marker).await?;
+          self.cache_manager.set(&cache_key, &warm_marker, scenario, None, None).await?;
 
           tracing::debug!(
               scenario = scenario,
@@ -87,7 +87,7 @@
       pub async fn is_warm(&self, scenario: &str) -> bool {
           let cache_key = format!("scenario:warm:{}", scenario);
           self.cache_manager
-              .get::<WarmMarker>(&cache_key)
+              .get::<WarmMarker>(&cache_key, scenario, None, None)
               .await
               .ok()
               .flatten()

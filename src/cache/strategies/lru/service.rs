@@ -1,4 +1,4 @@
-//! L1 in-memory LRU cache with size-based eviction and sharding.
+//! L1 in-memory LRU cache with count-based eviction and sharding.
 
   use crate::cache::{CacheStrategy, CacheTier};
   use crate::cache::CacheMetrics;
