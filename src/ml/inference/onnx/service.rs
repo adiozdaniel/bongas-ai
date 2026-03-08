@@ -349,9 +349,14 @@ impl OnnxInferenceEngine {
         let metric_key = format!("ml.inference.multi.{}", self.model_name);
 
         let _permit = self.bulkhead.clone().try_acquire_owned()
-            .map_err(|_| ModelError::Overloaded {
-                model: self.model_name.clone(),
-                queue_depth: self.bulkhead.available_permits(),
+            .map_err(|_| {
+                if let Some(ref a) = self.analytics {
+                    a.increment_error(&metric_key);
+                }
+                ModelError::Overloaded {
+                    model: self.model_name.clone(),
+                    queue_depth: self.bulkhead.available_permits(),
+                }
             })?;
 
         // Execute via circuit breaker + spawn_blocking

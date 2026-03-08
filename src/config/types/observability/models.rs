@@ -5,6 +5,7 @@ pub struct ObservabilityConfig {
     pub tracing_enabled: bool,
     pub metrics_enabled: bool,
     pub log_level: String,
+    pub log_format: String,
     pub jaeger_endpoint: Option<String>,
     pub prometheus_endpoint: Option<String>,
     
@@ -22,6 +23,7 @@ impl Default for ObservabilityConfig {
             tracing_enabled: true,
             metrics_enabled: true,
             log_level: "info".to_string(),
+            log_format: "text".to_string(),
             jaeger_endpoint: None,
             prometheus_endpoint: None,
             otlp_endpoint: "http://localhost:4318/v1/traces".to_string(),

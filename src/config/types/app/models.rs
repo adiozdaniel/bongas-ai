@@ -10,6 +10,7 @@ use crate::config::types::{
     IngestionConfig, SecurityConfig, MlConfig, PipelineConfig,
     ObservabilityConfig, ResilienceConfig, ExperimentsConfig, HiveMindConfig,
 };
+use crate::cache::CacheConfig;
 use crate::resilience::ResilienceMetricsConfig;
 
 /// Root application configuration.
@@ -23,6 +24,7 @@ pub struct AppConfig {
     pub security: SecurityConfig,
     pub ml: MlConfig,
     pub pipeline: PipelineConfig,
+    pub cache: CacheConfig,
     pub circuit_breaker: CircuitBreakerConfig,
     pub error: ErrorConfig,
     pub analytics: AnalyticsConfig,
@@ -44,6 +46,7 @@ impl AppConfig {
         security: SecurityConfig,
         ml: MlConfig,
         pipeline: PipelineConfig,
+        cache: CacheConfig,
         circuit_breaker: CircuitBreakerConfig,
         error: ErrorConfig,
         analytics: AnalyticsConfig,
@@ -62,6 +65,7 @@ impl AppConfig {
             security,
             ml,
             pipeline,
+            cache,
             circuit_breaker,
             error,
             analytics,

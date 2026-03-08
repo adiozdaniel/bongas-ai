@@ -15,7 +15,6 @@ use crate::db::ItemFeatureService;
 use crate::db::ResilientPoolConfig;
 
 use crate::cache::manager::service::CacheManager;
-use crate::cache::config::models::CacheConfig;
 use crate::cache::hot_registry::service::HotRegistry;
 use crate::ml::assets::loader::service::ModelLoader;
 use crate::ml::assets::registry::service::VersionedModelRegistry;
@@ -96,8 +95,7 @@ impl DiscoverySymphony {
         let discovery_repo = Arc::new(DiscoveryConfigRepository::new(resilient_pool.clone(), resilience_metrics.clone()));
         let model_repo = Arc::new(ModelRepository::new(resilient_pool.clone(), resilience_metrics.clone()));
 
-        let cache_config = CacheConfig::default();
-        let cache_manager = Arc::new(CacheManager::new(self.config.redis.clone(), cache_config, Some(cache_repo.clone())).await
+        let cache_manager = Arc::new(CacheManager::new(self.config.redis.clone(), self.config.cache.clone(), Some(cache_repo.clone())).await
             .context("Failed to initialize multi-tier cache")?);
 
         // ─── 3. MACHINE LEARNING ─────────────────────────────────────────────
@@ -222,12 +220,19 @@ impl DiscoverySymphony {
         let strategy_resolver = Arc::new(StrategyResolver::new());
         let scenario_factory = Arc::new(ScenarioFactory::new(resilient_pool.clone(), resilience_metrics.clone()));
         
+        // Fetch dynamic system settings (Item #26)
+        let max_scenarios: i32 = resilient_pool.execute(|pool| async move {
+            sqlx::query_scalar::<_, i32>("SELECT (value->>0)::int FROM system_settings WHERE key = 'max_active_scenarios'")
+                .fetch_optional(&pool)
+                .await
+        }).await.unwrap_or(Some(100)).unwrap_or(100);
+
         let scenarios_manager = Arc::new(ScenariosManager::new(
             scenario_factory.clone(),
             pipeline_executor.clone(),
             strategy_resolver.clone(),
             staging_manager.clone(),
-            100, // max scenarios
+            max_scenarios as usize,
         ));
 
         let pages_manager = Arc::new(PagesManager::new(
@@ -255,7 +260,7 @@ impl DiscoverySymphony {
             item_feature_service,
             feature_store,
             perf_stats,
-            Arc::new(ExperimentCoordinator::new(self.config.experiments.clone())),
+            Arc::new(ExperimentCoordinator::new()),
             Arc::new(MetricsCollector::new()),
             Some(Arc::new(clickhouse_client)),
             Arc::new(HotRegistry::new()),

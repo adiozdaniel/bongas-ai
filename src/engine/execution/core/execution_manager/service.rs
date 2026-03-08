@@ -116,11 +116,8 @@ impl ExecutionManager {
     ) -> AppResult<(Vec<RecommendationItem>, ScenarioExecutionStats)> {
         let start_time = std::time::Instant::now();
 
-        let mut experiment_overrides = HashMap::new();
-        if let Some(uid) = user_id {
-            let (_, overrides) = self.experiment_coordinator.assign(scenario_slug, uid);
-            experiment_overrides = overrides;
-        }
+        let pid_for_assign = profile_id.as_deref().unwrap_or("anon");
+        let (_, experiment_overrides) = self.experiment_coordinator.assign(scenario_slug, pid_for_assign);
 
         let mut context = ExecutionContext::new(
             user_id,
@@ -227,7 +224,7 @@ impl ExecutionManager {
 
         if scenario.use_l2_cache {
             if let Some(cached_items) = self.staging_manager
-                .get_cached(scenario_slug, user_id, &context_hash)
+                .get_cached(scenario_slug, user_id, profile_id.as_deref(), &context_hash)
                 .await?
             {
                 stats.cached_result = true;
@@ -253,7 +250,7 @@ impl ExecutionManager {
         self.metrics_collector.record_scenario_execution(scenario_slug, stats.execution_time_ms, false).await;
 
         if scenario.use_l2_cache {
-            self.staging_manager.save_cached(scenario_slug, user_id, &context_hash, &scored_items, scenario.cache_ttl_seconds).await?;
+            self.staging_manager.save_cached(scenario_slug, user_id, profile_id.as_deref(), &context_hash, &scored_items, scenario.cache_ttl_seconds).await?;
         }
 
         let mut final_scored_items = scored_items;
