@@ -81,6 +81,7 @@ url = "2.5"
 lazy_static = "1.4"
 dashmap = "6"
 rand = "0.8"
+rand_distr = "0.4"
 regex = "1.10"
 
 # HTTP Client (for Spring Cloud Config)
