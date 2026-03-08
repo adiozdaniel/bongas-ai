@@ -22,7 +22,6 @@ use serde::{Serialize, Deserialize};
 use crate::circuit_breaker::{CircuitBreaker, CircuitBreakerConfig, CircuitBreakerId, CircuitBreakerRegistry};
 use crate::error::ErrorClassifier;
 
-const L1_THRESHOLD: u64 = 10; // 10 req/s
 const L1_PENALTY_DURATION: Duration = Duration::from_secs(120); // 2 minutes
 const L2_PROMOTION_THRESHOLD: u32 = 3; // 3 local blocks = L2 promotion
 
@@ -206,15 +205,15 @@ impl RateLimiter {
                     }
                 }
 
-                // Simple 1s window for L1
-                if now.duration_since(state.window_start) >= Duration::from_secs(1) {
+                // Dynamic window based on config
+                if now.duration_since(state.window_start) >= Duration::from_secs(self.window_seconds) {
                     state.count = 1;
                     state.window_start = now;
                 } else {
                     state.count += 1;
                 }
 
-                if state.count > L1_THRESHOLD {
+                if state.count > self.max_requests {
                     state.blocked_until = Some(now + L1_PENALTY_DURATION);
                     state.local_block_count += 1;
                     local_blocks = state.local_block_count;
@@ -232,10 +231,16 @@ impl RateLimiter {
             if local_blocks >= L2_PROMOTION_THRESHOLD {
                 warn!(ip = %ip, local_blocks, "L1 Rate Limit Tripped: Promoting to L2 ban");
                 self.promote_to_l2(ip, local_blocks).await;
+                return RateLimitResult::ShadowBan;
             } else {
                 warn!(ip = %ip, "L1 Rate Limit Tripped: Local penalty active");
+                return RateLimitResult::RateLimited(RateLimitStatus {
+                    limit: self.max_requests,
+                    window_seconds: self.window_seconds,
+                    reset_in_seconds: L1_PENALTY_DURATION.as_secs(),
+                    is_limited: true,
+                });
             }
-            return RateLimitResult::ShadowBan;
         }
 
         // 2. L2 Global Check (Redis)

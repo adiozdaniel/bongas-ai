@@ -19,6 +19,8 @@ pub struct CircuitBreakerConfig {
     pub call_timeout: Duration,
     pub max_concurrent_calls: usize,
     pub consecutive_failure_threshold: Option<u64>,
+    pub bulkhead_enabled: bool,
+    pub bulkhead_per_endpoint: bool,
     
     // Hystrix / Loader compatibility fields
     pub wait_duration_in_open_state: Option<Duration>,
@@ -74,6 +76,8 @@ impl Default for CircuitBreakerConfig {
             call_timeout: Duration::from_secs(30),
             max_concurrent_calls: 0,
             consecutive_failure_threshold: None,
+            bulkhead_enabled: true,
+            bulkhead_per_endpoint: true,
             wait_duration_in_open_state: None,
             permitted_calls_in_half_open_state: None,
             writable_stack_trace_enabled: false,

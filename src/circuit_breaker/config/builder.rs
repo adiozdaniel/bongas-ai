@@ -112,6 +112,8 @@ impl CircuitBreakerConfigBuilder {
             call_timeout: self.call_timeout,
             max_concurrent_calls: self.max_concurrent_calls,
             consecutive_failure_threshold: self.consecutive_failure_threshold,
+            bulkhead_enabled: true,
+            bulkhead_per_endpoint: true,
             wait_duration_in_open_state: None,
             permitted_calls_in_half_open_state: None,
             writable_stack_trace_enabled: false,
