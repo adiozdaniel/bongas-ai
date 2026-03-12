@@ -60,8 +60,10 @@ fn bench_fast_path_vs_slow_path(c: &mut Criterion) {
     stages.insert("fetch".to_string(), Arc::new(MockFetchStage { items: items.clone(), parallelizable: false }));
     let registry = PipelineRegistry::with_stages(stages);
 
-    let mut pipeline_config = bongas_ai::config::PipelineConfig::default();
-    pipeline_config.stage_breaker_enabled = false;
+    let pipeline_config = bongas_ai::config::PipelineConfig {
+        stage_breaker_enabled: false,
+        ..Default::default()
+    };
 
     let executor = PipelineExecutor::with_registry(
         pipeline_config,
@@ -115,8 +117,10 @@ fn bench_parallel_fetch_gains(c: &mut Criterion) {
     stages.insert("fetch_serial".to_string(), Arc::new(MockFetchStage { items: items.clone(), parallelizable: false }));
     let registry = PipelineRegistry::with_stages(stages);
 
-    let mut pipeline_config = bongas_ai::config::PipelineConfig::default();
-    pipeline_config.stage_breaker_enabled = false;
+    let pipeline_config = bongas_ai::config::PipelineConfig {
+        stage_breaker_enabled: false,
+        ..Default::default()
+    };
 
     let executor = PipelineExecutor::with_registry(
         pipeline_config,
