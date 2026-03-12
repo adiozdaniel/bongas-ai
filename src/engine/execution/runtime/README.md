@@ -9,7 +9,7 @@ The Runtime sub-module provides the lifecycle and execution context for the reco
 | Module | Description |
 | :--- | :--- |
 | [**🧬 Context**](./context/README.md) | Shared request-scoped execution state. |
-| [**🚀 Runtime**](./runtime/README.md) | Application bootstrap and long-running execution loops. |
+| [**🚀 Service**](./service.rs) | Application bootstrap and long-running execution loops. |
 
 ---
 
