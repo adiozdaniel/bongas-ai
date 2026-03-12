@@ -67,7 +67,7 @@ impl IngestionMetrics {
             active_sources: active,
             degraded_sources: degraded,
             total_messages_ingested: total_ingested,
-            total_errors: total_errors,
+            total_errors,
             sources: source_healths,
         }
     }

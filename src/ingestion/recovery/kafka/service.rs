@@ -281,7 +281,7 @@ impl KafkaSource {
                                     .payload(payload)
                                     .key("poison_key");
                                 
-                                let _ = producer.send::<str, [u8], _>(record, Duration::from_secs(0));
+                                let _ = producer.send::<str, [u8], _>(record, Duration::from_secs(0)).await;
                             }
                         } else {
                             let is_connection_error = match &source {

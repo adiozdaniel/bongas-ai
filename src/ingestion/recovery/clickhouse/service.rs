@@ -132,7 +132,7 @@ impl ClickHouseSource {
 
         for row in rows {
             let event_time = chrono::DateTime::from_timestamp(row.created_at as i64, 0)
-                .unwrap_or_else(|| chrono::Utc::now());
+                .unwrap_or_else(chrono::Utc::now);
 
             if event_time > latest_timestamp {
                 latest_timestamp = event_time;

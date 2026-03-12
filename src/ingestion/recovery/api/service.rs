@@ -20,6 +20,12 @@ pub struct ApiSource {
     errors: AtomicU64,
 }
 
+impl Default for ApiSource {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ApiSource {
     pub fn new() -> Self {
         Self {
