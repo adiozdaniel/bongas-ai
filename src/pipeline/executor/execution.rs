@@ -257,7 +257,7 @@ impl PipelineExecutor {
         // Return Result<Vec<ScoredItem>, anyhow::Error>
         match result {
             Ok(data) => Ok(data),
-            Err(e) => Err(e.into()),
+            Err(e) => Err(e),
         }
     }
 }
