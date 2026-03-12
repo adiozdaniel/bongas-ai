@@ -15,6 +15,7 @@ Responsible for the **Genesis** entry point and **Page Orchestration**.
 - **Genesis**: A single root call that resolves the user's personalized Navigation Mesh and initiates the SSE stream for the landing page.
 - **Batch-Streaming**: Delivers content rows in server-dictated batches to ensure memory safety on mobile devices.
 - **Continuation**: Emits `continuation` events with pre-calculated URLs for seamless deep-scrolling.
+- **Orchestration**: Uses the `ExecuteAndMapRequest` DTO to decouple API presentation logic from engine execution.
 
 ### 🧪 Ingestion (`ingestion.rs`)
 

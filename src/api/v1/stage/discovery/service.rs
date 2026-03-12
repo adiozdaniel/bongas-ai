@@ -64,7 +64,7 @@ pub async fn genesis(
         cp_base.device_type.as_deref(),
         cp_base.maturity_rating.as_deref(),
         identity_key.as_deref()
-    ).await.unwrap_or_else(|_| None);
+    ).await.unwrap_or(None);
 
     let (composition, landing_slug) = match landing_layout {
         Some(l) => (l.composition, l.page_slug.0),
@@ -321,16 +321,16 @@ pub async fn get_scenario_recommendations(
 
     let user_id = context_params.user_id;
     
-    let items = execute_and_map(
+    let items = execute_and_map(crate::api::v1::stage::service::ExecuteAndMapRequest {
         engine,
-        &slug,
+        scenario_slug: slug,
         user_id,
-        Some(context_params),
-        serde_json::json!({}),
-        0,
-        20,
-        request_id.clone(),
-    ).await?;
+        context_params: Some(context_params),
+        context_data: serde_json::json!({}),
+        offset: 0,
+        limit: 20,
+        request_id: request_id.clone(),
+    }).await?;
 
     Ok(axum::Json(StandardResponse::success(items).with_request_id(request_id)))
 }
@@ -361,29 +361,29 @@ async fn execute_row(
         return Ok(Event::default().comment(format!("skip: restricted:{}", slug)));
     }
 
-    let mut result = execute_and_map(
-        engine.clone(),
-        &slug,
+    let mut result = execute_and_map(crate::api::v1::stage::service::ExecuteAndMapRequest {
+        engine: engine.clone(),
+        scenario_slug: slug.clone(),
         user_id,
-        Some(cp.clone()),
-        serde_json::json!({}),
-        0,
-        20,
-        rid.clone(),
-    ).await;
+        context_params: Some(cp.clone()),
+        context_data: serde_json::json!({}),
+        offset: 0,
+        limit: 20,
+        request_id: rid.clone(),
+    }).await;
 
     if result.is_err() {
         if let Some(ref f_slug) = fallback {
-            result = execute_and_map(
-                engine.clone(),
-                f_slug,
+            result = execute_and_map(crate::api::v1::stage::service::ExecuteAndMapRequest {
+                engine: engine.clone(),
+                scenario_slug: f_slug.clone(),
                 user_id,
-                Some(cp.clone()),
-                serde_json::json!({}),
-                0,
-                20,
-                rid.clone(),
-            ).await;
+                context_params: Some(cp.clone()),
+                context_data: serde_json::json!({}),
+                offset: 0,
+                limit: 20,
+                request_id: rid.clone(),
+            }).await;
         }
     }
 

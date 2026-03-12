@@ -1,29 +1,34 @@
 //! Service layer for recommendation orchestration and mapping.
 
 use std::sync::Arc;
-use crate::engine::coordination::service::{BongasEngine, ScenarioDefinition};
+use crate::engine::coordination::service::BongasEngine;
 use crate::api::{RecommendationItem, ContextParams};
 use crate::error::AppError;
 use crate::ingestion::types::UserActivity;
 
 use tracing::{Instrument, info_span};
 
+/// Request payload for execute_and_map.
+pub struct ExecuteAndMapRequest {
+    pub engine: Arc<BongasEngine>,
+    pub scenario_slug: String,
+    pub user_id: Option<i32>,
+    pub context_params: Option<ContextParams>,
+    pub context_data: serde_json::Value,
+    pub offset: usize,
+    pub limit: usize,
+    pub request_id: String,
+}
+
 /// Execute a scenario and map engine items to API RecommendationItems.
 /// This service orchestrates engine execution, mapping, impression tracking, and pre-warming.
 pub async fn execute_and_map(
-    engine: Arc<BongasEngine>,
-    scenario_slug: &str,
-    user_id: Option<i32>,
-    context_params: Option<ContextParams>,
-    context_data: serde_json::Value,
-    offset: usize,
-    _limit: usize,
-    request_id: String,
+    req: ExecuteAndMapRequest,
 ) -> Result<Vec<RecommendationItem>, AppError> {
-    let engine_ref = engine.as_ref();
+    let engine_ref = req.engine.as_ref();
     
     // Extract context parameters
-    let (profile_id, maturity_rating, device_type, visitor_id, device_hash) = if let Some(ref cp) = context_params {
+    let (profile_id, maturity_rating, device_type, visitor_id, device_hash) = if let Some(ref cp) = req.context_params {
         (
             cp.profile_id.clone(), 
             cp.maturity_rating.clone(), 
@@ -37,8 +42,8 @@ pub async fn execute_and_map(
     
     // 1. Get Scenario display limit
     let display_limit = {
-        let scenarios: tokio::sync::RwLockReadGuard<'_, std::collections::HashMap<String, ScenarioDefinition>> = engine_ref.governance.scenarios.scenarios.read().await;
-        scenarios.get(scenario_slug)
+        let scenarios = engine_ref.governance.scenarios.scenarios.read().await;
+        scenarios.get(&req.scenario_slug)
             .map(|s| s.initial_display_limit as usize)
             .unwrap_or(5)
     };
@@ -46,19 +51,22 @@ pub async fn execute_and_map(
     // 2. Execute First Window (Instant-On)
     let (items, _stats) = engine_ref
         .execute_scenario_with_stats_contextual(
-            scenario_slug, 
-            user_id, 
-            profile_id.clone(),
-            maturity_rating.clone(),
-            device_type.clone(),
-            context_data.clone(), 
-            Some(display_limit)
+            crate::engine::execution::core::execution_manager::service::ScenarioExecutionContext {
+                scenario_slug: req.scenario_slug.clone(),
+                user_id: req.user_id,
+                profile_id: profile_id.clone(),
+                maturity_rating: maturity_rating.clone(),
+                device_type: device_type.clone(),
+                context_params: req.context_data.clone(),
+                limit: Some(display_limit),
+                request_id: Some(req.request_id.clone()),
+            }
         )
         .await?;
 
     let final_items: Vec<RecommendationItem> = items
         .into_iter()
-        .skip(offset)
+        .skip(req.offset)
         .take(display_limit)
         .enumerate()
         .map(|(idx, item)| RecommendationItem {
@@ -72,18 +80,18 @@ pub async fn execute_and_map(
                 .unwrap_or("")
                 .to_string(),
             score: item.score,
-            rank: (offset + idx + 1) as i32,
+            rank: (req.offset + idx + 1) as i32,
             metadata: item.metadata.clone(),
         })
         .collect();
 
     // ─── Impression Tracking (Baze-Style) ──────────────────────────────
-    if let Some(uid) = user_id {
+    if let Some(uid) = req.user_id {
         let vid = visitor_id.clone();
         let dhash = device_hash.clone();
         let dtype = device_type.clone();
         let pid = profile_id.clone();
-        let slug_clone = scenario_slug.to_string();
+        let slug_clone = req.scenario_slug.to_string();
         
         let activities: Vec<UserActivity> = final_items.iter().map(|item| {
             UserActivity::Impression {
@@ -100,9 +108,9 @@ pub async fn execute_and_map(
 
         // Ingest activities asynchronously - Tied to Request ID
         let engine_clone_for_ingestion = engine_ref.ingestion.clone();
-        let rid_ingest = request_id.clone();
+        let rid_ingest = req.request_id.clone();
         tokio::spawn(async move {
-            let manager = engine_clone_for_ingestion.read().await;
+            let manager: tokio::sync::RwLockReadGuard<'_, crate::ingestion::IngestionManager> = engine_clone_for_ingestion.read().await;
             let api_source = manager.api_source();
             for act in activities {
                 let _ = api_source.ingest(act).await;
@@ -110,25 +118,26 @@ pub async fn execute_and_map(
         }.instrument(info_span!("async_impression_ingestion", request_id = %rid_ingest)));
 
         // ─── Ecosystem Synergy (Phase 14) ──────────────────────────────────
-        let engine_clone_for_synergy = engine.clone();
-        let slug = scenario_slug.to_string();
+        let engine_clone_for_synergy = req.engine.clone();
+        let slug = req.scenario_slug.to_string();
         let item_ids: Vec<i32> = final_items.iter().map(|i| i.item_id).collect();
-        let rid_synergy = request_id.clone();
+        let rid_synergy = req.request_id.clone();
         let pid_clone = profile_id.clone();
         
         tokio::spawn(async move {
-            let manager = engine_clone_for_synergy.ingestion.read().await;
+            let manager: tokio::sync::RwLockReadGuard<'_, crate::ingestion::IngestionManager> = engine_clone_for_synergy.ingestion.read().await;
             manager.broadcast_recommendations(uid, pid_clone, slug, item_ids).await;
         }.instrument(info_span!("async_ecosystem_synergy", request_id = %rid_synergy)));
     }
 
     // 3. ─── Background Pre-Warming (Phase 12) ───────────────────────────
-    if offset == 0 {
-        let engine_clone_for_warming = engine.clone();
-        let slug = scenario_slug.to_string();
-        let ctx = context_data.clone();
-        let rid_warming = request_id.clone();
+    if req.offset == 0 {
+        let engine_clone_for_warming = req.engine.clone();
+        let slug = req.scenario_slug.to_string();
+        let ctx = req.context_data.clone();
+        let rid_warming = req.request_id.clone();
         let slug_for_span = slug.clone();
+        let user_id = req.user_id;
         
         tokio::spawn(async move {
             let _ = engine_clone_for_warming.execute_scenario_with_stats(&slug, user_id, ctx, None).await;
