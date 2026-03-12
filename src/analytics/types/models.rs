@@ -58,6 +58,12 @@ pub struct BusinessStats {
     pub feature_usage: std::sync::Arc<std::sync::RwLock<std::collections::HashMap<String, AtomicU64>>>,
 }
 
+impl Default for BusinessStats {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl BusinessStats {
     pub fn new() -> Self {
         Self {
@@ -118,6 +124,12 @@ pub struct PerformanceStats {
     pub response_times: std::sync::Arc<std::sync::RwLock<VecDeque<u64>>>,
     pub throughput: AtomicU64,
     pub error_counts: std::sync::Arc<std::sync::RwLock<std::collections::HashMap<String, AtomicU64>>>,
+}
+
+impl Default for PerformanceStats {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl PerformanceStats {
@@ -181,6 +193,12 @@ pub struct ResourceStats {
     pub cpu_usage: AtomicU64,
     pub disk_operations: AtomicU64,
     pub network_bytes: AtomicU64,
+}
+
+impl Default for ResourceStats {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ResourceStats {

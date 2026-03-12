@@ -39,11 +39,12 @@ graph TD
 ```rust
 use analytics::LocalStatsCollector;
 use std::sync::Arc;
+use std::time::Duration;
 
-let collector = Arc::new(LocalStatsCollector::new());
+let collector = Arc::new(LocalStatsCollector::new(Duration::from_secs(60)));
 
 // Record an event
-collector.record_hit("home_feed", duration).await;
+collector.record_hit("home_feed", Duration::from_millis(45)).await;
 ```
 
 ---
