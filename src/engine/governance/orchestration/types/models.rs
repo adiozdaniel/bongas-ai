@@ -16,20 +16,17 @@ impl std::fmt::Display for PageSlug {
 /// Types of navigation categories for pages.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum NavType {
     /// Always visible in the primary global navigation.
     Main,
     /// Contextual hubs ranked by user engagement.
     Sub,
     /// Accessible only via deep-link or specific actions.
+    #[default]
     Hidden,
 }
 
-impl Default for NavType {
-    fn default() -> Self {
-        Self::Hidden
-    }
-}
 
 /// A single row definition within a page composition.
 /// dictating both content (scenario) and presentation (UI metadata).

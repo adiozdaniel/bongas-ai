@@ -15,6 +15,8 @@ use crate::ml::inference::features::service::FeatureStore;
 use crate::error::AppResult;
 use crate::ingestion::types::UserActivity;
 
+type PageLayoutCache = Arc<RwLock<LruCache<(PageSlug, Option<String>, Option<String>), PageLayout>>>;
+
 /// Represents the assembled application structure.
 /// Orchestrates the relationship between navigation mesh and page compositions.
 pub struct PagesManager {
@@ -23,7 +25,7 @@ pub struct PagesManager {
     feature_store: Arc<FeatureStore>,
     scenarios: Arc<ScenariosManager>,
     /// High-performance L1 cache for resolved layouts (target-aware)
-    cache: Arc<RwLock<LruCache<(PageSlug, Option<String>, Option<String>), PageLayout>>>,
+    cache: PageLayoutCache,
     /// In-memory landing page registry for ultra-fast genesis resolution
     landing_pages: Arc<RwLock<HashMap<(String, String), PageLayout>>>,
     /// Shared navigation mesh (cached globally)
@@ -276,20 +278,20 @@ impl PagesManager {
 
     /// Administrative: Save or update a layout.
     pub async fn save_layout(&self, req: SavePageLayoutRequest) -> AppResult<PageLayout> {
-        let db_row = self.repo.upsert(
-            &req.page_slug,
-            req.is_landing.unwrap_or(false),
-            &match req.nav_type.unwrap_or_default() {
+        let db_row = self.repo.upsert(crate::db::repositories::page_layout_repository::service::PageLayoutUpsert {
+            page_slug: req.page_slug,
+            is_landing: req.is_landing.unwrap_or(false),
+            nav_type: match req.nav_type.unwrap_or_default() {
                 NavType::Main => "main".to_string(),
                 NavType::Sub => "sub".to_string(),
                 NavType::Hidden => "hidden".to_string(),
             },
-            serde_json::to_value(&req.composition).unwrap_or_default(),
-            req.device_type,
-            req.maturity_rating,
-            req.priority.unwrap_or(0),
-            req.is_active.unwrap_or(true),
-        ).await?;
+            composition: serde_json::to_value(&req.composition).unwrap_or_default(),
+            device_type: req.device_type,
+            maturity_rating: req.maturity_rating,
+            priority: req.priority.unwrap_or(0),
+            is_active: true,
+        }).await?;
         
         let layout = Self::map_db_to_domain(db_row);
         self.load_all_active().await?; 
