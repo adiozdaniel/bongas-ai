@@ -173,7 +173,15 @@ impl CacheManager {
         if let Some(ref l3) = self.l3 {
             let json_val = serde_json::to_value(value)?;
             let pid = profile_id.map(|s| s.to_string());
-            let _ = l3.set(key, scenario, user_id, pid, None, json_val, ttl.as_secs() as i32).await;
+            let _ = l3.set(crate::db::repositories::cache_repository::service::CacheEntryPayload {
+                cache_key: key.to_string(),
+                scenario_slug: scenario.to_string(),
+                user_id,
+                profile_id: pid,
+                context_hash: None,
+                recommendations: json_val,
+                ttl_seconds: ttl.as_secs() as i32,
+            }).await;
         }
         if let Some(ref l2) = self.l2 {
             let _ = l2.set(key, value, ttl).await;
@@ -254,14 +262,12 @@ impl CacheManager {
             } else {
                 format!("rec:{}:*", slug)
             }
+        } else if let Some(pid) = profile_id {
+            format!("rec:*:p_{}:*", pid)
+        } else if let Some(uid) = user_id {
+            format!("rec:*:u_{}:*", uid)
         } else {
-            if let Some(pid) = profile_id {
-                format!("rec:*:p_{}:*", pid)
-            } else if let Some(uid) = user_id {
-                format!("rec:*:u_{}:*", uid)
-            } else {
-                "rec:*".to_string()
-            }
+            "rec:*".to_string()
         };
 
         let _ = self.delete_pattern(&key_pattern).await;

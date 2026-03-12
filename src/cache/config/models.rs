@@ -58,7 +58,7 @@
               warming_interval: Duration::from_secs(
                   warming_interval_minutes.unwrap_or(30) * 60
               ),
-              warm_scenarios: warm_scenarios.unwrap_or_else(|| vec![]),
+              warm_scenarios: warm_scenarios.unwrap_or_default(),
           }
       }
   }
