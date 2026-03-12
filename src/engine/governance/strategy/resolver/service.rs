@@ -37,6 +37,12 @@ pub struct StrategyResolver {
     rules: ArcSwap<HashMap<String, Vec<ActiveRule>>>,
 }
 
+impl Default for StrategyResolver {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl StrategyResolver {
     pub fn new() -> Self {
         Self {
