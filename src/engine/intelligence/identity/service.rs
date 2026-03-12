@@ -10,6 +10,12 @@ pub struct IdentityStitcher {
     // Shared state if needed
 }
 
+impl Default for IdentityStitcher {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl IdentityStitcher {
     pub fn new() -> Self {
         Self {}
@@ -64,7 +70,7 @@ impl IdentityStitcher {
             ).await;
             
             // D. Invalidate Caches
-            let pattern = format!("ghost:user_*:page_*:offset_*");
+            let pattern = "ghost:user_*:page_*:offset_*".to_string();
             let _ = engine_clone.cache.delete_pattern(&pattern).await;
             
             info!(visitor_id = %vid, profile_id = %pid, "Identity stitch completed");

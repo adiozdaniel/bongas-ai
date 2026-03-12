@@ -9,17 +9,25 @@ use crate::pipeline::ExecutionContext;
 /// 🤖 AI: Strategic rule generation and optimization.
 pub struct SuggestionsManager;
 
+impl Default for SuggestionsManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SuggestionsManager {
     pub fn new() -> Self {
         Self
     }
 }
 
+type RawSuggestionRow = (i32, String, String, serde_json::Value, Option<String>, Option<f64>, String, chrono::DateTime<chrono::Utc>);
+
 impl BongasEngine {
     /// List all pending rule suggestions from the Analytics Sidecar.
     pub async fn list_suggestions(&self) -> Result<Vec<serde_json::Value>> {
-        let rows: Vec<(i32, String, String, serde_json::Value, Option<String>, Option<f64>, String, chrono::DateTime<chrono::Utc>)> = self.governance.scenarios.scenario_factory.repo().pool().execute(|pool| async move {
-            sqlx::query_as::<_, (i32, String, String, serde_json::Value, Option<String>, Option<f64>, String, chrono::DateTime<chrono::Utc>)>(
+        let rows: Vec<RawSuggestionRow> = self.governance.scenarios.scenario_factory.repo().pool().execute(|pool| async move {
+            sqlx::query_as::<_, RawSuggestionRow>(
                 r#"
                 SELECT 
                     rs.id, s.slug as scenario_slug, p.slug as suggested_pipeline,

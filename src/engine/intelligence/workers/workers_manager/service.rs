@@ -7,6 +7,12 @@ use crate::engine::coordination::service::BongasEngine;
 /// 💓 Workers: Background maintenance and task orchestration.
 pub struct WorkersManager;
 
+impl Default for WorkersManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl WorkersManager {
     pub fn new() -> Self {
         Self

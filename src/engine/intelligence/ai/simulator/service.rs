@@ -10,6 +10,12 @@ use crate::engine::coordination::service::RecommendationItem;
 /// 🛡️ SafetySimulator: Ensures structural and behavioral stability of new strategies.
 pub struct SafetySimulator;
 
+impl Default for SafetySimulator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SafetySimulator {
     pub fn new() -> Self {
         Self
