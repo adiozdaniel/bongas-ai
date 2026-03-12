@@ -1,24 +1,21 @@
 use anyhow::Result;
-use std::sync::Arc;
 use std::collections::HashMap;
 use tracing::{info, warn};
 
-use crate::resilience::ResilienceMetricsCollector;
-use crate::db::ResilientPool;
 use crate::db::ScenarioRepository;
 use crate::db::{PipelineDefinition, ScenarioWithStrategy};
 use crate::engine::governance::strategy::resolver::service::ActiveRule;
 use crate::engine::coordination::service::ScenarioDefinition;
 
 pub struct ScenarioFactory {
-    repo: ScenarioRepository
+    pub repo: ScenarioRepository
 }
 
+type RawScenarioRow = (i32, String, i32, Option<String>, Option<String>, serde_json::Value, String, serde_json::Value);
+
 impl ScenarioFactory {
-    pub fn new(resilient_pool: Arc<ResilientPool>, metrics_collector: Arc<ResilienceMetricsCollector>) -> Self {
-        Self {
-            repo: ScenarioRepository::new(resilient_pool, metrics_collector)
-        }
+    pub fn new(repo: ScenarioRepository) -> Self {
+        Self { repo }
     }
 
     pub fn repo(&self) -> &ScenarioRepository {
@@ -30,8 +27,8 @@ impl ScenarioFactory {
         info!("Loading strategic rules from database...");
 
         // Query joining rules, pipelines, and scenarios
-        let rows: Vec<(i32, String, i32, Option<String>, Option<String>, serde_json::Value, String, serde_json::Value)> = self.repo.pool().execute(|pool| async move {
-            sqlx::query_as::<_, (i32, String, i32, Option<String>, Option<String>, serde_json::Value, String, serde_json::Value)>(
+        let rows: Vec<RawScenarioRow> = self.repo.pool().execute(|pool| async move {
+            sqlx::query_as::<_, RawScenarioRow>(
                 r#"
                 SELECT 
                     r.id, 
