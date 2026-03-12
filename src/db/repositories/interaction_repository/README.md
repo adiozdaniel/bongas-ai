@@ -17,4 +17,13 @@ graph LR
 
 ---
 
+## 📄 Interaction Payloads
+
+To ensure architectural decoupling, this repository uses specialized DTOs for recording data:
+
+- **`InteractionPayload`**: Unified payload for single events (clicks, impressions, reactions).
+- **`BatchInteractionPayload`**: Optimized structure for high-volume batch inserts.
+
+---
+
 [🏠 Hub](../../../../docs/HUB.md) | [📦 Back to Database Main](../README.md) | [🔝 Top](#️-database-repository-interaction)
