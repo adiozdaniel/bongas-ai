@@ -69,6 +69,12 @@ pub struct PipelineRegistry {
     stages: HashMap<String, Arc<dyn PipelineStage>>,
 }
 
+impl Default for PipelineRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PipelineRegistry {
     pub fn new() -> Self {
         let mut registry = HashMap::new();

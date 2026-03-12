@@ -176,17 +176,21 @@ pub enum MaturityRating {
     M18, // Adults only 18+
 }
 
-impl MaturityRating {
-    pub fn from_str(s: &str) -> Self {
+impl std::str::FromStr for MaturityRating {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_uppercase().as_str() {
-            "GE" | "G" => Self::GE,
-            "PG" | "PG-13" | "PG13" => Self::PG,
-            "16" | "M16" => Self::M16,
-            "18" | "M18" | "R" | "NC-17" | "NC17" => Self::M18,
-            _ => Self::M18, // Strictest by default
+            "GE" | "G" => Ok(Self::GE),
+            "PG" | "PG-13" | "PG13" => Ok(Self::PG),
+            "16" | "M16" => Ok(Self::M16),
+            "18" | "M18" | "R" | "NC-17" | "NC17" => Ok(Self::M18),
+            _ => Ok(Self::M18), // Strictest by default
         }
     }
+}
 
+impl MaturityRating {
     pub fn as_age(&self) -> i32 {
         match self {
             Self::GE => 0,
