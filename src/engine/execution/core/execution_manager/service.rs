@@ -20,6 +20,19 @@ use tokio::sync::RwLock;
 use arc_swap::ArcSwap;
 use crate::pipeline::types::models::ExecutablePipeline;
 
+/// Context for executing a recommendation scenario.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ScenarioExecutionContext {
+    pub scenario_slug: String,
+    pub user_id: Option<i32>,
+    pub profile_id: Option<String>,
+    pub maturity_rating: Option<String>,
+    pub device_type: Option<String>,
+    pub context_params: serde_json::Value,
+    pub limit: Option<usize>,
+    pub request_id: Option<String>,
+}
+
 pub struct ExecutionManager {
     pub(crate) pipeline_executor: Arc<PipelineExecutor>,
     pub(crate) strategy_resolver: Arc<StrategyResolver>,
@@ -82,45 +95,33 @@ impl ExecutionManager {
     /// Execute scenario with execution stats and persona context
     pub async fn execute_scenario_with_stats_contextual(
         &self,
-        scenario_slug: &str,
-        user_id: Option<i32>,
-        profile_id: Option<String>,
-        maturity_rating: Option<String>,
-        device_type: Option<String>,
-        context_params: serde_json::Value,
-        limit: Option<usize>,
+        mut ctx: ScenarioExecutionContext,
     ) -> AppResult<(Vec<RecommendationItem>, ScenarioExecutionStats)> {
-        let request_id = uuid::Uuid::new_v4().to_string();
+        let request_id = ctx.request_id.clone().unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+        ctx.request_id = Some(request_id.clone());
+
         let span = tracing::info_span!(
             "execute_scenario", 
-            scenario = %scenario_slug, 
-            user_id = ?user_id, 
-            profile_id = ?profile_id,
+            scenario = %ctx.scenario_slug, 
+            user_id = ?ctx.user_id, 
+            profile_id = ?ctx.profile_id,
             request_id = %request_id
         );
-        self.execute_scenario_internal(
-            scenario_slug, user_id, profile_id, maturity_rating, device_type, context_params, limit, request_id
-        ).instrument(span).await
+        self.execute_scenario_internal(ctx).instrument(span).await
     }
 
     async fn execute_scenario_internal(
         &self,
-        scenario_slug: &str,
-        user_id: Option<i32>,
-        profile_id: Option<String>,
-        maturity_rating: Option<String>,
-        device_type: Option<String>,
-        context_params: serde_json::Value,
-        limit: Option<usize>,
-        request_id: String,
+        ctx: ScenarioExecutionContext,
     ) -> AppResult<(Vec<RecommendationItem>, ScenarioExecutionStats)> {
         let start_time = std::time::Instant::now();
+        let request_id = ctx.request_id.unwrap_or_else(|| "unknown".to_string());
 
-        let pid_for_assign = profile_id.as_deref().unwrap_or("anon");
-        let (_, experiment_overrides) = self.experiment_coordinator.assign(scenario_slug, pid_for_assign);
+        let pid_for_assign = ctx.profile_id.as_deref().unwrap_or("anon");
+        let (_, experiment_overrides) = self.experiment_coordinator.assign(&ctx.scenario_slug, pid_for_assign);
 
         let mut context = ExecutionContext::new(
-            user_id,
+            ctx.user_id,
             self.cache_manager.clone(),
             self.model_loader.clone(),
             self.item_feature_service.clone(),
@@ -130,17 +131,17 @@ impl ExecutionManager {
         .with_hot_registry(self.hot_registry.clone())
         .with_analytics(self.performance_stats.clone())
         .with_experiment_overrides(experiment_overrides)
-        .with_profile_id(profile_id.clone().unwrap_or_default())
-        .with_maturity_rating(maturity_rating.clone().unwrap_or_else(|| "GE".to_string()))
+        .with_profile_id(ctx.profile_id.clone().unwrap_or_default())
+        .with_maturity_rating(ctx.maturity_rating.clone().unwrap_or_else(|| "GE".to_string()))
         .with_device_type(
-            device_type.clone().or_else(|| {
-                context_params.get("device_type")
+            ctx.device_type.clone().or_else(|| {
+                ctx.context_params.get("device_type")
                     .and_then(|v| v.as_str())
                     .map(|s| s.to_string())
             }).unwrap_or_default()
         )
         .with_location(
-            context_params.get("location")
+            ctx.context_params.get("location")
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string())
                 .unwrap_or_default()
@@ -150,23 +151,23 @@ impl ExecutionManager {
             context = context.with_clickhouse_client(ch.clone());
         }
 
-        let resolved_pipeline = self.strategy_resolver.resolve(scenario_slug, &context);
+        let resolved_pipeline = self.strategy_resolver.resolve(&ctx.scenario_slug, &context);
         let linked_pipeline = resolved_pipeline.or_else(|| {
-            self.linked_scenarios.load().get(scenario_slug).cloned()
+            self.linked_scenarios.load().get(&ctx.scenario_slug).cloned()
         });
         
         let scenario = {
-            let scenarios: tokio::sync::RwLockReadGuard<'_, HashMap<String, ScenarioDefinition>> = self.scenarios.read().await;
-            scenarios.get(scenario_slug)
+            let scenarios = self.scenarios.read().await;
+            scenarios.get(&ctx.scenario_slug)
                 .cloned()
-                .ok_or_else(|| AppError::Scenario(ScenarioError::NotFound(scenario_slug.to_string())))?
+                .ok_or_else(|| AppError::Scenario(ScenarioError::NotFound(ctx.scenario_slug.clone())))?
         };
 
         if let Some(scope_obj) = scenario.scope.as_object() {
             if let Some(allowed_regions) = scope_obj.get("regions").and_then(|v| v.as_array()) {
-                let user_region = context_params.get("region").and_then(|v| v.as_str()).unwrap_or("UNKNOWN");
+                let user_region = ctx.context_params.get("region").and_then(|v| v.as_str()).unwrap_or("UNKNOWN");
                 if !allowed_regions.iter().any(|r: &serde_json::Value| r.as_str() == Some(user_region)) {
-                    warn!(scenario = %scenario_slug, user_region, "Scenario scope mismatch: Region not allowed");
+                    warn!(scenario = %ctx.scenario_slug, user_region, "Scenario scope mismatch: Region not allowed");
                     return Err(AppError::Scenario(ScenarioError::InvalidConfig(format!("Scenario not available in region: {}", user_region))));
                 }
             }
@@ -176,7 +177,7 @@ impl ExecutionManager {
             .any(|stage| stage.r#type.starts_with("onnx_"));
 
         let mut stats = ScenarioExecutionStats {
-            scenario_slug: scenario_slug.to_string(),
+            scenario_slug: ctx.scenario_slug.clone(),
             uses_onnx_inference: uses_onnx,
             pipeline_stage_count: scenario.pipeline.stages.len(),
             onnx_stage_count: scenario.pipeline.stages.iter()
@@ -186,19 +187,19 @@ impl ExecutionManager {
             cached_result: false,
         };
 
-        let mut cache_params = context_params.clone();
-        if let Some(ref pid) = profile_id { cache_params["profile_id"] = serde_json::json!(pid); }
-        if let Some(ref mat) = maturity_rating { cache_params["maturity_rating"] = serde_json::json!(mat); }
-        if let Some(ref dev) = device_type { cache_params["device_type"] = serde_json::json!(dev); }
+        let mut cache_params = ctx.context_params.clone();
+        if let Some(ref pid) = ctx.profile_id { cache_params["profile_id"] = serde_json::json!(pid); }
+        if let Some(ref mat) = ctx.maturity_rating { cache_params["maturity_rating"] = serde_json::json!(mat); }
+        if let Some(ref dev) = ctx.device_type { cache_params["device_type"] = serde_json::json!(dev); }
 
         let context_hash = StagingManager::hash_context(&cache_params);
 
-        let consolidation_key = format!("{}:{}:{}", scenario_slug, user_id.unwrap_or(0), context_hash);
+        let consolidation_key = format!("{}:{}:{}", ctx.scenario_slug, ctx.user_id.unwrap_or(0), context_hash);
         let waiter = {
             let entry = self.request_consolidation.entry(consolidation_key.clone());
             match entry {
                 dashmap::mapref::entry::Entry::Occupied(ref e) => {
-                    let tx: Arc<tokio::sync::broadcast::Sender<Vec<RecommendationItem>>> = e.get().clone();
+                    let tx = e.get().clone();
                     Some(tx.subscribe())
                 }
                 dashmap::mapref::entry::Entry::Vacant(e) => {
@@ -217,19 +218,19 @@ impl ExecutionManager {
                     return Ok((items, stats));
                 }
                 Err(_) => {
-                    warn!(scenario = %scenario_slug, "Consolidation waiter failed, falling back");
+                    warn!(scenario = %ctx.scenario_slug, "Consolidation waiter failed, falling back");
                 }
             }
         }
 
         if scenario.use_l2_cache {
             if let Some(cached_items) = self.staging_manager
-                .get_cached(scenario_slug, user_id, profile_id.as_deref(), &context_hash)
+                .get_cached(&ctx.scenario_slug, ctx.user_id, ctx.profile_id.as_deref(), &context_hash)
                 .await?
             {
                 stats.cached_result = true;
                 stats.execution_time_ms = start_time.elapsed().as_millis() as u64;
-                self.metrics_collector.record_scenario_execution(scenario_slug, stats.execution_time_ms, true).await;
+                self.metrics_collector.record_scenario_execution(&ctx.scenario_slug, stats.execution_time_ms, true).await;
                 return Ok((self.convert_to_recommendation_items(cached_items), stats));
             }
         }
@@ -247,14 +248,14 @@ impl ExecutionManager {
             let _ = tx.send(final_recommendations.clone());
         }
 
-        self.metrics_collector.record_scenario_execution(scenario_slug, stats.execution_time_ms, false).await;
+        self.metrics_collector.record_scenario_execution(&ctx.scenario_slug, stats.execution_time_ms, false).await;
 
         if scenario.use_l2_cache {
-            self.staging_manager.save_cached(scenario_slug, user_id, profile_id.as_deref(), &context_hash, &scored_items, scenario.cache_ttl_seconds).await?;
+            self.staging_manager.save_cached(&ctx.scenario_slug, ctx.user_id, ctx.profile_id.as_deref(), &context_hash, &scored_items, scenario.cache_ttl_seconds).await?;
         }
 
         let mut final_scored_items = scored_items;
-        if let Some(l) = limit { final_scored_items.truncate(l); }
+        if let Some(l) = ctx.limit { final_scored_items.truncate(l); }
 
         Ok((self.convert_to_recommendation_items(final_scored_items), stats))
     }

@@ -112,15 +112,15 @@ impl StagingManager {
         let l3_ttl = ttl_seconds * 12;
         let items_json = serde_json::to_value(items)?;
         let pid_owned = profile_id.map(|s| s.to_string());
-        self.cache_repo.set(
-            &cache_key,
-            scenario_slug,
+        self.cache_repo.set(crate::db::repositories::cache_repository::service::CacheEntryPayload {
+            cache_key: cache_key.clone(),
+            scenario_slug: scenario_slug.to_string(),
             user_id,
-            pid_owned,
-            Some(context_hash),
-            items_json,
-            l3_ttl,
-        ).await?;
+            profile_id: pid_owned,
+            context_hash: Some(context_hash.to_string()),
+            recommendations: items_json,
+            ttl_seconds: l3_ttl,
+        }).await?;
 
         info!(
             cache_key = %cache_key,

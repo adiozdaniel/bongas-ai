@@ -14,7 +14,7 @@ sequenceDiagram
     participant Stage as Staging Manager
     participant Pipe as Pipeline Factory
 
-    API->>Exec: execute_scenario(slug)
+    API->>Exec: execute_scenario(ScenarioExecutionContext)
     Exec->>Strat: resolve_dynamic_path()
     Exec->>Stage: check_l2_cache()
     alt Cache Hit
