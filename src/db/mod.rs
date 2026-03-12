@@ -8,7 +8,7 @@ pub mod repositories;
 // Re-exports
 pub use metrics::service::{DatabaseMetrics, DatabaseMetricsSnapshot};
 pub use pool::service::{PoolStats, ResilientPool, ResilientPoolConfig};
-pub use models::models::*;
+pub use models::*;
 pub use repositories::interaction_repository::service::InteractionRepository;
 pub use repositories::item_feature_service::service::ItemFeatureService;
 pub use repositories::model_repository::service::ModelRepository;
