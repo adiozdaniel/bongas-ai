@@ -36,51 +36,7 @@ pub struct AppConfig {
 }
 
 impl AppConfig {
-    /// Create a new application configuration.
-    pub fn new(
-        server: ServerConfig,
-        database: DatabaseConfig,
-        redis: RedisConfig,
-        clickhouse: ClickHouseConfig,
-        ingestion: IngestionConfig,
-        security: SecurityConfig,
-        ml: MlConfig,
-        pipeline: PipelineConfig,
-        cache: CacheConfig,
-        circuit_breaker: CircuitBreakerConfig,
-        error: ErrorConfig,
-        analytics: AnalyticsConfig,
-        observability: ObservabilityConfig,
-        resilience: ResilienceConfig,
-        resilience_metrics: ResilienceMetricsConfig,
-        experiments: ExperimentsConfig,
-        hive_mind: HiveMindConfig,
-    ) -> Self {
-        Self {
-            server,
-            database,
-            redis,
-            clickhouse,
-            ingestion,
-            security,
-            ml,
-            pipeline,
-            cache,
-            circuit_breaker,
-            error,
-            analytics,
-            observability,
-            resilience,
-            resilience_metrics,
-            experiments,
-            hive_mind,
-        }
-    }
-
-
-
     /// Get enabled services for logging.
-
     pub fn enabled_services(&self) -> Vec<&'static str> {
 
         let mut services = Vec::new();

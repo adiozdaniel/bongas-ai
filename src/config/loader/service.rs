@@ -416,11 +416,25 @@ impl ConfigLoader {
             auto_approve_safe_rules: parse_bool("hive_mind.auto_approve_safe_rules", false)?,
         };
 
-        Ok(AppConfig::new(
-            server, database, redis, clickhouse, ingestion, security, ml, pipeline, cache,
-            circuit_breaker, error, analytics, observability,
-            resilience, ResilienceMetricsConfig::default(), experiments, hive_mind,
-        ))
+        Ok(AppConfig {
+            server,
+            database,
+            redis,
+            clickhouse,
+            ingestion,
+            security,
+            ml,
+            pipeline,
+            cache,
+            circuit_breaker,
+            error,
+            analytics,
+            observability,
+            resilience,
+            resilience_metrics: ResilienceMetricsConfig::default(),
+            experiments,
+            hive_mind,
+        })
     }
 
     /// Validate cross-module configuration dependencies.

@@ -19,6 +19,12 @@ pub struct EnvSource {
     prefix: String,
 }
 
+impl Default for EnvSource {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl EnvSource {
     /// Create a new environment variable source with a prefix.
     pub fn new() -> Self {
