@@ -54,6 +54,15 @@ We recognize devices and users passively.
 - **Visitor ID:** Transparent persistence via "Cookie-Lite" (Zero-Touch).
 - **Identity Stitching:** Automatic merging of anonymous behavior into authenticated profiles upon login.
 
+### 5. Decoupled Interface Standards (Netflix-Grade DTOs)
+
+To ensure long-term maintainability and architectural integrity, Symphony 2.0 enforces **Parameter Consolidation** through dedicated Data Transfer Objects (DTOs).
+
+- **Resilient Contracts**: Core methods no longer accept long lists of primitive arguments. Instead, they use specialized structs like `ScenarioExecutionContext` and `InteractionPayload`.
+- **Extensibility**: New context parameters (e.g., location, network speed, experiment flags) can be added to DTOs without breaking internal API contracts.
+- **Type Safety**: Deeply nested generic types are simplified via descriptive aliases (e.g., `PageLayoutCache`), reducing cognitive load for engineers.
+- **Idiomatic Alignment**: All core system types implement standard Rust traits (`Default`, `FromStr`) for seamless ecosystem integration.
+
 ---
 
 ## 🚀 Architectural Deep-Dives
