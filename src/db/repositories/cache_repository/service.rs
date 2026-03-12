@@ -15,6 +15,18 @@ use crate::db::RecommendationCacheL2;
 use crate::db::ResilientPool;
 use crate::error::{AppError, AppResult, PostgresError};
 
+/// Payload for saving recommendations to the L2 cache.
+#[derive(Debug, Clone)]
+pub struct CacheEntryPayload {
+    pub cache_key: String,
+    pub scenario_slug: String,
+    pub user_id: Option<i32>,
+    pub profile_id: Option<String>,
+    pub context_hash: Option<String>,
+    pub recommendations: JsonValue,
+    pub ttl_seconds: i32,
+}
+
 /// Repository for L2 recommendation cache with resilience patterns.
 #[derive(Clone)]
 pub struct CacheRepository {
@@ -44,7 +56,7 @@ impl CacheRepository {
         let start_time = std::time::Instant::now();
         let key = cache_key.to_string();
         
-        let result = self.pool.execute(|pool| async move {
+        let result: AppResult<Option<RecommendationCacheL2>> = self.pool.execute(|pool| async move {
             sqlx::query_as::<_, RecommendationCacheL2>(
                 r#"
                 SELECT * FROM recommendation_cache_l2
@@ -102,25 +114,11 @@ impl CacheRepository {
     /// Save recommendations to L2 cache.
     pub async fn set(
         &self,
-        cache_key: &str,
-        scenario_slug: &str,
-        user_id: Option<i32>,
-        profile_id: Option<String>,
-        context_hash: Option<&str>,
-        recommendations: JsonValue,
-        ttl_seconds: i32,
+        payload: CacheEntryPayload,
     ) -> AppResult<()> {
-        let cache_key = cache_key.to_string();
-        let scenario_slug = scenario_slug.to_string();
-        let context_hash = context_hash.map(|s| s.to_string());
-        let expires_at = Utc::now() + Duration::seconds(ttl_seconds as i64);
+        let expires_at = Utc::now() + Duration::seconds(payload.ttl_seconds as i64);
 
-        self.pool.execute(|pool| {
-            let cache_key = cache_key.clone();
-            let scenario_slug = scenario_slug.clone();
-            let profile_id = profile_id.clone();
-            let context_hash = context_hash.clone();
-            let recommendations = recommendations.clone();
+        self.pool.execute(move |pool| {
             async move {
                 sqlx::query(
                     r#"
@@ -137,12 +135,12 @@ impl CacheRepository {
                         staleness_reason = NULL
                     "#,
                 )
-                .bind(&cache_key)
-                .bind(&scenario_slug)
-                .bind(user_id)
-                .bind(profile_id)
-                .bind(&context_hash)
-                .bind(&recommendations)
+                .bind(payload.cache_key)
+                .bind(payload.scenario_slug)
+                .bind(payload.user_id)
+                .bind(payload.profile_id)
+                .bind(payload.context_hash)
+                .bind(payload.recommendations)
                 .bind(expires_at)
                 .execute(&pool)
                 .await

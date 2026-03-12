@@ -312,7 +312,8 @@ impl ScenarioRepository {
     /// Find scenario and its strategy by slug.
     pub async fn find_by_slug(&self, slug: &str) -> AppResult<Option<ScenarioWithStrategy>> {
         let slug = slug.to_string();
-        self.pool
+        let slug_for_err = slug.clone();
+        let result: AppResult<Option<ScenarioWithStrategy>> = self.pool
             .execute(|pool| async move {
                 let row: Option<FlatScenarioRow> = sqlx::query_as(
                     r#"
@@ -335,13 +336,14 @@ impl ScenarioRepository {
 
                 Ok(row.map(|r| r.into_scenario_with_strategy()))
             })
-            .await
-            .map_err(|e| {
-                AppError::Postgres(PostgresError::Query {
-                    message: format!("Failed to fetch scenario by slug: {}", e),
-                    source: None,
-                })
+            .await;
+
+        result.map_err(|e| {
+            AppError::Postgres(PostgresError::Query {
+                message: format!("Failed to fetch scenario {}: {}", slug_for_err, e),
+                source: None,
             })
+        })
     }
 
     /// Internal helper to fetch strategy by ID

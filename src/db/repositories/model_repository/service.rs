@@ -75,7 +75,6 @@ impl ModelRepository {
         }
     }
 
-    /// Get ONNX model by name and version.
     pub async fn get_onnx_model(
         &self,
         model_name: &str,
@@ -85,7 +84,7 @@ impl ModelRepository {
         let version = version.to_string();
         let model_name_err = model_name.clone();
         let version_err = version.clone();
-        self.pool
+        let result: AppResult<Option<ModelRegistry>> = self.pool
             .execute(|pool| async move {
                 sqlx::query_as::<_, ModelRegistry>(
                     r#"
@@ -100,30 +99,30 @@ impl ModelRepository {
                 .fetch_optional(&pool)
                 .await
             })
-            .await
-            .map_err(|e| {
-                AppError::Postgres(PostgresError::Query {
-                    message: format!(
-                        "Failed to fetch ONNX model {}@{}: {}",
-                        model_name_err, version_err, e
-                    ),
-                    source: None,
-                })
+            .await;
+
+        result.map_err(|e| {
+            AppError::Postgres(PostgresError::Query {
+                message: format!(
+                    "Failed to fetch ONNX model {}@{}: {}",
+                    model_name_err, version_err, e
+                ),
+                source: None,
             })
+        })
     }
 
-    /// Get latest deployed model by name.
     pub async fn get_latest_deployed(&self, model_name: &str) -> AppResult<Option<ModelRegistry>> {
         let model_name = model_name.to_string();
         let model_name_err = model_name.clone();
-        self.pool
+        let result: AppResult<Option<ModelRegistry>> = self.pool
             .execute(|pool| async move {
                 sqlx::query_as::<_, ModelRegistry>(
                     r#"
                     SELECT * FROM model_registry
                     WHERE model_name = $1
                     AND status = 'deployed'
-                    ORDER BY created_at DESC
+                    ORDER BY deployed_at DESC
                     LIMIT 1
                     "#,
                 )
@@ -131,13 +130,14 @@ impl ModelRepository {
                 .fetch_optional(&pool)
                 .await
             })
-            .await
-            .map_err(|e| {
-                AppError::Postgres(PostgresError::Query {
-                    message: format!("Failed to fetch latest deployed model {}: {}", model_name_err, e),
-                    source: None,
-                })
+            .await;
+
+        result.map_err(|e| {
+            AppError::Postgres(PostgresError::Query {
+                message: format!("Failed to fetch latest deployed model {}: {}", model_name_err, e),
+                source: None,
             })
+        })
     }
 
     /// Get all models by status.

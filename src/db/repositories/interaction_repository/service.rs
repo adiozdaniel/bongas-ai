@@ -7,6 +7,35 @@ use crate::resilience::ResilienceMetricsCollector;
 use crate::db::ResilientPool;
 use crate::error::{AppError, AppResult, PostgresError};
 
+/// Payload for recording a single user interaction.
+#[derive(Debug, Clone)]
+pub struct InteractionPayload {
+    pub user_id: i32,
+    pub profile_id: Option<String>,
+    pub item_id: i32,
+    pub interaction_type: String,
+    pub scenario_slug: String,
+    pub weight: f32,
+    pub visitor_id: Option<String>,
+    pub device_hash: Option<String>,
+    pub device_type: Option<String>,
+    pub watch_duration_seconds: Option<i32>,
+}
+
+/// Payload for recording a batch of user interactions.
+#[derive(Debug, Clone)]
+pub struct BatchInteractionPayload {
+    pub user_ids: Vec<i32>,
+    pub item_ids: Vec<i32>,
+    pub types: Vec<String>,
+    pub ratings: Vec<Option<f32>>,
+    pub watch_durations: Vec<Option<i32>>,
+    pub visitor_ids: Vec<Option<String>>,
+    pub device_hashes: Vec<Option<String>>,
+    pub device_types: Vec<Option<String>>,
+    pub timestamps: Vec<chrono::DateTime<chrono::Utc>>,
+}
+
 /// Repository for user interaction data with resilience patterns.
 pub struct InteractionRepository {
     pool: Arc<ResilientPool>,
@@ -27,25 +56,12 @@ impl InteractionRepository {
     /// Primary entry point for recording any user interaction.
     pub async fn record_interaction(
         &self,
-        user_id: i32,
-        profile_id: Option<String>,
-        item_id: i32,
-        interaction_type: &str,
-        scenario_slug: &str,
-        weight: f32,
-        visitor_id: Option<String>,
-        device_hash: Option<String>,
-        device_type: Option<String>,
+        payload: InteractionPayload,
     ) -> AppResult<()> {
         let start_time = std::time::Instant::now();
+        let i_type_for_metrics = payload.interaction_type.clone();
         
-        let result = self.pool.execute(|pool| {
-            let i_type = interaction_type.to_string();
-            let s_slug = scenario_slug.to_string();
-            let pid = profile_id.clone();
-            let vid = visitor_id.clone();
-            let dhash = device_hash.clone();
-            let dtype = device_type.clone();
+        let result = self.pool.execute(move |pool| {
             async move {
                 sqlx::query(
                     r#"
@@ -54,15 +70,15 @@ impl InteractionRepository {
                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
                     "#,
                 )
-                .bind(user_id)
-                .bind(pid)
-                .bind(item_id)
-                .bind(i_type)
-                .bind(weight)
-                .bind(s_slug)
-                .bind(vid)
-                .bind(dhash)
-                .bind(dtype)
+                .bind(payload.user_id)
+                .bind(payload.profile_id)
+                .bind(payload.item_id)
+                .bind(payload.interaction_type)
+                .bind(payload.weight)
+                .bind(payload.scenario_slug)
+                .bind(payload.visitor_id)
+                .bind(payload.device_hash)
+                .bind(payload.device_type)
                 .execute(&pool)
                 .await
                 .map(|_| ())
@@ -70,7 +86,7 @@ impl InteractionRepository {
         }).await;
 
         let duration = start_time.elapsed();
-        let metrics = self.metrics_collector.registry().get_or_create(&format!("interaction_{}", interaction_type));
+        let metrics = self.metrics_collector.registry().get_or_create(&format!("interaction_{}", i_type_for_metrics));
         metrics.latency.record_duration(duration);
         if result.is_ok() { metrics.successes.increment(); } else { metrics.failures.increment(); }
 
@@ -82,25 +98,10 @@ impl InteractionRepository {
 
     pub async fn create_implicit_rating(
         &self,
-        user_id: i32,
-        profile_id: Option<String>,
-        item_id: i32,
-        rating: f32,
-        watch_duration_seconds: i32,
-        scenario_slug: &str,
-        visitor_id: Option<String>,
-        device_hash: Option<String>,
-        device_type: Option<String>,
+        payload: InteractionPayload,
     ) -> AppResult<()> {
         let start_time = std::time::Instant::now();
-        let pid = profile_id.clone();
-        let s_slug = scenario_slug.to_string();
-        let result = self.pool.execute(|pool| {
-            let pid = pid.clone();
-            let s_slug = s_slug.clone();
-            let vid = visitor_id.clone();
-            let dhash = device_hash.clone();
-            let dtype = device_type.clone();
+        let result = self.pool.execute(move |pool| {
             async move {
                 sqlx::query(
                     r#"
@@ -109,15 +110,15 @@ impl InteractionRepository {
                     VALUES ($1, $2, $3, 'implicit_rating', $4, $5, $6, $7, $8, $9, NOW())
                     "#,
                 )
-                .bind(user_id)
-                .bind(pid)
-                .bind(item_id)
-                .bind(rating)
-                .bind(watch_duration_seconds)
-                .bind(s_slug)
-                .bind(vid)
-                .bind(dhash)
-                .bind(dtype)
+                .bind(payload.user_id)
+                .bind(payload.profile_id)
+                .bind(payload.item_id)
+                .bind(payload.weight)
+                .bind(payload.watch_duration_seconds)
+                .bind(payload.scenario_slug)
+                .bind(payload.visitor_id)
+                .bind(payload.device_hash)
+                .bind(payload.device_type)
                 .execute(&pool)
                 .await
                 .map(|_| ())
@@ -137,27 +138,19 @@ impl InteractionRepository {
 
     pub async fn create_interactions_batch(
         &self,
-        user_ids: Vec<i32>,
-        item_ids: Vec<i32>,
-        types: Vec<String>,
-        ratings: Vec<Option<f32>>,
-        watch_durations: Vec<Option<i32>>,
-        visitor_ids: Vec<Option<String>>,
-        device_hashes: Vec<Option<String>>,
-        device_types: Vec<Option<String>>,
-        timestamps: Vec<chrono::DateTime<chrono::Utc>>,
+        payload: BatchInteractionPayload,
     ) -> AppResult<u64> {
-        if user_ids.is_empty() { return Ok(0); }
-        self.pool.execute(|pool| async move {
+        if payload.user_ids.is_empty() { return Ok(0); }
+        self.pool.execute(move |pool| async move {
             sqlx::query(
                 r#"
                 INSERT INTO user_interactions (user_id, item_id, interaction_type, implicit_rating, watch_duration_seconds, visitor_id, device_hash, device_type, created_at)
                 SELECT * FROM unnest($1::int[], $2::int[], $3::text[], $4::float4[], $5::int[], $6::text[], $7::text[], $8::text[], $9::timestamptz[])
                 "#
             )
-            .bind(&user_ids).bind(&item_ids).bind(&types).bind(&ratings).bind(&watch_durations)
-            .bind(&visitor_ids).bind(&device_hashes).bind(&device_types)
-            .bind(&timestamps)
+            .bind(&payload.user_ids).bind(&payload.item_ids).bind(&payload.types).bind(&payload.ratings).bind(&payload.watch_durations)
+            .bind(&payload.visitor_ids).bind(&payload.device_hashes).bind(&payload.device_types)
+            .bind(&payload.timestamps)
             .execute(&pool).await.map(|r| r.rows_affected())
         }).await.map_err(|e| AppError::Postgres(PostgresError::Query { message: e.to_string(), source: None }))
     }

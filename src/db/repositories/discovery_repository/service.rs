@@ -30,7 +30,7 @@ impl DiscoveryConfigRepository {
         config: DiscoveryConfig
     ) -> AppResult<DiscoveryConfig> {
         let start_time = std::time::Instant::now();
-        let result = self.pool
+        let result: AppResult<DiscoveryConfig> = self.pool
             .execute(|pool| async move {
                 let row: DiscoveryConfig = sqlx::query_as(
                     r#"
@@ -70,10 +70,9 @@ impl DiscoveryConfigRepository {
         })
     }
 
-    /// Fetch all discovery configurations.
     pub async fn find_all(&self) -> AppResult<Vec<DiscoveryConfig>> {
         let start_time = std::time::Instant::now();
-        let result = self.pool
+        let result: AppResult<Vec<DiscoveryConfig>> = self.pool
             .execute(|pool| async move {
                 let rows: Vec<DiscoveryConfig> = sqlx::query_as(
                     "SELECT device_type, initial_batch_size, continuation_batch_size, prewarm_lookahead, ghost_ttl_seconds, cache_ttl_seconds, updated_at FROM discovery_configs"
@@ -95,13 +94,12 @@ impl DiscoveryConfigRepository {
         })
     }
 
-    /// Find a specific discovery configuration by device type.
     pub async fn find_by_device(&self, device_type: &str) -> AppResult<Option<DiscoveryConfig>> {
         let device = device_type.to_string();
         let device_log = device_type.to_string();
         let start_time = std::time::Instant::now();
 
-        let result = self.pool
+        let result: AppResult<Option<DiscoveryConfig>> = self.pool
             .execute(|pool| async move {
                 let row: Option<DiscoveryConfig> = sqlx::query_as(
                     "SELECT device_type, initial_batch_size, continuation_batch_size, prewarm_lookahead, ghost_ttl_seconds, cache_ttl_seconds, updated_at FROM discovery_configs WHERE device_type = $1"

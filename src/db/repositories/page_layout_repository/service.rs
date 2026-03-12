@@ -6,6 +6,19 @@ use crate::db::PageLayout;
 use crate::db::ResilientPool;
 use crate::error::{AppError, AppResult, PostgresError};
 
+/// Payload for creating or updating a page layout.
+#[derive(Debug, Clone)]
+pub struct PageLayoutUpsert {
+    pub page_slug: String,
+    pub is_landing: bool,
+    pub nav_type: String,
+    pub composition: serde_json::Value,
+    pub device_type: Option<String>,
+    pub maturity_rating: Option<String>,
+    pub priority: i32,
+    pub is_active: bool,
+}
+
 /// Repository for managing dynamic page layouts with SDUI support.
 pub struct PageLayoutRepository {
     pool: Arc<ResilientPool>,
@@ -27,19 +40,10 @@ impl PageLayoutRepository {
     /// Upsert a page layout.
     pub async fn upsert(
         &self, 
-        page_slug: &str, 
-        is_landing: bool,
-        nav_type: &str,
-        composition: serde_json::Value, 
-        device_type: Option<String>,
-        maturity_rating: Option<String>,
-        priority: i32,
-        is_active: bool
+        payload: PageLayoutUpsert,
     ) -> AppResult<PageLayout> {
-        let page_slug = page_slug.to_string();
-        let nav_type = nav_type.to_string();
-        self.pool
-            .execute(|pool| async move {
+        let result: AppResult<PageLayout> = self.pool
+            .execute(move |pool| async move {
                 let row: PageLayout = sqlx::query_as(
                     r#"
                     INSERT INTO page_layouts 
@@ -56,26 +60,27 @@ impl PageLayoutRepository {
                     RETURNING id, page_slug, is_landing, nav_type, composition, device_type, maturity_rating, priority, is_active, is_deleted, created_at, updated_at
                     "#
                 )
-                .bind(&page_slug)
-                .bind(is_landing)
-                .bind(&nav_type)
-                .bind(&composition)
-                .bind(device_type)
-                .bind(maturity_rating)
-                .bind(priority)
-                .bind(is_active)
+                .bind(payload.page_slug)
+                .bind(payload.is_landing)
+                .bind(payload.nav_type)
+                .bind(payload.composition)
+                .bind(payload.device_type)
+                .bind(payload.maturity_rating)
+                .bind(payload.priority)
+                .bind(payload.is_active)
                 .fetch_one(&pool)
                 .await?;
 
                 Ok(row)
             })
-            .await
-            .map_err(|e| {
-                AppError::Postgres(PostgresError::Query {
-                    message: format!("Failed to upsert page layout: {}", e),
-                    source: None,
-                })
+            .await;
+
+        result.map_err(|e| {
+            AppError::Postgres(PostgresError::Query {
+                message: format!("Failed to upsert page layout: {}", e),
+                source: None,
             })
+        })
     }
 
     /// Soft-delete a page layout.
@@ -110,7 +115,7 @@ impl PageLayoutRepository {
         let device = device_type.map(|s| s.to_string());
         let maturity = maturity_rating.map(|s| s.to_string());
 
-        self.pool.execute(|pool| async move {
+        let result: AppResult<Option<PageLayout>> = self.pool.execute(|pool| async move {
             let row: Option<PageLayout> = sqlx::query_as(
                 r#"
                 SELECT id, page_slug, is_landing, nav_type, composition, device_type, maturity_rating, priority, is_active, is_deleted, created_at, updated_at 
@@ -135,8 +140,9 @@ impl PageLayoutRepository {
 
             Ok(row)
         })
-        .await
-        .map_err(|e| {
+        .await;
+
+        result.map_err(|e| {
             AppError::Postgres(PostgresError::Query {
                 message: format!("Failed to resolve landing page: {}", e),
                 source: None,
@@ -204,9 +210,8 @@ impl PageLayoutRepository {
         }
     }
 
-    /// Find all active page layouts for Nav-Mesh assembly.
     pub async fn find_all_active(&self) -> AppResult<Vec<PageLayout>> {
-        self.pool
+        let result: AppResult<Vec<PageLayout>> = self.pool
             .execute(|pool| async move {
                 let rows: Vec<PageLayout> = sqlx::query_as(
                     "SELECT id, page_slug, is_landing, nav_type, composition, device_type, maturity_rating, priority, is_active, is_deleted, created_at, updated_at 
@@ -219,12 +224,13 @@ impl PageLayoutRepository {
 
                 Ok(rows)
             })
-            .await
-            .map_err(|e| {
-                AppError::Postgres(PostgresError::Query {
-                    message: format!("Failed to fetch active page layouts: {}", e),
-                    source: None,
-                })
+            .await;
+
+        result.map_err(|e| {
+            AppError::Postgres(PostgresError::Query {
+                message: format!("Failed to fetch active page layouts: {}", e),
+                source: None,
             })
+        })
     }
 }
