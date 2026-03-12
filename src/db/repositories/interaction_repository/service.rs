@@ -8,7 +8,7 @@ use crate::db::ResilientPool;
 use crate::error::{AppError, AppResult, PostgresError};
 
 /// Payload for recording a single user interaction.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct InteractionPayload {
     pub user_id: i32,
     pub profile_id: Option<String>,
@@ -23,7 +23,7 @@ pub struct InteractionPayload {
 }
 
 /// Payload for recording a batch of user interactions.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct BatchInteractionPayload {
     pub user_ids: Vec<i32>,
     pub item_ids: Vec<i32>,

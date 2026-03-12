@@ -16,7 +16,7 @@ use crate::db::ResilientPool;
 use crate::error::{AppError, AppResult, PostgresError};
 
 /// Payload for saving recommendations to the L2 cache.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct CacheEntryPayload {
     pub cache_key: String,
     pub scenario_slug: String,

@@ -7,7 +7,7 @@ use crate::db::ResilientPool;
 use crate::error::{AppError, AppResult, PostgresError};
 
 /// Payload for creating or updating a page layout.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PageLayoutUpsert {
     pub page_slug: String,
     pub is_landing: bool,

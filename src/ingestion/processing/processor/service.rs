@@ -14,6 +14,7 @@ use crate::resilience::ResilienceMetricsCollector;
 use crate::ingestion::UserActivity;
 use tokio::task::JoinSet;
 use crate::engine::governance::orchestration::manager::service::PagesManager;
+use crate::db::repositories::interaction_repository::service::InteractionPayload;
 
 /// Processes activities from any source and routes them to DB + staleness engine + PagesManager.
 pub struct ActivityProcessor {
@@ -78,9 +79,6 @@ impl ActivityProcessor {
     async fn process_single(&self, activity: UserActivity) -> anyhow::Result<()> {
         let start = std::time::Instant::now();
 
-use crate::db::repositories::interaction_repository::service::InteractionPayload;
-
-// ... (inside process_activity)
         // 1. Sink to Postgres (Interaction Repo) - RELATIONAL PERSISTENCE
         match activity {
             UserActivity::Playback { 
