@@ -61,6 +61,18 @@ pub struct SecurityStatus {
     pub layers_configured: u32,
 }
 
+/// Components required to initialize the BongasEngine.
+pub struct EngineComponents {
+    pub config: Arc<AppConfig>,
+    pub execution: Arc<ExecutionPillar>,
+    pub governance: Arc<GovernancePillar>,
+    pub ml_pillar: Arc<crate::ml::coordination::service::MlPillar>,
+    pub intelligence: Arc<IntelligencePillar>,
+    pub cache: Arc<CacheManager>,
+    pub shutdown_tx: broadcast::Sender<()>,
+    pub resilience_metrics: Arc<ResilienceMetricsCollector>,
+}
+
 /// 🎼 THE CONDUCTOR: The Grand Coordinator for BONGAS-AI.
 /// 
 /// Orchestrates the three functional pillars of the engine.
@@ -84,45 +96,38 @@ pub struct BongasEngine {
 
 impl BongasEngine {
     pub async fn new(
-        config: Arc<AppConfig>,
-        execution: Arc<ExecutionPillar>,
-        governance: Arc<GovernancePillar>,
-        _ml_pillar: Arc<crate::ml::coordination::service::MlPillar>,
-        intelligence: Arc<IntelligencePillar>,
-        cache: Arc<CacheManager>,
-        shutdown_tx: broadcast::Sender<()>,
-        resilience_metrics: Arc<ResilienceMetricsCollector>,
+        components: EngineComponents,
     ) -> anyhow::Result<Self> {
         // Create security manager
         let security = Arc::new(SecurityManager::new(
-            config.security.clone(),
-            &config.server.environment,
-            execution.circuit_breaker_registry.clone(),
-            resilience_metrics.clone(),
+            components.config.security.clone(),
+            &components.config.server.environment,
+            components.execution.circuit_breaker_registry.clone(),
+            components.resilience_metrics.clone(),
             None,
         ).await.map_err(|e| anyhow::anyhow!("Security init error: {}", e))?);
 
         // Create ingestion manager
         let ingestion_mgr = IngestionManager::bootstrap(
-            execution.cache_repo.pool(),
-            intelligence.clone(),
-            execution.circuit_breaker_registry.clone(),
-            resilience_metrics.clone(),
-            intelligence.staleness.clone(),
-            governance.orchestration.clone(),
-            config.ingestion.kafka.clone(),
+            components.execution.cache_repo.pool(),
+            components.intelligence.clone(),
+            components.execution.circuit_breaker_registry.clone(),
+            components.resilience_metrics.clone(),
+            components.intelligence.staleness.clone(),
+            components.governance.orchestration.clone(),
+            components.config.ingestion.kafka.clone(),
         ).await.map_err(|e| anyhow::anyhow!("Ingestion bootstrap error: {}", e))?;
 
         Ok(Self {
-            config,
-            resilience_metrics,
-            execution,
-            governance,
-            intelligence,
+            config: components.config,
+            resilience_metrics: components.resilience_metrics,
+            execution: components.execution,
+            governance: components.governance,
+            intelligence: components.intelligence,
             security,
-            cache,
+            cache: components.cache,
             ingestion: Arc::new(RwLock::new(ingestion_mgr)),
-            shutdown_tx,
+            shutdown_tx: components.shutdown_tx,
         })
     }
 
@@ -134,7 +139,16 @@ impl BongasEngine {
         context_params: serde_json::Value,
     ) -> AppResult<Vec<RecommendationItem>> {
         let (items, _) = self.execution.manager.execute_scenario_with_stats_contextual(
-            scenario_slug, user_id, None, None, None, context_params, None
+            crate::engine::execution::core::execution_manager::service::ScenarioExecutionContext {
+                scenario_slug: scenario_slug.to_string(),
+                user_id,
+                profile_id: None,
+                maturity_rating: None,
+                device_type: None,
+                context_params,
+                limit: None,
+                request_id: None,
+            }
         ).await?;
         Ok(items)
     }
@@ -142,17 +156,9 @@ impl BongasEngine {
     /// Proxy: Execute scenario with execution stats and persona context
     pub async fn execute_scenario_with_stats_contextual(
         &self,
-        scenario_slug: &str,
-        user_id: Option<i32>,
-        profile_id: Option<String>,
-        maturity_rating: Option<String>,
-        device_type: Option<String>,
-        context_params: serde_json::Value,
-        limit: Option<usize>,
+        ctx: crate::engine::execution::core::execution_manager::service::ScenarioExecutionContext,
     ) -> AppResult<(Vec<RecommendationItem>, ScenarioExecutionStats)> {
-        self.execution.manager.execute_scenario_with_stats_contextual(
-            scenario_slug, user_id, profile_id, maturity_rating, device_type, context_params, limit
-        ).await
+        self.execution.manager.execute_scenario_with_stats_contextual(ctx).await
     }
 
     /// Compatibility proxy: execute_scenario_with_stats
@@ -164,7 +170,16 @@ impl BongasEngine {
         limit: Option<usize>,
     ) -> AppResult<(Vec<RecommendationItem>, ScenarioExecutionStats)> {
         self.execution.manager.execute_scenario_with_stats_contextual(
-            scenario_slug, user_id, None, None, None, context_params, limit
+            crate::engine::execution::core::execution_manager::service::ScenarioExecutionContext {
+                scenario_slug: scenario_slug.to_string(),
+                user_id,
+                profile_id: None,
+                maturity_rating: None,
+                device_type: None,
+                context_params,
+                limit,
+                request_id: None,
+            }
         ).await
     }
 
@@ -314,13 +329,16 @@ impl BongasEngine {
                     let cp = context_params.clone();
                     async move {
                         let res = engine.execute_scenario_with_stats_contextual(
-                            &item.slug,
-                            user_id,
-                            None,
-                            None,
-                            None,
-                            cp,
-                            Some(20),
+                            crate::engine::execution::core::execution_manager::service::ScenarioExecutionContext {
+                                scenario_slug: item.slug.clone(),
+                                user_id,
+                                profile_id: None,
+                                maturity_rating: None,
+                                device_type: None,
+                                context_params: cp,
+                                limit: Some(20),
+                                request_id: None,
+                            }
                         ).await;
                         res.map(|(items, _)| (item, items))
                     }

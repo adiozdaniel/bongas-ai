@@ -4,7 +4,7 @@ use anyhow::{Result, Context};
 use tracing::info;
 
 use crate::AppConfig;
-use crate::db::ResilientPool;
+use crate::db::{ResilientPool, ScenarioRepository};
 use crate::db::repositories::model_repository::service::ModelRepository;
 use crate::db::repositories::feature_repository::service::FeatureRepository;
 use crate::db::repositories::cache_repository::service::CacheRepository;
@@ -218,7 +218,7 @@ impl DiscoverySymphony {
 
         // ─── 6. GOVERNANCE (PAGES & DISCOVERY) ────────────────────────────────
         let strategy_resolver = Arc::new(StrategyResolver::new());
-        let scenario_factory = Arc::new(ScenarioFactory::new(resilient_pool.clone(), resilience_metrics.clone()));
+        let scenario_factory = Arc::new(ScenarioFactory::new(ScenarioRepository::new(resilient_pool.clone(), resilience_metrics.clone())));
         
         // Fetch dynamic system settings (Item #26)
         let max_scenarios: i32 = resilient_pool.execute(|pool| async move {
@@ -278,16 +278,16 @@ impl DiscoverySymphony {
         ));
 
         // ─── 8. FINAL ENGINE ASSEMBLY ───────────────────────────────────────
-        let engine = BongasEngine::new(
-            self.config.clone(),
+        let engine = BongasEngine::new(crate::engine::coordination::service::EngineComponents {
+            config: self.config.clone(),
             execution,
             governance,
             ml_pillar,
             intelligence,
-            cache_manager,
+            cache: cache_manager,
             shutdown_tx,
             resilience_metrics,
-        ).await.map_err(|e| anyhow::anyhow!("Engine assembly failed: {}", e))?;
+        }).await.map_err(|e| anyhow::anyhow!("Engine assembly failed: {}", e))?;
 
         let engine_arc = Arc::new(engine);
 
