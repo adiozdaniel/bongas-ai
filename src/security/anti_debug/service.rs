@@ -11,6 +11,12 @@ use crate::error::SecurityError;
 /// Anti-debug detector for runtime tamper detection.
 pub struct AntiDebugDetector;
 
+impl Default for AntiDebugDetector {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AntiDebugDetector {
     pub fn new() -> Self {
         Self

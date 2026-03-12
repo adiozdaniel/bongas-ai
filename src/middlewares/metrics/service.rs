@@ -22,6 +22,12 @@ use axum::{
       pub total_latency_ms: u64,
   }
 
+  impl Default for MetricsCollector {
+      fn default() -> Self {
+          Self::new()
+      }
+  }
+
   impl MetricsCollector {
       pub fn new() -> Self {
           Self {
@@ -98,6 +104,12 @@ use axum::{
       pub error_requests: u64,
       pub total_latency_ms: u64,
       pub last_accessed: chrono::DateTime<chrono::Utc>,
+  }
+
+  impl Default for EndpointMetrics {
+      fn default() -> Self {
+          Self::new()
+      }
   }
 
   impl EndpointMetrics {

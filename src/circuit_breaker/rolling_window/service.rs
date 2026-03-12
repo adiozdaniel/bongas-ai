@@ -256,15 +256,14 @@ impl RollingWindow {
         let bucket = &self.buckets[target_index];
 
         let bucket_epoch = bucket.epoch.load(Ordering::Acquire);
-        if bucket_epoch < target_epoch {
-            if bucket
+        if bucket_epoch < target_epoch
+            && bucket
                 .epoch
                 .compare_exchange(bucket_epoch, target_epoch, Ordering::AcqRel, Ordering::Relaxed)
                 .is_ok()
             {
                 bucket.counters.reset();
             }
-        }
 
         bucket
     }
