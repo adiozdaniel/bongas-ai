@@ -43,8 +43,8 @@ impl PipelineStage for FilterByDurationStage {
                     Some(row) => {
                         if let Some(duration_seconds) = row.duration_seconds {
                             let duration_minutes = duration_seconds / 60;
-                            let above_min = params.min_minutes.map_or(true, |min| duration_minutes >= min);
-                            let below_max = params.max_minutes.map_or(true, |max| duration_minutes <= max);
+                            let above_min = params.min_minutes.is_none_or(|min| duration_minutes >= min);
+                            let below_max = params.max_minutes.is_none_or(|max| duration_minutes <= max);
                             above_min && below_max
                         } else {
                             params.include_unknown

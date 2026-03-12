@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use anyhow::Result;
 use serde_json::Value as JsonValue;
 use serde::Deserialize;
+use std::str::FromStr;
 use crate::pipeline::{PipelineStage, ScoredItem, MaturityRating};
 use crate::pipeline::context::service::ExecutionContext;
 use std::collections::HashMap;
@@ -34,7 +35,7 @@ impl PipelineStage for FilterByAgeRatingStage {
         input: Vec<ScoredItem>,
     ) -> Result<Vec<ScoredItem>> {
         let params: Params = serde_json::from_value(params.clone())?;
-        let max_rating = MaturityRating::from_str(&params.max_rating);
+        let max_rating = MaturityRating::from_str(&params.max_rating).unwrap_or(MaturityRating::M18);
         let item_ids: Vec<i32> = input.iter().map(|item| item.item_id).collect();
 
         let item_features_map = context.item_feature_service
@@ -50,7 +51,7 @@ impl PipelineStage for FilterByAgeRatingStage {
             .into_iter()
             .filter(|item| {
                 match rating_map.get(&item.item_id) {
-                    Some(Some(rating)) => MaturityRating::from_str(rating) <= max_rating,
+                    Some(Some(rating)) => MaturityRating::from_str(rating).unwrap_or(MaturityRating::M18) <= max_rating,
                     Some(None) | None => params.include_unknown,
                 }
             })

@@ -1,7 +1,8 @@
 use async_trait::async_trait;
 use anyhow::Result;
 use serde_json::Value as JsonValue;
-use crate::pipeline::{PipelineStage, ScoredItem, MaturityRating, StageDataKind};
+use std::str::FromStr;
+use crate::pipeline::{PipelineStage, ScoredItem, MaturityRating};
 use crate::pipeline::context::service::ExecutionContext;
 use tracing::debug;
 
@@ -17,10 +18,6 @@ impl PipelineStage for MaturityFilterStage {
         "maturity_filter"
     }
 
-    fn input_type(&self) -> StageDataKind {
-        StageDataKind::ScoredItems
-    }
-
     async fn execute(
         &self,
         context: &ExecutionContext,
@@ -32,7 +29,7 @@ impl PipelineStage for MaturityFilterStage {
             .or_else(|| context.experiment_overrides.get("user_maturity_rating").and_then(|v| v.as_str()))
             .unwrap_or("GE");
         
-        let user_rating = MaturityRating::from_str(user_rating_str);
+        let user_rating = MaturityRating::from_str(user_rating_str).unwrap_or(MaturityRating::GE);
 
         if input.is_empty() {
             return Ok(Vec::new());
@@ -46,7 +43,7 @@ impl PipelineStage for MaturityFilterStage {
                     .and_then(|v| v.as_str())
                     .unwrap_or("18"); 
                 
-                let item_rating = MaturityRating::from_str(item_rating_str);
+                let item_rating = MaturityRating::from_str(item_rating_str).unwrap_or(MaturityRating::M18);
                 
                 if item_rating <= user_rating {
                     item.reasoning.push(format!("MaturityFilter: OK ({:?} <= {:?})", item_rating, user_rating));

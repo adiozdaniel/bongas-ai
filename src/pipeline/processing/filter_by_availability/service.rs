@@ -51,12 +51,12 @@ impl PipelineStage for FilterByAvailabilityStage {
                 match item_features.get(&item.item_id) {
                     Some(row) => {
                         let is_active = row.is_active;
-                        let started = row.available_from.map_or(true, |from| now >= from);
-                        let not_expired = row.available_until.map_or(true, |until| now <= until);
+                        let started = row.available_from.is_none_or(|from| now >= from);
+                        let not_expired = row.available_until.is_none_or(|until| now <= until);
 
                         let is_available = is_active && started && not_expired;
                         let is_coming_soon = is_active && !started && row.available_from.is_some();
-                        let is_expired = row.available_until.map_or(false, |until| now > until);
+                        let is_expired = row.available_until.is_some_and(|until| now > until);
 
                         // Check if coming soon within specified days
                         let coming_soon_in_range = if let (Some(from), Some(within)) = (row.available_from, within_days_duration) {

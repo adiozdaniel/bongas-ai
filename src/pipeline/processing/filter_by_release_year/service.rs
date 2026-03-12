@@ -51,8 +51,8 @@ impl PipelineStage for FilterByReleaseYearStage {
                                 return years.contains(&year);
                             }
                             // Otherwise check min/max range
-                            let above_min = params.min_year.map_or(true, |min| year >= min);
-                            let below_max = params.max_year.map_or(true, |max| year <= max);
+                            let above_min = params.min_year.is_none_or(|min| year >= min);
+                            let below_max = params.max_year.is_none_or(|max| year <= max);
                             above_min && below_max
                         } else {
                             params.include_unknown

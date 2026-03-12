@@ -81,8 +81,8 @@ impl PipelineStage for FilterByRatingStage {
                                 }
                             }
                             // Check rating range
-                            let above_min = params.min_rating.map_or(true, |min| r >= min);
-                            let below_max = params.max_rating.map_or(true, |max| r <= max);
+                            let above_min = params.min_rating.is_none_or(|min| r >= min);
+                            let below_max = params.max_rating.is_none_or(|max| r <= max);
                             above_min && below_max
                         } else {
                             params.include_unrated
