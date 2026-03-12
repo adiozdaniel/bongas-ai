@@ -78,39 +78,44 @@ impl ActivityProcessor {
     async fn process_single(&self, activity: UserActivity) -> anyhow::Result<()> {
         let start = std::time::Instant::now();
 
+use crate::db::repositories::interaction_repository::service::InteractionPayload;
+
+// ... (inside process_activity)
         // 1. Sink to Postgres (Interaction Repo) - RELATIONAL PERSISTENCE
         match activity {
             UserActivity::Playback { 
                 user_id, ref profile_id, item_id, watch_duration_seconds, 
                 watch_percentage, ref scenario_slug, ref visitor_id, ref device_hash, ref device_type, .. 
             } => {
-                self.interaction_repo.create_implicit_rating(
+                self.interaction_repo.create_implicit_rating(InteractionPayload {
                     user_id,
-                    profile_id.clone(),
+                    profile_id: profile_id.clone(),
                     item_id,
-                    watch_percentage,
-                    watch_duration_seconds,
-                    scenario_slug.as_deref().unwrap_or("unknown"),
-                    visitor_id.clone(),
-                    device_hash.clone(),
-                    device_type.clone(),
-                ).await?;
+                    interaction_type: "implicit_rating".to_string(),
+                    weight: watch_percentage,
+                    watch_duration_seconds: Some(watch_duration_seconds),
+                    scenario_slug: scenario_slug.as_deref().unwrap_or("unknown").to_string(),
+                    visitor_id: visitor_id.clone(),
+                    device_hash: device_hash.clone(),
+                    device_type: device_type.clone(),
+                }).await?;
             },
             _ => {
-                self.interaction_repo.record_interaction(
-                    activity.user_id(),
-                    activity.profile_id().map(|s| s.to_string()),
-                    match activity {
+                self.interaction_repo.record_interaction(InteractionPayload {
+                    user_id: activity.user_id(),
+                    profile_id: activity.profile_id().map(|s| s.to_string()),
+                    item_id: match activity {
                         UserActivity::Reaction { item_id, .. } | UserActivity::Click { item_id, .. } | UserActivity::Impression { item_id, .. } => item_id,
                         _ => 0,
                     },
-                    activity.kind(),
-                    activity.scenario_slug().unwrap_or("unknown"),
-                    1.0, // Default weight for non-playback
-                    activity.visitor_id().map(|s| s.to_string()),
-                    activity.device_hash().map(|s| s.to_string()),
-                    activity.device_type().map(|s| s.to_string()),
-                ).await?;
+                    interaction_type: activity.kind().to_string(),
+                    scenario_slug: activity.scenario_slug().unwrap_or("unknown").to_string(),
+                    weight: 1.0, // Default weight for non-playback
+                    visitor_id: activity.visitor_id().map(|s| s.to_string()),
+                    device_hash: activity.device_hash().map(|s| s.to_string()),
+                    device_type: activity.device_type().map(|s| s.to_string()),
+                    watch_duration_seconds: None,
+                }).await?;
             }
         }
 
