@@ -50,7 +50,7 @@ impl PipelineStage for PaginateResultsStage {
         let params: Params = serde_json::from_value(params.clone())?;
 
         let total_items = input.len();
-        let total_pages = (total_items + params.page_size - 1) / params.page_size;
+        let total_pages = total_items.div_ceil(params.page_size);
 
         // Handle cursor-based pagination
         let start_index = if let Some(ref cursor) = params.cursor {

@@ -78,7 +78,7 @@ impl PipelineStage for MLInferenceTwoTowerStage {
                 // Prepare item features for batch inference
                 let mut item_matrix_vec = Vec::with_capacity(input.len() * 32);
                 for _item in &input {
-                    item_matrix_vec.extend_from_slice(&vec![0.1; 32]);
+                    item_matrix_vec.extend_from_slice(&[0.1; 32]);
                 }
 
                 let user_array = ndarray::Array2::from_shape_vec((1, 32), user_features)?;

@@ -75,7 +75,7 @@ impl PipelineStage for MultiActionRankerStage {
                 let mut expected_value = 0.0;
                 // Probs correspond to model output order (e.g. 0: click, 1: watch)
                 // In real impl, map indices to action names from params.action_weights
-                for (_j, prob) in probs.iter().enumerate() {
+                for prob in probs.iter() {
                     expected_value += prob * 1.0; // Placeholder weight
                 }
 

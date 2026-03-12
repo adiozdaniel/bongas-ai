@@ -148,8 +148,8 @@ impl PipelineStage for ONNXInferenceSimilarityStage {
         });
 
         for item in results {
-            if !seen.contains_key(&item.item_id) {
-                seen.insert(item.item_id, deduped.len());
+            if let std::collections::hash_map::Entry::Vacant(e) = seen.entry(item.item_id) {
+                e.insert(deduped.len());
                 deduped.push(item);
             }
         }

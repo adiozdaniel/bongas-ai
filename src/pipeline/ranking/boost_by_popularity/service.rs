@@ -49,7 +49,7 @@ impl PipelineStage for BoostByPopularityStage {
         apply_weights_simd(&mut current_scores, &boosts, params.weight);
 
         // 3. Re-inject scores
-        let boosted: Vec<ScoredItem> = input.into_iter().zip(current_scores.into_iter())
+        let boosted: Vec<ScoredItem> = input.into_iter().zip(current_scores)
             .map(|(mut item, new_score)| {
                 item.score = new_score;
                 item

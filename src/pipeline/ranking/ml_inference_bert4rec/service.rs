@@ -82,7 +82,7 @@ impl PipelineStage for MLInferenceBERT4RecStage {
                 
                 // For BERT4Rec, we typically use the sequence to predict scores for all candidates
                 // For this implementation, we use predict_multi_action where actions are candidates
-                let mut candidate_matrix = Vec::with_capacity(input.len() * 1);
+                let mut candidate_matrix = Vec::with_capacity(input.len());
                 for item in &input {
                     candidate_matrix.push(item.item_id as f32);
                 }
