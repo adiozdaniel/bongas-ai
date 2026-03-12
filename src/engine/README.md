@@ -68,11 +68,19 @@ The assembly point that wires the three pillars into a unified `BongasEngine`.
 ## 🚀 Usage
 
 ```rust
-// The Conductor provides a simplified facade over the pillars
-let engine = BongasEngine::bootstrap(deps).await?;
+// The Symphony factory handles the complex wiring of all three pillars
+let symphony = DiscoverySymphony::new(config);
+let engine = symphony.assemble().await?;
 
-// Execute high-throughput discovery
-let items = engine.execute_scenario("home_feed", user_id, context).await?;
+// Execute high-throughput discovery using the consolidated ExecutionContext
+let ctx = ScenarioExecutionContext {
+    scenario_slug: "home_feed".to_string(),
+    user_id: Some(123),
+    profile_id: Some("kids".to_string()),
+    ..Default::default()
+};
+
+let (items, stats) = engine.execute_scenario_with_stats_contextual(ctx).await?;
 ```
 
 ---
