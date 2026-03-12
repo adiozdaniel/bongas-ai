@@ -38,13 +38,13 @@ pub async fn get_cache_performance(
     
     let response = CacheStatsResponse {
         hit_rate: engine.get_hit_rate(),
-        l1_hits: stats.l1_hits as u64,
-        l1_misses: stats.l1_misses as u64,
-        l2_hits: stats.l2_hits as u64,
-        l2_misses: stats.l2_misses as u64,
+        l1_hits: stats.l1_hits,
+        l1_misses: stats.l1_misses,
+        l2_hits: stats.l2_hits,
+        l2_misses: stats.l2_misses,
         l1_items: 0,
         l2_items: 0,
-        evictions: stats.evictions as u64,
+        evictions: stats.evictions,
     };
 
     Json(StandardResponse::success(response).with_request_id(request_id))
