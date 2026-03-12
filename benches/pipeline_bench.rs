@@ -16,7 +16,7 @@ fn bench_stages(c: &mut Criterion) {
     }
 
     let sort_stage = SortByScoreStage;
-    let sort_params = json!({});
+    let sort_params = json!({"descending": true});
 
     c.bench_function("sort_by_score_100", |b| {
         b.to_async(&rt).iter(|| async {
