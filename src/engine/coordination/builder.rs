@@ -43,6 +43,7 @@ use crate::engine::intelligence::ai::suggestions_manager::service::SuggestionsMa
 use crate::engine::intelligence::ai::hive_mind::service::HiveMindConnector;
 use crate::engine::intelligence::workers::WorkersManager;
 use crate::engine::intelligence::workers::tribe_orchestrator::service::TribeOrchestrator;
+use crate::engine::intelligence::workers::regional_pulse::service::RegionalPulseWorker;
 use crate::engine::governance::orchestration::manager::service::PagesManager;
 use crate::engine::governance::strategy::resolver::service::StrategyResolver;
 use crate::engine::governance::factory::scenario_factory::service::ScenarioFactory;
@@ -251,11 +252,21 @@ impl DiscoverySymphony {
             self.config.ml.tribe_num_clusters,
         ));
 
-        let workers = Arc::new(WorkersManager::new().with_tribe_orchestrator(tribe_orchestrator));
+        let hive_mind = Arc::new(HiveMindConnector::new(self.config.hive_mind.clone(), resilient_pool.clone(), shutdown_tx.subscribe()));
+
+        let regional_pulse_worker = Arc::new(RegionalPulseWorker::new(
+            hive_mind.clone(),
+            cache_manager.clone(),
+            std::time::Duration::from_secs(3600), // Hourly scrape
+        ));
+
+        let workers = Arc::new(WorkersManager::new()
+            .with_tribe_orchestrator(tribe_orchestrator)
+            .with_regional_pulse(regional_pulse_worker));
 
         let intelligence = Arc::new(IntelligencePillar::new(
             Arc::new(SuggestionsManager::new()),
-            Arc::new(HiveMindConnector::new(self.config.hive_mind.clone(), resilient_pool.clone(), shutdown_tx.subscribe())),
+            hive_mind,
             monitoring,
             staleness_engine,
             workers,

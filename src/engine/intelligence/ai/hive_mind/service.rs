@@ -4,12 +4,12 @@
 //! recommendations (Golden Rules). Locally evaluates these rules for safety
 //! and performance before auto-accepting or queuing them for review.
 
+use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Weak};
 use tokio::time::{interval, Duration};
 use tracing::{info, warn, error, debug};
 use anyhow::Result;
 use reqwest::Client;
-use serde::Deserialize;
 
 use crate::engine::coordination::service::BongasEngine;
 use crate::config::types::HiveMindConfig;
@@ -23,6 +23,21 @@ struct GlobalRule {
     pub condition: serde_json::Value,
     pub reasoning: String,
     pub min_confidence: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PulseClassification {
+    pub theme: String,
+    pub kind: PulseKind,
+    pub semantic_vector: Vec<f32>,
+    pub confidence: f32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum PulseKind {
+    PhysicalEvent,
+    Discourse,
 }
 
 /// background worker that syncs with the Global Hive Mind.
@@ -55,6 +70,33 @@ impl HiveMindConnector {
     pub fn set_engine(&self, engine: Weak<BongasEngine>) {
         let mut guard = self.engine.lock().unwrap_or_else(|e| e.into_inner());
         *guard = Some(engine);
+    }
+
+    /// Classify a regional headline into a theme and semantic vector.
+    pub async fn classify_pulse(&self, headline: &str, location: &str) -> Result<PulseClassification> {
+        debug!(headline, location, "Classifying regional pulse via Hive Mind");
+
+        // Mock implementation: In production, this would call an LLM for classification and embeddings.
+        let (theme, kind) = if headline.to_lowercase().contains("flood") || headline.to_lowercase().contains("storm") || headline.to_lowercase().contains("earthquake") {
+            ("Natural Disaster", PulseKind::PhysicalEvent)
+        } else if headline.to_lowercase().contains("festival") || headline.to_lowercase().contains("concert") {
+            ("Cultural Event", PulseKind::PhysicalEvent)
+        } else {
+            ("General Discourse", PulseKind::Discourse)
+        };
+
+        // Generate a deterministic 128-dim mock vector based on the theme
+        let mut semantic_vector = vec![0.0; 128];
+        for (i, byte) in theme.as_bytes().iter().enumerate().take(128) {
+            semantic_vector[i] = (*byte as f32) / 255.0;
+        }
+
+        Ok(PulseClassification {
+            theme: theme.to_string(),
+            kind,
+            semantic_vector,
+            confidence: 0.92,
+        })
     }
 
     pub async fn start(self: Arc<Self>) {

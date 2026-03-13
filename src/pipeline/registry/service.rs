@@ -37,6 +37,7 @@ use crate::pipeline::ranking::boost_trending::service::BoostTrendingStage;
 use crate::pipeline::ranking::boost_promoted::service::BoostPromotedStage;
 use crate::pipeline::ranking::boost_personalization::service::BoostPersonalizationStage;
 use crate::pipeline::ranking::boost_engagement::service::BoostEngagementStage;
+use crate::pipeline::ranking::boost_hyper_local_pulse::service::BoostHyperLocalPulseStage;
 use crate::pipeline::ranking::boost_completion_rate::service::BoostCompletionRateStage;
 use crate::pipeline::ranking::boost_new_content::service::BoostNewContentStage;
 use crate::pipeline::ranking::boost_user_affinity::service::BoostUserAffinityStage;
@@ -148,6 +149,7 @@ fn register_static_stages(registry: &mut HashMap<String, Arc<dyn PipelineStage>>
     registry.insert("boost_promoted".into(), Arc::new(BoostPromotedStage));
     registry.insert("boost_personalization".into(), Arc::new(BoostPersonalizationStage));
     registry.insert("boost_engagement".into(), Arc::new(BoostEngagementStage));
+    registry.insert("boost_hyper_local_pulse".into(), Arc::new(BoostHyperLocalPulseStage));
     registry.insert("boost_completion_rate".into(), Arc::new(BoostCompletionRateStage));
     registry.insert("boost_new_content".into(), Arc::new(BoostNewContentStage));
     registry.insert("boost_user_affinity".into(), Arc::new(BoostUserAffinityStage));

@@ -17,6 +17,7 @@ pub mod onnx_inference;
 pub mod onnx_inference_similarity;
 pub mod meta_scorer;
 pub mod boost_personalization;
+pub mod boost_hyper_local_pulse;
 pub mod boost_engagement;
 pub mod limit;
 pub mod diversify_by_release_year;

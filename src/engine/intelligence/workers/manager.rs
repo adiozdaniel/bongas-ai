@@ -5,10 +5,12 @@ use tokio::sync::broadcast;
 use tracing::{info, warn};
 use crate::engine::coordination::service::BongasEngine;
 use crate::engine::intelligence::workers::tribe_orchestrator::service::TribeOrchestrator;
+use crate::engine::intelligence::workers::regional_pulse::service::RegionalPulseWorker;
 
 /// 💓 Workers: Background maintenance and task orchestration.
 pub struct WorkersManager {
     tribe_orchestrator: Option<Arc<TribeOrchestrator>>,
+    regional_pulse: Option<Arc<RegionalPulseWorker>>,
 }
 
 impl Default for WorkersManager {
@@ -21,11 +23,17 @@ impl WorkersManager {
     pub fn new() -> Self {
         Self {
             tribe_orchestrator: None,
+            regional_pulse: None,
         }
     }
 
     pub fn with_tribe_orchestrator(mut self, orchestrator: Arc<TribeOrchestrator>) -> Self {
         self.tribe_orchestrator = Some(orchestrator);
+        self
+    }
+
+    pub fn with_regional_pulse(mut self, worker: Arc<RegionalPulseWorker>) -> Self {
+        self.regional_pulse = Some(worker);
         self
     }
 
@@ -39,6 +47,15 @@ impl WorkersManager {
             let shutdown_rx = shutdown_tx.subscribe();
             tokio::spawn(async move {
                 orchestrator.start(shutdown_rx).await;
+            });
+        }
+
+        // 2. Start Regional Pulse Worker
+        if let Some(ref worker) = self.regional_pulse {
+            let worker = worker.clone();
+            let shutdown_rx = shutdown_tx.subscribe();
+            tokio::spawn(async move {
+                worker.start(shutdown_rx).await;
             });
         }
     }
