@@ -64,6 +64,7 @@ use crate::pipeline::processing::filter_by_genre::service::FilterByGenreStage;
 use crate::pipeline::processing::filter_by_language::service::FilterByLanguageStage;
 use crate::pipeline::processing::filter_by_subscription_tier::service::FilterBySubscriptionTierStage;
 use crate::pipeline::processing::filter_content_fatigue::service::FilterContentFatigueStage;
+use crate::pipeline::processing::enrich_semantic_why::service::EnrichSemanticWhyStage;
 use crate::pipeline::processing::enrich_time_remaining::service::EnrichTimeRemainingStage;
 
 /// Global registry of all available pipeline stages.
@@ -132,6 +133,7 @@ fn register_static_stages(registry: &mut HashMap<String, Arc<dyn PipelineStage>>
     registry.insert("filter_by_language".into(), Arc::new(FilterByLanguageStage));
     registry.insert("filter_by_subscription_tier".into(), Arc::new(FilterBySubscriptionTierStage));
     registry.insert("filter_content_fatigue".into(), Arc::new(FilterContentFatigueStage));
+    registry.insert("enrich_semantic_why".into(), Arc::new(EnrichSemanticWhyStage));
     registry.insert("enrich_time_remaining".into(), Arc::new(EnrichTimeRemainingStage));
 
     // Ranking

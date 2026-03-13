@@ -13,4 +13,5 @@ pub mod filter_by_genre;
 pub mod filter_by_language;
 pub mod filter_by_subscription_tier;
 pub mod filter_content_fatigue;
+pub mod enrich_semantic_why;
 pub mod enrich_time_remaining;
