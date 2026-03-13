@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use crate::analytics::types::PerformanceStats;
 use crate::cache::{CacheManager, HotRegistry};
-use crate::config::PipelineConfig;
+use crate::config::{PipelineConfig, MlConfig};
 use crate::db::ItemFeatureService;
 use crate::ml::assets::loader::service::ModelLoader;
 use crate::ml::inference::features::service::FeatureStore;
@@ -57,6 +57,7 @@ pub struct ExecutionContext {
 
     // ── Pipeline config ─────────────────────────────────────────────────
     pub pipeline_config: Arc<PipelineConfig>,
+    pub ml_config: Arc<MlConfig>,
 }
 
 impl std::fmt::Debug for ExecutionContext {
@@ -98,6 +99,7 @@ impl ExecutionContext {
             analytics: None,
             experiment_overrides: HashMap::new(),
             pipeline_config: Arc::new(PipelineConfig::default()),
+            ml_config: Arc::new(MlConfig::default()),
         }
     }
 
@@ -162,6 +164,7 @@ impl ExecutionContext {
         .with_request_time(chrono::Utc::now())
         .with_hot_registry(Arc::new(HotRegistry::new()))
         .with_analytics(Arc::new(PerformanceStats::new()))
+        .with_ml_config(Arc::new(MlConfig::default()))
     }
 
     // ── Builder methods ─────────────────────────────────────────────────
@@ -220,6 +223,11 @@ impl ExecutionContext {
 
     pub fn with_pipeline_config(mut self, config: Arc<PipelineConfig>) -> Self {
         self.pipeline_config = config;
+        self
+    }
+
+    pub fn with_ml_config(mut self, config: Arc<MlConfig>) -> Self {
+        self.ml_config = config;
         self
     }
 
