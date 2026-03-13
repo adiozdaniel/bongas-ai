@@ -57,6 +57,24 @@ We eliminate client-side complex pre-warming logic. The engine automatically ant
 - **TTL:** 5 minutes (300s).
 - **Concurrency:** Uses `buffer_unordered` to maximize pre-warming speed without blocking the main request thread.
 
+## 💓 The Pulse: Background Orchestration
+
+While the request-handling layer is high-performance and reactive, the engine's long-term intelligence is maintained by **The Pulse**—a coordinated suite of background workers managed by the `WorkersManager`.
+
+### 1. Centralized Lifecycle Management
+
+All background workers respond to the global engine shutdown signal and run in dedicated tokio tasks to ensure zero impact on request latency.
+
+- **TribeOrchestrator**: Periodically clusters user profiles into behavioral "tribes" using K-Means clustering on embeddings. These tribes are cached in Redis for high-speed lookup during content recovery.
+- **RegionalPulseWorker**: Scrapes and vectorizes regional news and events. It populates Redis with "Semantic Pulses" that the ranking layer uses to boost content relevant to the user's location.
+- **FatigueSynchronizer**: Pluggable state-synchronizer that tracks item exposures across the cluster, ensuring that "Content Fatigue" logic is always based on the most recent interaction data.
+
+### 2. Synchronization Strategy
+
+Workers primarily communicate with the request path via **Redis**. This creates a clean separation of concerns:
+- **Write-Path (Workers):** Perform heavy computation or I/O-intensive scraping and write the refined intelligence to Redis.
+- **Read-Path (Pipeline):** Perform sub-millisecond lookups from Redis to apply intelligence to recommendations.
+
 ## 🎻 The Middleware Symphony
 
 Every request passes through a coordinated stack of global middlewares before reaching the Orchestrator. This ensures that the engine only processes valid, safe, and traceable traffic.
