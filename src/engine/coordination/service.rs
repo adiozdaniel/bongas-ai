@@ -173,7 +173,23 @@ impl BongasEngine {
         &self,
         ctx: crate::engine::execution::core::execution_manager::service::ScenarioExecutionContext,
     ) -> AppResult<(Vec<RecommendationItem>, ScenarioExecutionStats)> {
-        self.execution.manager.execute_scenario_with_stats_contextual(ctx).await
+        let profile_id = ctx.profile_id.clone();
+        let res = self.execution.manager.execute_scenario_with_stats_contextual(ctx).await?;
+        
+        // --- INTERNAL HOOK: Record Exposure ---
+        // If profile_id is present, track these items as "seen" for content fatigue
+        if let Some(ref pid) = profile_id {
+            if self.config.ml.fatigue_enabled && matches!(self.config.ml.fatigue_adaptor, crate::config::types::ml::ExposureSourceAdaptor::InternalHook) {
+                let item_ids: Vec<i32> = res.0.iter().map(|i| i.item_id).collect();
+                let pid_clone = pid.clone();
+                let fatigue_sync = self.intelligence.fatigue_sync.clone();
+                tokio::spawn(async move {
+                    fatigue_sync.record_exposures(&pid_clone, item_ids).await;
+                });
+            }
+        }
+
+        Ok(res)
     }
 
     /// Compatibility proxy: execute_scenario_with_stats
@@ -342,14 +358,18 @@ impl BongasEngine {
                 .map(|item| {
                     let engine = engine.clone();
                     let cp = context_params.clone();
+                    let pid = cp.get("profile_id").and_then(|v| v.as_str()).map(|s| s.to_string());
+                    let mr = cp.get("maturity_rating").and_then(|v| v.as_str()).map(|s| s.to_string());
+                    let dt = cp.get("device_type").and_then(|v| v.as_str()).map(|s| s.to_string());
+                    
                     async move {
                         let res = engine.execute_scenario_with_stats_contextual(
                             crate::engine::execution::core::execution_manager::service::ScenarioExecutionContext {
                                 scenario_slug: item.slug.clone(),
                                 user_id,
-                                profile_id: None,
-                                maturity_rating: None,
-                                device_type: None,
+                                profile_id: pid,
+                                maturity_rating: mr,
+                                device_type: dt,
                                 context_params: cp,
                                 limit: Some(20),
                                 request_id: None,

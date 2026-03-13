@@ -10,6 +10,7 @@ use crate::engine::execution::cache::staging_manager::service::StagingManager;
 use crate::engine::governance::strategy::resolver::service::StrategyResolver;
 use crate::engine::coordination::service::{RecommendationItem, ScenarioExecutionStats, ScenarioDefinition};
 use crate::cache::CacheManager;
+use crate::config::MlConfig;
 use crate::ml::assets::loader::service::ModelLoader;
 use crate::db::ItemFeatureService;
 use crate::ml::inference::features::service::FeatureStore;
@@ -41,6 +42,7 @@ pub struct ExecutionManager {
     pub(crate) model_loader: Arc<ModelLoader>,
     pub(crate) item_feature_service: Arc<ItemFeatureService>,
     pub(crate) feature_store: Arc<FeatureStore>,
+    pub(crate) ml_config: Arc<MlConfig>,
     pub(crate) performance_stats: Arc<PerformanceStats>,
     pub(crate) experiment_coordinator: Arc<ExperimentCoordinator>,
     pub(crate) metrics_collector: Arc<MetricsCollector>,
@@ -65,6 +67,7 @@ impl ExecutionManager {
         model_loader: Arc<ModelLoader>,
         item_feature_service: Arc<ItemFeatureService>,
         feature_store: Arc<FeatureStore>,
+        ml_config: Arc<MlConfig>,
         performance_stats: Arc<PerformanceStats>,
         experiment_coordinator: Arc<ExperimentCoordinator>,
         metrics_collector: Arc<MetricsCollector>,
@@ -81,6 +84,7 @@ impl ExecutionManager {
             model_loader,
             item_feature_service,
             feature_store,
+            ml_config,
             performance_stats,
             experiment_coordinator,
             metrics_collector,
@@ -130,6 +134,7 @@ impl ExecutionManager {
         )
         .with_hot_registry(self.hot_registry.clone())
         .with_analytics(self.performance_stats.clone())
+        .with_ml_config(self.ml_config.clone())
         .with_experiment_overrides(experiment_overrides)
         .with_profile_id(ctx.profile_id.clone().unwrap_or_default())
         .with_maturity_rating(ctx.maturity_rating.clone().unwrap_or_else(|| "GE".to_string()))

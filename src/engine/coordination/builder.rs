@@ -44,6 +44,7 @@ use crate::engine::intelligence::ai::hive_mind::service::HiveMindConnector;
 use crate::engine::intelligence::workers::WorkersManager;
 use crate::engine::intelligence::workers::tribe_orchestrator::service::TribeOrchestrator;
 use crate::engine::intelligence::workers::regional_pulse::service::RegionalPulseWorker;
+use crate::engine::intelligence::workers::fatigue_sync::service::FatigueSynchronizer;
 use crate::engine::governance::orchestration::manager::service::PagesManager;
 use crate::engine::governance::strategy::resolver::service::StrategyResolver;
 use crate::engine::governance::factory::scenario_factory::service::ScenarioFactory;
@@ -214,6 +215,7 @@ impl DiscoverySymphony {
             model_loader.clone(),
             item_feature_service.clone(),
             feature_store.clone(),
+            Arc::new(self.config.ml.clone()),
             perf_stats.clone(),
             experiment_coordinator,
             Arc::new(crate::middlewares::MetricsCollector::default()),
@@ -260,9 +262,16 @@ impl DiscoverySymphony {
             std::time::Duration::from_secs(3600), // Hourly scrape
         ));
 
+        let fatigue_sync = Arc::new(FatigueSynchronizer::new(
+            self.config.ml.fatigue_adaptor.clone(),
+            cache_manager.clone(),
+            Some(clickhouse_client.clone()),
+        )?);
+
         let workers = Arc::new(WorkersManager::new()
             .with_tribe_orchestrator(tribe_orchestrator)
-            .with_regional_pulse(regional_pulse_worker));
+            .with_regional_pulse(regional_pulse_worker)
+            .with_fatigue_sync(fatigue_sync.clone()));
 
         let intelligence = Arc::new(IntelligencePillar::new(
             Arc::new(SuggestionsManager::new()),
@@ -270,6 +279,7 @@ impl DiscoverySymphony {
             monitoring,
             staleness_engine,
             workers,
+            fatigue_sync,
         ));
 
         // ─── 6. GOVERNANCE (PAGES & DISCOVERY) ────────────────────────────────
