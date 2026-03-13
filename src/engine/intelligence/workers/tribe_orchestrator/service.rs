@@ -141,13 +141,11 @@ impl TribeOrchestrator {
 
         for _ in 0..max_iter {
             // Assignment step
-            for i in 0..n_samples {
-                let sample = data.row(i);
+            for (i, sample) in data.rows().into_iter().enumerate() {
                 let mut min_dist = f32::MAX;
                 let mut best_cluster = 0;
 
-                for j in 0..k {
-                    let centroid = centroids.row(j);
+                for (j, centroid) in centroids.rows().into_iter().enumerate() {
                     let dist = (&sample - &centroid).mapv(|x| x * x).sum();
                     if dist < min_dist {
                         min_dist = dist;
@@ -161,15 +159,14 @@ impl TribeOrchestrator {
             let mut new_centroids = Array2::zeros((k, n_features));
             let mut counts = vec![0; k];
 
-            for i in 0..n_samples {
-                let cluster = assignments[i];
+            for (i, &cluster) in assignments.iter().enumerate() {
                 new_centroids.row_mut(cluster).zip_mut_with(&data.row(i), |c, s| *c += *s);
                 counts[cluster] += 1;
             }
 
-            for j in 0..k {
-                if counts[j] > 0 {
-                    new_centroids.row_mut(j).mapv_inplace(|x| x / counts[j] as f32);
+            for (j, &count) in counts.iter().enumerate() {
+                if count > 0 {
+                    new_centroids.row_mut(j).mapv_inplace(|x| x / count as f32);
                 }
             }
 
