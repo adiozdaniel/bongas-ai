@@ -35,16 +35,21 @@ pub struct IngestionManager {
     _worker_handle: Option<JoinHandle<()>>,
 }
 
+/// Components required to bootstrap the Ingestion Manager.
+pub struct IngestionComponents {
+    pub pool: Arc<ResilientPool>,
+    pub intelligence: Arc<IntelligencePillar>,
+    pub cache_manager: Arc<CacheManager>,
+    pub breaker_registry: Arc<CircuitBreakerRegistry>,
+    pub resilience_metrics: Arc<ResilienceMetricsCollector>,
+    pub staleness_engine: Arc<StalenessEngine>,
+    pub pages_manager: Arc<PagesManager>,
+    pub kafka_config: KafkaConfig,
+}
+
 impl IngestionManager {
     pub async fn bootstrap(
-        pool: Arc<ResilientPool>,
-        intelligence: Arc<IntelligencePillar>,
-        cache_manager: Arc<CacheManager>,
-        breaker_registry: Arc<CircuitBreakerRegistry>,
-        resilience_metrics: Arc<ResilienceMetricsCollector>,
-        staleness_engine: Arc<StalenessEngine>,
-        pages_manager: Arc<PagesManager>,
-        kafka_config: KafkaConfig,
+        components: IngestionComponents,
     ) -> anyhow::Result<Self> {
         let (tx, rx) = mpsc::channel(ACTIVITY_CHANNEL_BUFFER);
         
@@ -54,31 +59,31 @@ impl IngestionManager {
         ];
 
         // Add Kafka if configured
-        if kafka_config.enabled {
-            let kafka_source_config = crate::ingestion::recovery::kafka::service::KafkaSourceConfig::from(kafka_config);
-            let kafka = KafkaSource::new(kafka_source_config, breaker_registry.clone());
+        if components.kafka_config.enabled {
+            let kafka_source_config = crate::ingestion::recovery::kafka::service::KafkaSourceConfig::from(components.kafka_config);
+            let kafka = KafkaSource::new(kafka_source_config, components.breaker_registry.clone());
             sources.push(Arc::new(kafka));
         }
 
         // Add ClickHouse Source if configured
-        if let Some(ch) = intelligence.clickhouse_client() {
+        if let Some(ch) = components.intelligence.clickhouse_client() {
             let ch_config = crate::ingestion::recovery::clickhouse::service::ClickHouseSourceConfig {
                 poll_interval_secs: 60,
                 batch_size: 1000,
             };
-            sources.push(Arc::new(ClickHouseSource::new(ch_config, ch, breaker_registry.clone())));
+            sources.push(Arc::new(ClickHouseSource::new(ch_config, ch, components.breaker_registry.clone())));
         }
 
         let metrics = Arc::new(IngestionMetrics::new(sources.clone()));
 
         let processor = Arc::new(ActivityProcessor::new(
-            Arc::new(crate::db::InteractionRepository::new(pool.clone(), resilience_metrics.clone())),
-            pool.clone(),
-            cache_manager,
-            intelligence,
-            staleness_engine,
-            pages_manager,
-            resilience_metrics.clone(),
+            Arc::new(crate::db::InteractionRepository::new(components.pool.clone(), components.resilience_metrics.clone())),
+            components.pool.clone(),
+            components.cache_manager,
+            components.intelligence,
+            components.staleness_engine,
+            components.pages_manager,
+            components.resilience_metrics.clone(),
         ));
 
         let worker_rx = rx;
