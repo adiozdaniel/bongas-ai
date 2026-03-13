@@ -7,12 +7,14 @@ use crate::engine::coordination::service::BongasEngine;
 use crate::engine::intelligence::workers::tribe_orchestrator::service::TribeOrchestrator;
 use crate::engine::intelligence::workers::regional_pulse::service::RegionalPulseWorker;
 use crate::engine::intelligence::workers::fatigue_sync::service::FatigueSynchronizer;
+use crate::engine::intelligence::workers::reasoning::service::ReasoningWorker;
 
 /// 💓 Workers: Background maintenance and task orchestration.
 pub struct WorkersManager {
     tribe_orchestrator: Option<Arc<TribeOrchestrator>>,
     regional_pulse: Option<Arc<RegionalPulseWorker>>,
     fatigue_sync: Option<Arc<FatigueSynchronizer>>,
+    reasoning: Option<Arc<ReasoningWorker>>,
 }
 
 impl Default for WorkersManager {
@@ -27,6 +29,7 @@ impl WorkersManager {
             tribe_orchestrator: None,
             regional_pulse: None,
             fatigue_sync: None,
+            reasoning: None,
         }
     }
 
@@ -42,6 +45,11 @@ impl WorkersManager {
 
     pub fn with_fatigue_sync(mut self, sync: Arc<FatigueSynchronizer>) -> Self {
         self.fatigue_sync = Some(sync);
+        self
+    }
+
+    pub fn with_reasoning(mut self, worker: Arc<ReasoningWorker>) -> Self {
+        self.reasoning = Some(worker);
         self
     }
 
@@ -73,6 +81,15 @@ impl WorkersManager {
             let shutdown_rx = shutdown_tx.subscribe();
             tokio::spawn(async move {
                 sync.start(shutdown_rx).await;
+            });
+        }
+
+        // 4. Start Reasoning Worker
+        if let Some(ref worker) = self.reasoning {
+            let worker = worker.clone();
+            let shutdown_rx = shutdown_tx.subscribe();
+            tokio::spawn(async move {
+                worker.start(shutdown_rx).await;
             });
         }
     }

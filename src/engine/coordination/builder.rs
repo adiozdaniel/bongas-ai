@@ -45,6 +45,7 @@ use crate::engine::intelligence::workers::WorkersManager;
 use crate::engine::intelligence::workers::tribe_orchestrator::service::TribeOrchestrator;
 use crate::engine::intelligence::workers::regional_pulse::service::RegionalPulseWorker;
 use crate::engine::intelligence::workers::fatigue_sync::service::FatigueSynchronizer;
+use crate::engine::intelligence::workers::reasoning::service::ReasoningWorker;
 use crate::engine::governance::orchestration::manager::service::PagesManager;
 use crate::engine::governance::strategy::resolver::service::StrategyResolver;
 use crate::engine::governance::factory::scenario_factory::service::ScenarioFactory;
@@ -268,10 +269,19 @@ impl DiscoverySymphony {
             Some(clickhouse_client.clone()),
         )?);
 
+        let reasoning_worker = Arc::new(ReasoningWorker::new(
+            hive_mind.clone(),
+            cache_manager.clone(),
+            item_feature_service.clone(),
+            Some(clickhouse_client.clone()),
+            std::time::Duration::from_secs(3600), // Hourly cycle
+        ));
+
         let workers = Arc::new(WorkersManager::new()
             .with_tribe_orchestrator(tribe_orchestrator)
             .with_regional_pulse(regional_pulse_worker)
-            .with_fatigue_sync(fatigue_sync.clone()));
+            .with_fatigue_sync(fatigue_sync.clone())
+            .with_reasoning(reasoning_worker));
 
         let intelligence = Arc::new(IntelligencePillar::new(
             Arc::new(SuggestionsManager::new()),

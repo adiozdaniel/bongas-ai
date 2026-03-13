@@ -99,6 +99,35 @@ impl HiveMindConnector {
         })
     }
 
+    /// Generate a human-readable reason for a recommendation based on profile and item features.
+    pub async fn generate_reasoning(
+        &self,
+        profile_id: &str,
+        item_id: i32,
+        genre_affinity: &serde_json::Value,
+        item_tags: &serde_json::Value,
+    ) -> Result<String> {
+        debug!(profile_id, item_id, "Generating reasoning via Hive Mind");
+
+        // Mock implementation: In production, this would call an LLM with the feature set.
+        // We simulate this by matching tags to affinities.
+        
+        let affinities = genre_affinity.as_object();
+        let tags = item_tags.as_array();
+
+        if let (Some(aff), Some(ts)) = (affinities, tags) {
+            for tag in ts {
+                if let Some(tag_str) = tag.as_str() {
+                    if aff.contains_key(tag_str) {
+                        return Ok(format!("Because you enjoy {} content", tag_str));
+                    }
+                }
+            }
+        }
+
+        Ok("Recommended based on your viewing patterns".to_string())
+    }
+
     pub async fn start(self: Arc<Self>) {
         if !self.config.enabled {
             info!("Hive Mind Connector disabled");
