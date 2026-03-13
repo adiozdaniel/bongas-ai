@@ -13,6 +13,7 @@ All workers are orchestrated by a centralized manager that handles their lifecyc
 | **WorkersManager** | The heart of background orchestration. Starts and monitors all registered workers. | `manager.rs` |
 | **TribeOrchestrator** | Periodically clusters user profiles into behavioral tribes based on embeddings. | `tribe_orchestrator/` |
 | **RegionalPulseWorker** | Scrapes regional news and events for semantic ranking boosts. | `regional_pulse/` |
+| **FatigueSynchronizer** | Pluggable state-synchronizer for item exposure tracking. | `fatigue_sync/` |
 
 ---
 

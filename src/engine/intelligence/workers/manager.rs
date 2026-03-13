@@ -6,11 +6,13 @@ use tracing::{info, warn};
 use crate::engine::coordination::service::BongasEngine;
 use crate::engine::intelligence::workers::tribe_orchestrator::service::TribeOrchestrator;
 use crate::engine::intelligence::workers::regional_pulse::service::RegionalPulseWorker;
+use crate::engine::intelligence::workers::fatigue_sync::service::FatigueSynchronizer;
 
 /// 💓 Workers: Background maintenance and task orchestration.
 pub struct WorkersManager {
     tribe_orchestrator: Option<Arc<TribeOrchestrator>>,
     regional_pulse: Option<Arc<RegionalPulseWorker>>,
+    fatigue_sync: Option<Arc<FatigueSynchronizer>>,
 }
 
 impl Default for WorkersManager {
@@ -24,6 +26,7 @@ impl WorkersManager {
         Self {
             tribe_orchestrator: None,
             regional_pulse: None,
+            fatigue_sync: None,
         }
     }
 
@@ -34,6 +37,11 @@ impl WorkersManager {
 
     pub fn with_regional_pulse(mut self, worker: Arc<RegionalPulseWorker>) -> Self {
         self.regional_pulse = Some(worker);
+        self
+    }
+
+    pub fn with_fatigue_sync(mut self, sync: Arc<FatigueSynchronizer>) -> Self {
+        self.fatigue_sync = Some(sync);
         self
     }
 
@@ -56,6 +64,15 @@ impl WorkersManager {
             let shutdown_rx = shutdown_tx.subscribe();
             tokio::spawn(async move {
                 worker.start(shutdown_rx).await;
+            });
+        }
+
+        // 3. Start Fatigue Synchronizer
+        if let Some(ref sync) = self.fatigue_sync {
+            let sync = sync.clone();
+            let shutdown_rx = shutdown_tx.subscribe();
+            tokio::spawn(async move {
+                sync.start(shutdown_rx).await;
             });
         }
     }

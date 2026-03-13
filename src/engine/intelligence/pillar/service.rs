@@ -6,6 +6,7 @@ use crate::engine::intelligence::ai::hive_mind::service::HiveMindConnector;
 use crate::engine::intelligence::monitoring::analytics_sidecar::service::AnalyticsSidecar;
 use crate::engine::intelligence::monitoring::staleness_engine::service::StalenessEngine;
 use crate::engine::intelligence::workers::WorkersManager;
+use crate::engine::intelligence::workers::fatigue_sync::service::FatigueSynchronizer;
 use crate::engine::intelligence::ai::simulator::service::SafetySimulator;
 use crate::engine::intelligence::identity::service::IdentityStitcher;
 
@@ -17,6 +18,7 @@ pub struct IntelligencePillar {
     pub monitoring: Arc<AnalyticsSidecar>,
     pub staleness: Arc<StalenessEngine>,
     pub workers: Arc<WorkersManager>,
+    pub fatigue_sync: Arc<FatigueSynchronizer>,
     pub simulator: Arc<SafetySimulator>,
     pub identity: Arc<IdentityStitcher>,
 }
@@ -28,6 +30,7 @@ impl IntelligencePillar {
         monitoring: Arc<AnalyticsSidecar>,
         staleness: Arc<StalenessEngine>,
         workers: Arc<WorkersManager>,
+        fatigue_sync: Arc<FatigueSynchronizer>,
     ) -> Self {
         Self {
             suggestions,
@@ -35,6 +38,7 @@ impl IntelligencePillar {
             monitoring,
             staleness,
             workers,
+            fatigue_sync,
             simulator: Arc::new(SafetySimulator::new()),
             identity: Arc::new(IdentityStitcher::new()),
         }
