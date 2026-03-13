@@ -1,11 +1,15 @@
 //! Engine pulse workers and background maintenance tasks.
 
 use std::sync::Arc;
+use tokio::sync::broadcast;
 use tracing::{info, warn};
 use crate::engine::coordination::service::BongasEngine;
+use crate::engine::intelligence::workers::tribe_orchestrator::service::TribeOrchestrator;
 
 /// 💓 Workers: Background maintenance and task orchestration.
-pub struct WorkersManager;
+pub struct WorkersManager {
+    tribe_orchestrator: Option<Arc<TribeOrchestrator>>,
+}
 
 impl Default for WorkersManager {
     fn default() -> Self {
@@ -15,14 +19,35 @@ impl Default for WorkersManager {
 
 impl WorkersManager {
     pub fn new() -> Self {
-        Self
+        Self {
+            tribe_orchestrator: None,
+        }
+    }
+
+    pub fn with_tribe_orchestrator(mut self, orchestrator: Arc<TribeOrchestrator>) -> Self {
+        self.tribe_orchestrator = Some(orchestrator);
+        self
+    }
+
+    /// Start all managed background workers.
+    pub async fn start(&self, shutdown_tx: broadcast::Sender<()>) {
+        info!("💓 Starting background workers...");
+
+        // 1. Start Tribe Orchestrator
+        if let Some(ref orchestrator) = self.tribe_orchestrator {
+            let orchestrator = orchestrator.clone();
+            let shutdown_rx = shutdown_tx.subscribe();
+            tokio::spawn(async move {
+                orchestrator.start(shutdown_rx).await;
+            });
+        }
     }
 }
 
 impl BongasEngine {
     /// Identify low-performing scenarios based on ClickThrough Rate (CTR) from ClickHouse.
     pub async fn get_low_performing_scenarios(&self) -> Vec<String> {
-        if let Some(ref ch) = self.execution.manager.clickhouse {
+        if let Some(ref ch) = self.intelligence.clickhouse_client() {
             info!("Querying ClickHouse for scenario performance...");
             
             let query = r#"
@@ -53,10 +78,10 @@ impl BongasEngine {
     /// Start cache warming background task
     pub fn start_cache_warming(self: Arc<Self>, warm_scenarios: Vec<String>, interval: std::time::Duration) {
         let scenarios_clone = warm_scenarios.clone();
-        let cache_manager = self.execution.manager.cache_manager.clone();
+        let cache_manager = self.cache.clone();
         let shutdown_rx = self.shutdown_tx.subscribe();
         
-        let cache_warmer = Arc::new(crate::cache::CacheWarmer::new(
+        let cache_warmer = Arc::new(crate::cache::warming::service::CacheWarmer::new(
             cache_manager,
             scenarios_clone,
             interval,

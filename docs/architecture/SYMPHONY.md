@@ -41,12 +41,20 @@ Every request is protected and tracked by a "Shield" of distributed tracing, opt
 - **Netflix-Scale Batching**: Telemetry is buffered and exported in configurable batches (`batch_size`, `max_queue_size`) to minimize the impact on the engine's performance.
 - **Standard Protocol Support**: Supports both gRPC and HTTP OTLP protocols with custom header injection.
 
+### 4. Intelligence & Background Coordination (The Pulse)
 
-### 3. Server-Side Look-Ahead (Ghost Execution)
+The engine's "Intelligence" is not just reactive; it is proactive. Background workers constantly refine the data used by the discovery pipeline.
+
+- **WorkersManager**: Centralized orchestration for all background maintenance tasks and intelligence workers.
+- **Behavioral Tribes (TribeOrchestrator)**: Periodically clusters user profiles into behavioral "tribes" using K-Means clustering on embeddings. This enables high-relevance discovery for cold-start users.
+- **Hyper-Local Semantic Pulse (RegionalPulseWorker)**: Scrapes regional news and events, classifying them via the HiveMind LLM to provide real-time semantic boosts for content relevant to the user's current location.
+- **Predictive Warming**: Anticipates high-traffic scenarios and pre-warms the cache tiers to ensure zero-latency delivery during peak loads.
+
+### 5. Server-Side Look-Ahead (Ghost Execution)
 
 We eliminate client-side complex pre-warming logic. The engine automatically anticipates the user's next scroll based on `prewarm_lookahead` configuration and executes the next batch of rows in the background, caching them in Redis for zero-latency fetch.
 
-### 4. Zero-Touch Contextual
+### 6. Zero-Touch Contextual
 
 We recognize devices and users passively.
 

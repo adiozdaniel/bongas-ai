@@ -136,11 +136,11 @@ impl BongasEngine {
     pub async fn start(&self) {
         info!("🎼 Starting Bongas-AI background orchestration...");
 
-        // Start Tribe Orchestrator
-        let tribe_orchestrator = self.intelligence.tribe_orchestrator.clone();
-        let shutdown_rx = self.shutdown_tx.subscribe();
+        // Start all Intelligence Workers
+        let shutdown_tx = self.shutdown_tx.clone();
+        let workers = self.intelligence.workers.clone();
         tokio::spawn(async move {
-            tribe_orchestrator.start(shutdown_rx).await;
+            workers.start(shutdown_tx).await;
         });
     }
 

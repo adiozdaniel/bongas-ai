@@ -41,7 +41,7 @@ use crate::engine::intelligence::monitoring::analytics_sidecar::service::Analyti
 use crate::engine::execution::cache::staging_manager::service::StagingManager;
 use crate::engine::intelligence::ai::suggestions_manager::service::SuggestionsManager;
 use crate::engine::intelligence::ai::hive_mind::service::HiveMindConnector;
-use crate::engine::intelligence::workers::workers_manager::service::WorkersManager;
+use crate::engine::intelligence::workers::WorkersManager;
 use crate::engine::intelligence::workers::tribe_orchestrator::service::TribeOrchestrator;
 use crate::engine::governance::orchestration::manager::service::PagesManager;
 use crate::engine::governance::strategy::resolver::service::StrategyResolver;
@@ -251,13 +251,14 @@ impl DiscoverySymphony {
             self.config.ml.tribe_num_clusters,
         ));
 
+        let workers = Arc::new(WorkersManager::new().with_tribe_orchestrator(tribe_orchestrator));
+
         let intelligence = Arc::new(IntelligencePillar::new(
             Arc::new(SuggestionsManager::new()),
             Arc::new(HiveMindConnector::new(self.config.hive_mind.clone(), resilient_pool.clone(), shutdown_tx.subscribe())),
             monitoring,
             staleness_engine,
-            Arc::new(WorkersManager::new()),
-            tribe_orchestrator,
+            workers,
         ));
 
         // ─── 6. GOVERNANCE (PAGES & DISCOVERY) ────────────────────────────────
