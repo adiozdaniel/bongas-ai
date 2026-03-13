@@ -213,6 +213,8 @@ impl ConfigLoader {
             analytics_enabled: parse_bool("ml.analytics_enabled", true)?,
             analytics_sample_rate: parse_f64("ml.analytics_sample_rate", 1.0)?,
             central_server_url: parse_val("ml.central_server_url", "https://ml.bongas-ai.com"),
+            tribe_num_clusters: parse_u32("ml.tribe_num_clusters", 100)? as usize,
+            tribe_clustering_interval: Duration::from_secs(parse_u64("ml.tribe_clustering_interval_secs", 14400)?),
         };
 
         // Pipeline

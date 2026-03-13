@@ -1,44 +1,45 @@
 //! Phase 11: Ingestion Manager
 //!
-//! Orchestrates the activity pipeline, connecting various sources (Kafka, API) 
-//! to the activity processor and monitoring metrics.
+//! Orchestrates the activity pipeline, connecting various sources (Kafka, API, ClickHouse)
+//! to the centralized ActivityProcessor.
 
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
-use crate::circuit_breaker::CircuitBreakerRegistry;
-use crate::db::ResilientPool;
-use crate::engine::intelligence::monitoring::staleness_engine::service::StalenessEngine;
-use crate::engine::intelligence::pillar::service::IntelligencePillar;
-use crate::resilience::ResilienceMetricsCollector;
-
-use crate::ingestion::{ActivitySource, UserActivity};
-use crate::ingestion::ActivityProcessor;
-use crate::ingestion::{IngestionMetrics, IngestionHealth};
+use crate::ingestion::types::{UserActivity, ActivitySource};
 use crate::ingestion::recovery::kafka::service::KafkaSource;
-use crate::ingestion::recovery::api::service::ApiSource;
 use crate::ingestion::recovery::clickhouse::service::ClickHouseSource;
+use crate::ingestion::processing::processor::service::ActivityProcessor;
+use crate::ingestion::broadcast::metrics::service::IngestionMetrics;
+use crate::ingestion::IngestionHealth;
+use crate::ingestion::recovery::api::service::ApiSource;
+use crate::db::ResilientPool;
+use crate::engine::intelligence::pillar::service::IntelligencePillar;
+use crate::circuit_breaker::CircuitBreakerRegistry;
+use crate::resilience::ResilienceMetricsCollector;
+use crate::engine::intelligence::monitoring::staleness_engine::service::StalenessEngine;
 use crate::engine::governance::orchestration::manager::service::PagesManager;
-use crate::config::types::KafkaConfig;
+use crate::config::KafkaConfig;
+use crate::cache::CacheManager;
 
-/// Channel buffer size for the activity pipeline.
-const ACTIVITY_CHANNEL_BUFFER: usize = 10_000;
+const ACTIVITY_CHANNEL_BUFFER: usize = 10000;
 
-/// Manages all activity sources and the processor.
+/// The central entry point for all activity ingestion in Bongas-AI.
 pub struct IngestionManager {
     _processor: Arc<ActivityProcessor>,
-    sources: Vec<Arc<dyn ActivitySource>>,
+    _sources: Vec<Arc<dyn ActivitySource>>,
     api_source: Arc<ApiSource>,
     _metrics: Arc<IngestionMetrics>,
     _sender: mpsc::Sender<UserActivity>,
-    worker_handle: Option<JoinHandle<()>>,
+    _worker_handle: Option<JoinHandle<()>>,
 }
 
 impl IngestionManager {
     pub async fn bootstrap(
         pool: Arc<ResilientPool>,
         intelligence: Arc<IntelligencePillar>,
+        cache_manager: Arc<CacheManager>,
         breaker_registry: Arc<CircuitBreakerRegistry>,
         resilience_metrics: Arc<ResilienceMetricsCollector>,
         staleness_engine: Arc<StalenessEngine>,
@@ -60,7 +61,7 @@ impl IngestionManager {
         }
 
         // Add ClickHouse Source if configured
-        if let Some(ch) = intelligence.monitoring.clickhouse_client() {
+        if let Some(ch) = intelligence.clickhouse_client() {
             let ch_config = crate::ingestion::recovery::clickhouse::service::ClickHouseSourceConfig {
                 poll_interval_secs: 60,
                 batch_size: 1000,
@@ -73,11 +74,11 @@ impl IngestionManager {
         let processor = Arc::new(ActivityProcessor::new(
             Arc::new(crate::db::InteractionRepository::new(pool.clone(), resilience_metrics.clone())),
             pool.clone(),
+            cache_manager,
             intelligence,
             staleness_engine,
             pages_manager,
             resilience_metrics.clone(),
-            50, // Max concurrent processing tasks
         ));
 
         let worker_rx = rx;
@@ -88,11 +89,11 @@ impl IngestionManager {
 
         Ok(Self {
             _processor: processor,
-            sources,
+            _sources: sources,
             api_source,
             _metrics: metrics,
             _sender: tx,
-            worker_handle: Some(handle),
+            _worker_handle: Some(handle),
         })
     }
 
@@ -100,24 +101,25 @@ impl IngestionManager {
         self.api_source.clone()
     }
 
+    /// Get aggregated ingestion health.
     pub async fn health(&self) -> IngestionHealth {
-        let mut source_healths = Vec::new();
-        for source in &self.sources {
-            source_healths.push(source.health().await);
-        }
-
-        IngestionHealth {
-            healthy: self.worker_handle.as_ref().map(|h| !h.is_finished()).unwrap_or(false),
-            total_sources: self.sources.len(),
-            active_sources: self.sources.len(),
-            degraded_sources: source_healths.iter().filter(|s| !s.healthy).map(|s| s.source_name.clone()).collect(),
-            total_messages_ingested: source_healths.iter().map(|s| s.messages_ingested).sum(),
-            total_errors: source_healths.iter().map(|s| s.errors).sum(),
-            sources: source_healths,
-        }
+        self._metrics.health().await
     }
 
-    pub async fn broadcast_recommendations(&self, _user_id: i32, _profile_id: Option<String>, _scenario: String, _items: Vec<i32>) {
-        // Implementation for ecosystem synergy (Phase 14)
+    /// Broadcast a recommendation event to the ingestion pipeline (internal sink).
+    pub async fn broadcast_recommendations(&self, user_id: i32, profile_id: Option<String>, scenario: String, item_ids: Vec<i32>) {
+        for id in item_ids {
+            let activity = UserActivity::Impression {
+                user_id,
+                profile_id: profile_id.clone(),
+                item_id: id,
+                visitor_id: None,
+                device_hash: None,
+                device_type: None,
+                scenario_slug: Some(scenario.clone()),
+                timestamp: chrono::Utc::now(),
+            };
+            let _ = self._sender.send(activity).await;
+        }
     }
 }

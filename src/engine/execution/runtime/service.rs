@@ -47,6 +47,9 @@ impl BongasRuntime {
 
     /// Run the application and start the HTTP server.
     pub async fn run(self) -> Result<()> {
+        // Start background engine tasks
+        self.engine.start().await;
+
         let addr = format!("{}:{}", self.config.server.host, self.config.server.port);
         let listener = TcpListener::bind(&addr).await
             .context(format!("Failed to bind to {}", addr))?;

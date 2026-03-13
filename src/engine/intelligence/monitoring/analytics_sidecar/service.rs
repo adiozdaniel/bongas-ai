@@ -19,6 +19,7 @@ use crate::db::ResilientPool;
 pub struct UserEvent {
     pub user_id: i32,
     pub profile_id: Option<String>,
+    pub tribe_id: Option<i32>,
     pub request_id: String,
     pub item_id: i32,
     pub interaction_type: String,
@@ -51,7 +52,7 @@ impl AnalyticsSidecar {
             engine: std::sync::Mutex::new(None),
             clickhouse,
             pool,
-            check_interval: Duration::from_secs(3600), // Run hourly
+            check_interval: Duration::from_secs(3600), // Hourly audit
             shutdown_rx,
             event_buffer: TokioMutex::new(Vec::with_capacity(1000)),
         }
@@ -92,7 +93,7 @@ impl AnalyticsSidecar {
         Ok(())
     }
 
-    /// Accessor for the ClickHouse client.
+    /// Provide public access to the ClickHouse client.
     pub fn clickhouse_client(&self) -> Option<ClickHouseClient> {
         Some(self.clickhouse.clone())
     }

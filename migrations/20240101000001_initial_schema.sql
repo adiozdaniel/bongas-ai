@@ -102,10 +102,13 @@ CREATE TABLE IF NOT EXISTS profile_features (
     watch_patterns JSONB,
     preferred_content_type VARCHAR(50),
     embedding FLOAT4[], -- pgvector VECTOR(128) if enabled
+    tribe_id INTEGER, -- Behavioral Tribes Discovery
     features_updated_at TIMESTAMP DEFAULT NOW(),
     last_interaction_at TIMESTAMP,
     created_at TIMESTAMP DEFAULT NOW()
 );
+
+CREATE INDEX IF NOT EXISTS idx_profile_features_tribe ON profile_features(tribe_id);
 
 -- ============================================================================
 -- 5a. visitor_features (Anonymous Tracking)

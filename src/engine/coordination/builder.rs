@@ -1,7 +1,9 @@
 use std::sync::Arc;
-use tokio::sync::broadcast;
-use anyhow::{Result, Context};
+use tokio::sync::{broadcast, RwLock};
+use anyhow::Result;
 use tracing::info;
+use std::collections::HashMap;
+use arc_swap::ArcSwap;
 
 use crate::AppConfig;
 use crate::db::{ResilientPool, ScenarioRepository};
@@ -40,6 +42,7 @@ use crate::engine::execution::cache::staging_manager::service::StagingManager;
 use crate::engine::intelligence::ai::suggestions_manager::service::SuggestionsManager;
 use crate::engine::intelligence::ai::hive_mind::service::HiveMindConnector;
 use crate::engine::intelligence::workers::workers_manager::service::WorkersManager;
+use crate::engine::intelligence::workers::tribe_orchestrator::service::TribeOrchestrator;
 use crate::engine::governance::orchestration::manager::service::PagesManager;
 use crate::engine::governance::strategy::resolver::service::StrategyResolver;
 use crate::engine::governance::factory::scenario_factory::service::ScenarioFactory;
@@ -49,11 +52,10 @@ use crate::ml::inference::features::service::FeatureStore;
 use crate::experiments::coordinator::service::ExperimentCoordinator;
 use crate::resilience::ResilienceMetricsCollector;
 use crate::resilience::registry::MetricsRegistry;
+use crate::resilience::ResilienceMetricsConfig;
 use crate::circuit_breaker::CircuitBreakerRegistry;
-use crate::analytics::types::PerformanceStats;
-use crate::middlewares::MetricsCollector;
 
-/// Orchestrates the assembly of the Bongas-AI Engine.
+/// 🎼 Discovery Symphony: The Grand Unified Orchestrator for Bongas-AI.
 pub struct DiscoverySymphony {
     config: Arc<AppConfig>,
 }
@@ -63,45 +65,53 @@ impl DiscoverySymphony {
         Self { config }
     }
 
-    /// Assemble the complete engine with all pillars and shared infrastructure.
     pub async fn assemble(&self) -> Result<Arc<BongasEngine>> {
-        info!("🎼 Assembling Symphony 2.0 components...");
+        info!("🎼 Assembling the Bongas-AI Symphony 2.0...");
 
-        // ─── 1. CORE INFRASTRUCTURE ─────────────────────────────────────────
         let (shutdown_tx, _) = broadcast::channel(1);
-        let metrics_registry = Arc::new(MetricsRegistry::new(crate::resilience::ResilienceMetricsConfig::default()));
-        let resilience_metrics = Arc::new(ResilienceMetricsCollector::new(metrics_registry.clone()));
-        let circuit_breaker_registry = Arc::new(CircuitBreakerRegistry::with_observer(resilience_metrics.clone()));
-        let perf_stats = Arc::new(PerformanceStats::new());
+        let circuit_breaker_registry = Arc::new(CircuitBreakerRegistry::new());
+        let resilience_metrics_config = ResilienceMetricsConfig::default();
+        let resilience_metrics = Arc::new(ResilienceMetricsCollector::new(Arc::new(MetricsRegistry::new(resilience_metrics_config))));
 
-        // ─── 2. DATA MESH ────────────────────────────────────────────────────
-        let db_url = self.config.database.url.as_deref()
-            .ok_or_else(|| anyhow::anyhow!("DATABASE_URL not configured"))?;
-        
-        let db_config = ResilientPoolConfig::new(db_url)
-            .with_max_connections(self.config.database.max_connections)
-            .with_bulkhead_size(self.config.database.max_connections as usize);
+        // ─── 1. CORE DATABASE PILLAR ─────────────────────────────────────────
+        let pool_config = ResilientPoolConfig {
+            url: self.config.database.url.clone().unwrap_or_default(),
+            max_connections: self.config.database.max_connections,
+            min_connections: self.config.database.min_connections,
+            acquire_timeout: std::time::Duration::from_secs(self.config.database.connection_timeout),
+            idle_timeout: std::time::Duration::from_secs(self.config.database.idle_timeout),
+            max_lifetime: std::time::Duration::from_secs(self.config.database.max_lifetime),
+            query_timeout: std::time::Duration::from_secs(30),
+            max_concurrent_queries: 100, 
+            failure_rate_threshold: 0.5,
+            slow_call_rate_threshold: 0.5,
+            slow_call_duration: std::time::Duration::from_secs(5),
+        };
 
-        let resilient_pool = Arc::new(ResilientPool::new(
-            db_config,
-            circuit_breaker_registry.clone(),
-        ).await.map_err(|e| anyhow::anyhow!("Pool config error: {}", e))?);
+        let resilient_pool = Arc::new(ResilientPool::new(pool_config, circuit_breaker_registry.clone()).await?);
 
-        // Repositories
+        let model_repo = Arc::new(ModelRepository::new(resilient_pool.clone(), resilience_metrics.clone()));
         let feature_repo = Arc::new(FeatureRepository::new(resilient_pool.clone(), resilience_metrics.clone()));
         let cache_repo = Arc::new(CacheRepository::new(resilient_pool.clone(), resilience_metrics.clone()));
         let interaction_repo = Arc::new(InteractionRepository::new(resilient_pool.clone(), resilience_metrics.clone()));
         let layout_repo = Arc::new(PageLayoutRepository::new(resilient_pool.clone(), resilience_metrics.clone()));
         let discovery_repo = Arc::new(DiscoveryConfigRepository::new(resilient_pool.clone(), resilience_metrics.clone()));
-        let model_repo = Arc::new(ModelRepository::new(resilient_pool.clone(), resilience_metrics.clone()));
 
-        let cache_manager = Arc::new(CacheManager::new(self.config.redis.clone(), self.config.cache.clone(), Some(cache_repo.clone())).await
-            .context("Failed to initialize multi-tier cache")?);
+        // ─── 2. CACHING PILLAR ───────────────────────────────────────────────
+        let cache_manager = Arc::new(CacheManager::new(
+            self.config.redis.clone(),
+            self.config.cache.clone(),
+            Some(cache_repo.clone()),
+        ).await?);
+
+        let hot_registry = Arc::new(HotRegistry::new());
 
         // ─── 3. MACHINE LEARNING ─────────────────────────────────────────────
+        let perf_stats = Arc::new(crate::analytics::types::PerformanceStats::new());
+
         let model_loader = Arc::new(ModelLoader::new(
-            self.config.ml.model_path.to_str().unwrap_or("models"),
-            model_repo,
+            self.config.ml.model_path.clone(),
+            model_repo.clone(),
             self.config.ml.clone(),
             resilience_metrics.clone(),
             Some(perf_stats.clone()),
@@ -119,14 +129,14 @@ impl DiscoverySymphony {
             crate::circuit_breaker::observer::CircuitBreakerId::new("dummy")
         ));
 
-        let embedding_manager = Arc::new(EmbeddingManager::new(
+        let feature_store = Arc::new(FeatureStore::new(
             resilient_pool.clone(),
             cache_manager.clone(),
             self.config.ml.clone(),
             Some(perf_stats.clone()),
         ));
 
-        let feature_store = Arc::new(FeatureStore::new(
+        let embedding_manager = Arc::new(EmbeddingManager::new(
             resilient_pool.clone(),
             cache_manager.clone(),
             self.config.ml.clone(),
@@ -139,42 +149,42 @@ impl DiscoverySymphony {
             feature_store.clone(),
         ));
 
+        let security_manager = Arc::new(crate::security::SecurityManager::new(
+            self.config.security.clone(),
+            &self.config.server.environment,
+            circuit_breaker_registry.clone(),
+            resilience_metrics.clone(),
+            None,
+        ).await?);
+
+        let clickhouse_client = clickhouse::Client::default()
+            .with_url(self.config.clickhouse.url.clone())
+            .with_user(self.config.clickhouse.user.clone())
+            .with_password(self.config.clickhouse.password.clone())
+            .with_database(self.config.clickhouse.database.clone());
+
         let online_learning = Arc::new(OnlineLearningManager::new(
             &self.config.ml,
             resilience_metrics.clone(),
             Some(perf_stats.clone()),
         ));
 
-        let security_manager = Arc::new(crate::security::SecurityManager::new(
-            self.config.security.clone(),
-            &self.config.server.environment,
-            circuit_breaker_registry.clone(),
-            resilience_metrics.clone(),
-            Some(perf_stats.clone()),
-        ).await.unwrap());
-
-        let training_orch = Arc::new(TrainingOrchestrator::new(
+        let training_orchestrator = Arc::new(TrainingOrchestrator::new(
             self.config.ml.clone(),
-            clickhouse::Client::default(),
-            security_manager,
+            clickhouse_client.clone(),
+            security_manager.clone(),
             model_loader.clone(),
         ));
 
-        let ml_workers = Arc::new(MlWorkerQueue::new(&self.config.ml, Some(perf_stats.clone())));
-
-        let training = Arc::new(TrainingPillar::new(
+        let training_pillar = Arc::new(TrainingPillar::new(
             online_learning,
-            training_orch,
-            ml_workers,
+            training_orchestrator,
+            Arc::new(MlWorkerQueue::new(&self.config.ml, Some(perf_stats.clone()))),
         ));
 
-        let ml_pillar = Arc::new(MlPillar {
-            inference,
-            training,
-            assets,
-        });
+        let ml_pillar = Arc::new(MlPillar::new(inference, training_pillar, assets));
 
-        // ─── 4. PIPELINE ORCHESTRATION ──────────────────────────────────────
+        // ─── 4. EXECUTION PILLAR ─────────────────────────────────────────────
         let pipeline_executor = Arc::new(PipelineExecutor::new(
             self.config.pipeline.clone(),
             circuit_breaker_registry.clone(),
@@ -182,7 +192,6 @@ impl DiscoverySymphony {
             Some(perf_stats.clone()),
         ));
 
-        // ─── 5. INTELLIGENCE & MONITORING ────────────────────────────────────
         let staging_manager = Arc::new(StagingManager::new(
             cache_manager.clone(),
             resilient_pool.clone(),
@@ -191,21 +200,55 @@ impl DiscoverySymphony {
 
         let item_feature_service = Arc::new(ItemFeatureService::new(resilient_pool.clone(), resilience_metrics.clone()));
 
+        let experiment_coordinator = Arc::new(ExperimentCoordinator::new());
+
+        let scenarios = Arc::new(RwLock::new(HashMap::new()));
+        let linked_scenarios = Arc::new(ArcSwap::from_pointee(HashMap::new()));
+
+        let execution_manager = Arc::new(ExecutionManager::new(
+            pipeline_executor.clone(),
+            Arc::new(StrategyResolver::new()),
+            staging_manager.clone(),
+            cache_manager.clone(),
+            model_loader.clone(),
+            item_feature_service.clone(),
+            feature_store.clone(),
+            perf_stats.clone(),
+            experiment_coordinator,
+            Arc::new(crate::middlewares::MetricsCollector::default()),
+            Some(Arc::new(clickhouse_client.clone())),
+            hot_registry.clone(),
+            scenarios.clone(),
+            linked_scenarios.clone(),
+        ));
+
+        let warmer = Arc::new(PredictiveWarmer::new(vec![], shutdown_tx.subscribe()));
+
+        let execution = Arc::new(ExecutionPillar::new(
+            execution_manager,
+            feature_repo,
+            cache_repo,
+            interaction_repo.clone(),
+            circuit_breaker_registry.clone(),
+            warmer,
+        ));
+
         let staleness_engine = Arc::new(StalenessEngine::new(
             staging_manager.clone(),
             item_feature_service.clone(),
         ));
 
-        let clickhouse_client = clickhouse::Client::default()
-            .with_url(self.config.clickhouse.url.clone())
-            .with_user(self.config.clickhouse.user.clone())
-            .with_password(self.config.clickhouse.password.clone())
-            .with_database(self.config.clickhouse.database.clone());
-
         let monitoring = Arc::new(AnalyticsSidecar::new(
             clickhouse_client.clone(),
             resilient_pool.clone(),
             shutdown_tx.subscribe(),
+        ));
+
+        let tribe_orchestrator = Arc::new(TribeOrchestrator::new(
+            resilient_pool.clone(),
+            cache_manager.clone(),
+            self.config.ml.tribe_clustering_interval,
+            self.config.ml.tribe_num_clusters,
         ));
 
         let intelligence = Arc::new(IntelligencePillar::new(
@@ -214,25 +257,18 @@ impl DiscoverySymphony {
             monitoring,
             staleness_engine,
             Arc::new(WorkersManager::new()),
+            tribe_orchestrator,
         ));
 
         // ─── 6. GOVERNANCE (PAGES & DISCOVERY) ────────────────────────────────
-        let strategy_resolver = Arc::new(StrategyResolver::new());
         let scenario_factory = Arc::new(ScenarioFactory::new(ScenarioRepository::new(resilient_pool.clone(), resilience_metrics.clone())));
         
-        // Fetch dynamic system settings (Item #26)
-        let max_scenarios: i32 = resilient_pool.execute(|pool| async move {
-            sqlx::query_scalar::<_, i32>("SELECT (value->>0)::int FROM system_settings WHERE key = 'max_active_scenarios'")
-                .fetch_optional(&pool)
-                .await
-        }).await.unwrap_or(Some(100)).unwrap_or(100);
-
         let scenarios_manager = Arc::new(ScenariosManager::new(
             scenario_factory.clone(),
             pipeline_executor.clone(),
-            strategy_resolver.clone(),
+            Arc::new(StrategyResolver::new()),
             staging_manager.clone(),
-            max_scenarios as usize,
+            100,
         ));
 
         let pages_manager = Arc::new(PagesManager::new(
@@ -250,33 +286,6 @@ impl DiscoverySymphony {
             discovery_repo,
         ));
 
-        // ─── 7. EXECUTION ENGINE ─────────────────────────────────────────────
-        let execution_manager = Arc::new(ExecutionManager::new(
-            pipeline_executor,
-            strategy_resolver,
-            staging_manager,
-            cache_manager.clone(),
-            model_loader.clone(),
-            item_feature_service,
-            feature_store,
-            perf_stats,
-            Arc::new(ExperimentCoordinator::new()),
-            Arc::new(MetricsCollector::new()),
-            Some(Arc::new(clickhouse_client)),
-            Arc::new(HotRegistry::new()),
-            scenarios_manager.scenarios.clone(),
-            scenarios_manager.linked_scenarios.clone(),
-        ));
-
-        let execution = Arc::new(ExecutionPillar::new(
-            execution_manager,
-            feature_repo,
-            cache_repo,
-            interaction_repo,
-            circuit_breaker_registry,
-            Arc::new(PredictiveWarmer::new(vec![], shutdown_tx.subscribe())),
-        ));
-
         // ─── 8. FINAL ENGINE ASSEMBLY ───────────────────────────────────────
         let engine = BongasEngine::new(crate::engine::coordination::service::EngineComponents {
             config: self.config.clone(),
@@ -287,12 +296,9 @@ impl DiscoverySymphony {
             cache: cache_manager,
             shutdown_tx,
             resilience_metrics,
-        }).await.map_err(|e| anyhow::anyhow!("Engine assembly failed: {}", e))?;
+        }).await?;
 
         let engine_arc = Arc::new(engine);
-
-        // ─── 9. FINAL WIRING ────────────────────────────────────────────────
-        // Inject engine weak references into pillars that need them
         engine_arc.intelligence.set_engine(Arc::downgrade(&engine_arc));
 
         info!("🎼 Symphony 2.0 fully assembled.");

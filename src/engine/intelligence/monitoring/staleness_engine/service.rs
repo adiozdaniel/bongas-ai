@@ -156,6 +156,10 @@ impl StalenessEngine {
         self.process_event(event).await
     }
 
+    pub async fn notify_event(&self, event: UserEvent) -> Result<()> {
+        self.process_event(&event).await
+    }
+
     async fn handle_watch_event(
         &self,
         user_id: i32,

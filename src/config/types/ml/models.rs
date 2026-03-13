@@ -51,27 +51,31 @@ pub struct MlConfig {
     pub feature_fetch_max_concurrent: usize,
     pub worker_queue_depth: usize,
 
-    // ── Retry ────────────────────────────────────────────────────────────────
+    // ── Retry (resilient loading) ───────────────────────────────────────────
     pub model_load_max_retries: usize,
     pub model_load_base_backoff: Duration,
     pub model_load_max_backoff: Duration,
     pub feature_fetch_max_retries: usize,
 
-    // ── Timeout ──────────────────────────────────────────────────────────────
+    // ── Timeout (latency safety) ────────────────────────────────────────────
     pub inference_timeout: Duration,
     pub model_load_timeout: Duration,
 
-    // ── Fallback ─────────────────────────────────────────────────────────────
+    // ── Fallback (availability priority) ────────────────────────────────────
     pub fallback_to_stale_model: bool,
     pub fallback_cold_start_score: f32,
     pub fallback_max_stale_age: Duration,
 
-    // ── Analytics ────────────────────────────────────────────────────────────
+    // ── Analytics & Monitoring ──────────────────────────────────────────────
     pub analytics_enabled: bool,
     pub analytics_sample_rate: f64,
 
     // ── Training Orchestrator (One-Shot Harvest) ─────────────────────────────
     pub central_server_url: String,
+
+    // ── Behavioral Tribes ────────────────────────────────────────────────────
+    pub tribe_num_clusters: usize,
+    pub tribe_clustering_interval: Duration,
 }
 
 impl Default for MlConfig {
@@ -99,10 +103,10 @@ impl Default for MlConfig {
 
             // Online Learning
             online_learning_enabled: false,
-            feedback_batch_size: 256,
+            feedback_batch_size: 512,
             feedback_flush_interval: Duration::from_secs(30),
 
-            // Circuit Breaker — Netflix Hystrix defaults tuned for ML inference
+            // Circuit Breaker
             inference_breaker_failure_rate: 0.5,
             inference_breaker_slow_call_rate: 0.5,
             inference_breaker_slow_call_duration: Duration::from_secs(2),
@@ -134,71 +138,25 @@ impl Default for MlConfig {
             analytics_enabled: true,
             analytics_sample_rate: 1.0,
             central_server_url: "https://ml.bongas-ai.com".to_string(),
+
+            // Behavioral Tribes
+            tribe_num_clusters: 100,
+            tribe_clustering_interval: Duration::from_secs(14400), // 4 hours
         }
     }
 }
 
 impl MlConfig {
-    /// Get production-grade defaults (4x dev capacity)
+    /// Create a production-grade ML configuration.
     pub fn production() -> Self {
         Self {
-            // Model Runtime
-            model_path: PathBuf::from("./models"),
-            batch_size: 128, // 2x increase for throughput
-            onnx_enabled: true,
-            onnx_execution_provider: "cpu".to_string(), // DevOps can change to "cuda"
-            onnx_graph_optimization: true,
-            onnx_memory_map: true,
             onnx_intra_threads: 8, // 2x threads
-
-            // Feature Store
-            feature_store_enabled: true,
             feature_cache_ttl: Duration::from_secs(600), // Longer cache for production
-            feature_fetch_timeout: Duration::from_millis(500),
-
-            // Model Registry
-            model_cache_size: 200,
-            canary_enabled: true, // Enable canary in production
-            canary_traffic_percent: 5.0,
-            shadow_mode_enabled: false,
-
-            // Online Learning
-            online_learning_enabled: false,
-            feedback_batch_size: 512, // 2x batch size
-            feedback_flush_interval: Duration::from_secs(30),
-
-            // Circuit Breaker
-            inference_breaker_failure_rate: 0.5,
-            inference_breaker_slow_call_rate: 0.5,
-            inference_breaker_slow_call_duration: Duration::from_secs(2),
-            inference_breaker_minimum_calls: 10,
-            inference_breaker_recovery_timeout: Duration::from_secs(30),
-            inference_breaker_half_open_calls: 3,
-
-            // Bulkhead — 4x increase for production
             inference_max_concurrent: 64, // 4x workers
             feature_fetch_max_concurrent: 128, // 4x fetch concurrency
             worker_queue_depth: 4096, // 4x queue depth
-
-            // Retry
-            model_load_max_retries: 3,
-            model_load_base_backoff: Duration::from_millis(100),
-            model_load_max_backoff: Duration::from_secs(5),
-            feature_fetch_max_retries: 2,
-
-            // Timeout
-            inference_timeout: Duration::from_secs(5),
-            model_load_timeout: Duration::from_secs(30),
-
-            // Fallback
-            fallback_to_stale_model: true,
-            fallback_cold_start_score: 0.5,
-            fallback_max_stale_age: Duration::from_secs(3600),
-
-            // Analytics
-            analytics_enabled: true,
             analytics_sample_rate: 0.1, // Sample 10% in production to reduce overhead
-            central_server_url: "https://ml.bongas-ai.com".to_string(),
+            ..Self::default()
         }
     }
 }

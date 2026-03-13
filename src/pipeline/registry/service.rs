@@ -14,6 +14,7 @@ use crate::pipeline::recovery::fetch_similar_content::service::FetchSimilarConte
 use crate::pipeline::recovery::fetch_new_releases::service::FetchNewReleasesStage;
 use crate::pipeline::recovery::fetch_user_preferences::service::FetchUserPreferencesStage;
 use crate::pipeline::recovery::fetch_seasonal_content::service::FetchSeasonalContentStage;
+use crate::pipeline::recovery::fetch_behavioral_tribe::service::FetchBehavioralTribeStage;
 
 // Category 2: Processing (The Backstage)
 use crate::pipeline::processing::filter_already_watched::service::FilterAlreadyWatchedStage;
@@ -108,6 +109,7 @@ fn register_static_stages(registry: &mut HashMap<String, Arc<dyn PipelineStage>>
     registry.insert("fetch_new_releases".into(), Arc::new(FetchNewReleasesStage));
     registry.insert("fetch_user_preferences".into(), Arc::new(FetchUserPreferencesStage));
     registry.insert("fetch_seasonal_content".into(), Arc::new(FetchSeasonalContentStage));
+    registry.insert("fetch_behavioral_tribe".into(), Arc::new(FetchBehavioralTribeStage));
 
     // Processing
     registry.insert("filter_already_watched".into(), Arc::new(FilterAlreadyWatchedStage));

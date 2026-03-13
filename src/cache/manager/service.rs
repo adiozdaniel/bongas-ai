@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use crate::config::RedisConfig;
 use crate::db::CacheRepository;
+use redis::aio::ConnectionManager;
 
 /// Netflix-grade cache manager with multi-tier caching.
 ///
@@ -63,28 +64,90 @@ impl CacheManager {
         })
     }
 
-    /// Get a value from cache with fallback to compute function.
-    pub async fn get_or_compute<T, F, Fut>(
-        &self,
-        key: &str,
-        compute: F,
+    /// Set a value in all enabled cache tiers.
+    pub async fn set<T>(
+        &self, 
+        key: &str, 
+        value: &T, 
         scenario: &str,
         user_id: Option<i32>,
         profile_id: Option<&str>,
+    ) -> Result<()>
+    where
+        T: Serialize + Send + Sync,
+    {
+        // Set in L3 (Postgres) first - System of Record
+        if let Some(ref l3) = self.l3 {
+            let json_val = serde_json::to_value(value)?;
+            let pid = profile_id.map(|s| s.to_string());
+            let _ = l3.set(crate::db::repositories::cache_repository::service::CacheEntryPayload {
+                cache_key: key.to_string(),
+                scenario_slug: scenario.to_string(),
+                user_id,
+                profile_id: pid,
+                context_hash: None,
+                recommendations: json_val,
+                ttl_seconds: self.config.l2_ttl.as_secs() as i32 * 12,
+            }).await;
+        }
+
+        // Set in L2 (Redis)
+        if let Some(ref l2) = self.l2 {
+            let _ = l2.set(key, value, self.config.l2_ttl).await;
+        }
+
+        // Set in L1 (LRU)
+        if let Some(ref l1) = self.l1 {
+            let _ = l1.set(key, value, self.config.l1_ttl).await;
+        }
+
+        Ok(())
+    }
+
+    /// Set a value with custom TTL across tiers.
+    pub async fn set_with_ttl<T>(
+        &self, 
+        key: &str, 
+        value: &T, 
+        ttl: std::time::Duration,
+        _scenario: &str,
+        _user_id: Option<i32>,
+        _profile_id: Option<&str>,
+    ) -> Result<()>
+    where
+        T: Serialize + Send + Sync,
+    {
+        if let Some(ref l2) = self.l2 {
+            let _ = l2.set(key, value, ttl).await;
+        }
+        if let Some(ref l1) = self.l1 {
+            let _ = l1.set(key, value, ttl).await;
+        }
+        Ok(())
+    }
+
+    /// High-level API: Get-or-Compute with multi-tier backfill.
+    pub async fn get_or_set<T, F, Fut>(
+        &self, 
+        key: &str, 
+        scenario: &str,
+        user_id: Option<i32>,
+        profile_id: Option<&str>,
+        compute: F
     ) -> Result<T>
     where
         T: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone,
-        F: FnOnce() -> Fut + Send,
+        F: FnOnce() -> Fut,
         Fut: std::future::Future<Output = Result<T>> + Send,
     {
-        // Try L1 cache
+        // Try L1
         if let Some(ref l1) = self.l1 {
             if let Some(value) = l1.get::<T>(key).await? {
                 return Ok(value);
             }
         }
 
-        // Try L2 cache
+        // Try L2
         if let Some(ref l2) = self.l2 {
             if let Some(value) = l2.get::<T>(key).await? {
                 // Backfill L1
@@ -93,7 +156,7 @@ impl CacheManager {
             }
         }
 
-        // Try L3 cache (Postgres)
+        // Try L3
         if let Some(ref l3) = self.l3 {
             if let Ok(Some(entry)) = l3.get(key).await {
                 let value: T = serde_json::from_value(entry.recommendations)
@@ -157,57 +220,7 @@ impl CacheManager {
         Ok(None)
     }
 
-    /// Set a value in all cache tiers with a specific TTL.
-    pub async fn set_with_ttl<T>(
-        &self, 
-        key: &str, 
-        value: &T, 
-        ttl: std::time::Duration,
-        scenario: &str,
-        user_id: Option<i32>,
-        profile_id: Option<&str>,
-    ) -> Result<()>
-    where
-        T: Serialize + Send + Sync,
-    {
-        if let Some(ref l3) = self.l3 {
-            let json_val = serde_json::to_value(value)?;
-            let pid = profile_id.map(|s| s.to_string());
-            let _ = l3.set(crate::db::repositories::cache_repository::service::CacheEntryPayload {
-                cache_key: key.to_string(),
-                scenario_slug: scenario.to_string(),
-                user_id,
-                profile_id: pid,
-                context_hash: None,
-                recommendations: json_val,
-                ttl_seconds: ttl.as_secs() as i32,
-            }).await;
-        }
-        if let Some(ref l2) = self.l2 {
-            let _ = l2.set(key, value, ttl).await;
-        }
-        if let Some(ref l1) = self.l1 {
-            let _ = l1.set(key, value, ttl).await;
-        }
-        Ok(())
-    }
-
-    /// Set a value in all cache tiers using default TTLs.
-    pub async fn set<T>(
-        &self, 
-        key: &str, 
-        value: &T, 
-        scenario: &str, 
-        user_id: Option<i32>,
-        profile_id: Option<&str>,
-    ) -> Result<()>
-    where
-        T: Serialize + Send + Sync,
-    {
-        self.set_with_ttl(key, value, self.config.l2_ttl, scenario, user_id, profile_id).await
-    }
-
-    /// Delete a value from all cache tiers.
+    /// Delete a key from all tiers.
     pub async fn delete(&self, key: &str) -> Result<()> {
         if let Some(ref l1) = self.l1 {
             let _ = l1.delete(key).await;
@@ -221,7 +234,7 @@ impl CacheManager {
         Ok(())
     }
 
-    /// Delete multiple keys matching a pattern from all cache tiers.
+    /// Delete keys matching a pattern.
     pub async fn delete_pattern(&self, pattern: &str) -> Result<()> {
         if let Some(ref l1) = self.l1 {
             let _ = l1.delete_pattern(pattern).await;
@@ -229,23 +242,10 @@ impl CacheManager {
         if let Some(ref l2) = self.l2 {
             let _ = l2.delete_pattern(pattern).await;
         }
-        if let Some(ref l3) = self.l3 {
-            let _ = l3.delete_pattern(pattern).await;
-        }
         Ok(())
     }
 
-    /// Get cache metrics snapshot.
-    pub fn metrics(&self) -> CacheMetricsSnapshot {
-        self.metrics.snapshot()
-    }
-
-    /// Get raw handle to metrics for recording events.
-    pub fn metrics_handle(&self) -> Arc<CacheMetrics> {
-        Arc::clone(&self.metrics)
-    }
-
-    /// Mark cache entries as stale across all tiers.
+    /// Performance: Targeted invalidation for high-throughput discovery.
     pub async fn mark_stale(
         &self,
         user_id: Option<i32>,
@@ -305,5 +305,19 @@ impl CacheManager {
         }
         tracing::info!("Cache tiers closed gracefully");
         Ok(())
+    }
+
+    /// Get public access to L2 connection manager if available.
+    pub fn l2_connection(&self) -> Option<ConnectionManager> {
+        if let Some(CacheLayer::Redis(ref redis)) = self.l2 {
+            Some(redis.get_connection())
+        } else {
+            None
+        }
+    }
+
+    /// Get public access to metrics.
+    pub fn metrics(&self) -> CacheMetricsSnapshot {
+        self.metrics.snapshot()
     }
 }

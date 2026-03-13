@@ -16,10 +16,14 @@ use tokio::task::JoinSet;
 use crate::engine::governance::orchestration::manager::service::PagesManager;
 use crate::db::repositories::interaction_repository::service::InteractionPayload;
 
+use crate::cache::CacheManager;
+use redis::AsyncCommands;
+
 /// Processes activities from any source and routes them to DB + staleness engine + PagesManager.
 pub struct ActivityProcessor {
     interaction_repo: Arc<InteractionRepository>,
     _pool: Arc<ResilientPool>,
+    cache_manager: Arc<CacheManager>,
     intelligence: Arc<IntelligencePillar>,
     staleness_engine: Arc<StalenessEngine>,
     pages_manager: Arc<PagesManager>,
@@ -31,20 +35,21 @@ impl ActivityProcessor {
     pub fn new(
         interaction_repo: Arc<InteractionRepository>,
         pool: Arc<ResilientPool>,
+        cache_manager: Arc<CacheManager>,
         intelligence: Arc<IntelligencePillar>,
         staleness_engine: Arc<StalenessEngine>,
         pages_manager: Arc<PagesManager>,
         metrics: Arc<ResilienceMetricsCollector>,
-        max_concurrency: usize,
     ) -> Self {
         Self {
             interaction_repo,
             _pool: pool,
+            cache_manager,
             intelligence,
             staleness_engine,
             pages_manager,
             metrics,
-            concurrency_limit: Arc::new(Semaphore::new(max_concurrency)),
+            concurrency_limit: Arc::new(Semaphore::new(100)),
         }
     }
 
@@ -117,10 +122,20 @@ impl ActivityProcessor {
             }
         }
 
-        // 2. Sink to ClickHouse (Asynchronous Buffered) - HIGH-VOLUME ANALYTICS
+        // 2. Fetch tribe_id from Redis if profile_id is present
+        let mut tribe_id = None;
+        if let Some(pid) = activity.profile_id() {
+            if let Some(mut conn) = self.cache_manager.l2_connection() {
+                let key = format!("tribe_map:{}", pid);
+                tribe_id = conn.get::<_, Option<i32>>(key).await.unwrap_or(None);
+            }
+        }
+
+        // 3. Sink to ClickHouse (Asynchronous Buffered) - HIGH-VOLUME ANALYTICS
         let analytics_event = AnalyticsEvent {
             user_id: activity.user_id(),
             profile_id: activity.profile_id().map(|s| s.to_string()), 
+            tribe_id,
             request_id: "ingested".to_string(),
             item_id: match activity {
                 UserActivity::Playback { item_id, .. } | UserActivity::Reaction { item_id, .. } | UserActivity::Click { item_id, .. } | UserActivity::Impression { item_id, .. } => item_id,
@@ -138,7 +153,7 @@ impl ActivityProcessor {
         
         self.intelligence.record_event(analytics_event).await;
 
-        // 3. Notify Staleness Engine (Real-time cache invalidation)
+        // 4. Notify Staleness Engine (Real-time cache invalidation)
         let event = match activity {
             UserActivity::Playback { user_id, ref profile_id, item_id, watch_percentage, .. } => {
                 let pid = profile_id.clone().unwrap_or_else(|| "default".to_string());
@@ -151,14 +166,16 @@ impl ActivityProcessor {
             _ => None,
         };
 
-        if let Some(ev) = event {
-            self.staleness_engine.process_event(&ev).await?;
+        if let Some(e) = event {
+            self.staleness_engine.on_user_event(&e).await?;
         }
 
-        // 4. Notify Pages Manager (Real-time SDUI updates if needed)
-        self.pages_manager.handle_activity(&activity).await?;
+        // 5. Update In-Memory Genesis Cache (Navigation Mesh)
+        if let Some(pid) = activity.profile_id() {
+            self.pages_manager.invalidate_cache(pid).await;
+        }
 
-        self.metrics.record_ingestion_success(activity.kind(), start.elapsed()).await;
+        self.metrics.record_interaction_processed(start.elapsed()).await;
         Ok(())
     }
 }

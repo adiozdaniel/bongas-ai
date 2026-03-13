@@ -208,3 +208,10 @@ impl CacheStrategy for RedisCache {
         CacheTier::L2
     }
 }
+
+impl RedisCache {
+    /// Get a clone of the underlying connection manager.
+    pub fn get_connection(&self) -> ConnectionManager {
+        self.client.clone()
+    }
+}

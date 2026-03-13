@@ -2,7 +2,7 @@ use std::sync::Arc;
 use tokio::sync::{broadcast, RwLock};
 use serde::{Serialize, Deserialize};
 use futures::StreamExt;
-use tracing::Instrument;
+use tracing::{info, Instrument};
 
 use crate::AppConfig;
 use crate::db::PipelineDefinition;
@@ -111,6 +111,7 @@ impl BongasEngine {
         let ingestion_mgr = IngestionManager::bootstrap(
             components.execution.cache_repo.pool(),
             components.intelligence.clone(),
+            components.cache.clone(),
             components.execution.circuit_breaker_registry.clone(),
             components.resilience_metrics.clone(),
             components.intelligence.staleness.clone(),
@@ -129,6 +130,18 @@ impl BongasEngine {
             ingestion: Arc::new(RwLock::new(ingestion_mgr)),
             shutdown_tx: components.shutdown_tx,
         })
+    }
+
+    /// Start background workers and maintenance tasks.
+    pub async fn start(&self) {
+        info!("🎼 Starting Bongas-AI background orchestration...");
+
+        // Start Tribe Orchestrator
+        let tribe_orchestrator = self.intelligence.tribe_orchestrator.clone();
+        let shutdown_rx = self.shutdown_tx.subscribe();
+        tokio::spawn(async move {
+            tribe_orchestrator.start(shutdown_rx).await;
+        });
     }
 
     /// Proxy: Execute scenario and return recommendations
