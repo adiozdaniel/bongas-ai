@@ -175,6 +175,22 @@ impl ActivityProcessor {
             self.pages_manager.invalidate_cache(pid).await;
         }
 
+        // 6. Reset Content Fatigue on Engagement
+        if let Some(pid) = activity.profile_id() {
+            let iid = match activity {
+                UserActivity::Playback { item_id, .. } | UserActivity::Reaction { item_id, .. } | UserActivity::Click { item_id, .. } => Some(item_id),
+                _ => None,
+            };
+
+            if let Some(item_id) = iid {
+                let fatigue_sync = self.intelligence.fatigue_sync.clone();
+                let pid_clone = pid.to_string();
+                tokio::spawn(async move {
+                    fatigue_sync.record_engagement(&pid_clone, item_id).await;
+                });
+            }
+        }
+
         self.metrics.record_interaction_processed(start.elapsed()).await;
         Ok(())
     }
