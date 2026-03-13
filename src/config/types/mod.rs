@@ -33,7 +33,7 @@ pub use redis::RedisConfig;
 pub use clickhouse::ClickHouseConfig;
 pub use kafka::KafkaConfig;
 pub use security::SecurityConfig;
-pub use ml::MlConfig;
+pub use ml::{MlConfig, ExposureSourceAdaptor};
 pub use pipeline::PipelineConfig;
 pub use ingestion::{IngestionConfig, ApiSourceConfig, ClickHouseSourceConfig};
 pub use observability::ObservabilityConfig;

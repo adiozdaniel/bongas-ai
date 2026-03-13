@@ -76,6 +76,24 @@ pub struct MlConfig {
     // ── Behavioral Tribes ────────────────────────────────────────────────────
     pub tribe_num_clusters: usize,
     pub tribe_clustering_interval: Duration,
+
+    // ── Content Fatigue ──────────────────────────────────────────────────────
+    pub fatigue_enabled: bool,
+    pub fatigue_adaptor: ExposureSourceAdaptor,
+    pub fatigue_max_exposures: u32,
+    pub fatigue_penalty_factor: f32,
+}
+
+/// Adaptors for tracking item exposure and resetting fatigue.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExposureSourceAdaptor {
+    /// Increments exposures directly during the request/response flow.
+    InternalHook,
+    /// Consumes exposure and engagement events from Kafka.
+    KafkaStream,
+    /// Polls ClickHouse for recent exposures and engagements.
+    ClickHousePoll,
 }
 
 impl Default for MlConfig {
@@ -142,6 +160,12 @@ impl Default for MlConfig {
             // Behavioral Tribes
             tribe_num_clusters: 100,
             tribe_clustering_interval: Duration::from_secs(14400), // 4 hours
+
+            // Content Fatigue
+            fatigue_enabled: true,
+            fatigue_adaptor: ExposureSourceAdaptor::InternalHook,
+            fatigue_max_exposures: 5,
+            fatigue_penalty_factor: 0.8,
         }
     }
 }

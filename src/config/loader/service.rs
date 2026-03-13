@@ -3,7 +3,7 @@ use crate::config::types::{
     AppConfig, CircuitBreakerConfig, ErrorConfig, AnalyticsConfig,
     ServerConfig, DatabaseConfig, RedisConfig, ClickHouseConfig,
     IngestionConfig, KafkaConfig, ApiSourceConfig, ClickHouseSourceConfig,
-    SecurityConfig, MlConfig, PipelineConfig, ObservabilityConfig, ResilienceConfig,
+    SecurityConfig, MlConfig, ExposureSourceAdaptor, PipelineConfig, ObservabilityConfig, ResilienceConfig,
     HiveMindConfig, SlidingWindowType, BackoffStrategy, ExportFormat,
     experiments::ExperimentsConfig, resilience::{ResilienceDefaults, RetryConfig},
 };
@@ -215,6 +215,14 @@ impl ConfigLoader {
             central_server_url: parse_val("ml.central_server_url", "https://ml.bongas-ai.com"),
             tribe_num_clusters: parse_u32("ml.tribe_num_clusters", 100)? as usize,
             tribe_clustering_interval: Duration::from_secs(parse_u64("ml.tribe_clustering_interval_secs", 14400)?),
+            fatigue_enabled: parse_bool("ml.fatigue_enabled", true)?,
+            fatigue_adaptor: match parse_val("ml.fatigue_adaptor", "internal_hook").as_str() {
+                "kafka_stream" => ExposureSourceAdaptor::KafkaStream,
+                "clickhouse_poll" => ExposureSourceAdaptor::ClickHousePoll,
+                _ => ExposureSourceAdaptor::InternalHook,
+            },
+            fatigue_max_exposures: parse_u32("ml.fatigue_max_exposures", 5)?,
+            fatigue_penalty_factor: parse_f64("ml.fatigue_penalty_factor", 0.8)? as f32,
         };
 
         // Pipeline
