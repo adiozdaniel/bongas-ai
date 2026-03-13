@@ -9,7 +9,7 @@ use crate::db::PipelineDefinition;
 use crate::pipeline::types::models::ExecutablePipeline;
 use crate::security::SecurityManager;
 use crate::cache::CacheManager;
-use crate::ingestion::{IngestionManager, IngestionHealth};
+use crate::ingestion::{IngestionManager, IngestionHealth, broadcast::manager::service::IngestionComponents};
 use crate::resilience::ResilienceMetricsCollector;
 use crate::cache::CacheMetricsSnapshot;
 use crate::db::repositories::feature_repository::service::FeatureRepository;
@@ -109,14 +109,16 @@ impl BongasEngine {
 
         // Create ingestion manager
         let ingestion_mgr = IngestionManager::bootstrap(
-            components.execution.cache_repo.pool(),
-            components.intelligence.clone(),
-            components.cache.clone(),
-            components.execution.circuit_breaker_registry.clone(),
-            components.resilience_metrics.clone(),
-            components.intelligence.staleness.clone(),
-            components.governance.orchestration.clone(),
-            components.config.ingestion.kafka.clone(),
+            IngestionComponents {
+                pool: components.execution.cache_repo.pool(),
+                intelligence: components.intelligence.clone(),
+                cache_manager: components.cache.clone(),
+                breaker_registry: components.execution.circuit_breaker_registry.clone(),
+                resilience_metrics: components.resilience_metrics.clone(),
+                staleness_engine: components.intelligence.staleness.clone(),
+                pages_manager: components.governance.orchestration.clone(),
+                kafka_config: components.config.ingestion.kafka.clone(),
+            }
         ).await.map_err(|e| anyhow::anyhow!("Ingestion bootstrap error: {}", e))?;
 
         Ok(Self {
