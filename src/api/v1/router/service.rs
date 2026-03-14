@@ -23,7 +23,10 @@ pub fn routes(_engine: Arc<BongasEngine>, _config: Arc<AppConfig>) -> Router {
         .route("/page/{*slug}", get(stage::discovery::service::get_page_recommendations))
         .route("/scenario/{slug}", get(stage::discovery::service::get_scenario_recommendations))
         .route("/ingest", post(stage::ingestion::service::ingest_activity))
-        .route("/ingest/batch", post(stage::ingestion::service::ingest_activities));
+        .route("/ingest/batch", post(stage::ingestion::service::ingest_activities))
+        .route("/notifications/inbox", get(stage::notifications::service::get_inbox_notifications))
+        .route("/emails/pending", get(stage::notifications::service::get_pending_emails))
+        .route("/emails/dispatched", post(stage::notifications::service::mark_emails_dispatched));
 
     // ─── THE BACKSTAGE: Administrative Pillar ─────────────────────────────
     // Shielded with System-Key Authorization and heavy compression for data.
