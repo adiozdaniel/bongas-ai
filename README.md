@@ -1,10 +1,10 @@
-# Bongas-AI Symphony 2.0: Content Intelligence Platform 🎼
+# ![Bongas-AI Logo](./docs/logo.svg) Bongas-AI Symphony 2.0: Content Intelligence Platform
 
 ## 📋 Executive Summary
 
 Bongas-AI Symphony 2.0 is a next-generation, unified AI-powered search, recommendation, and personalization engine designed for high-scale digital platforms. Built entirely in Rust 🦀, it delivers zero perceived latency and Netflix-grade resilience while orchestrating complex, mixed-media content discovery experiences from a single, sovereign "Intelligence Pillar."
 
-By unifying discovery, behavioral tracking, and proactive engagement, Bongas-AI eliminates fragmented third-party SaaS dependency. This architectural consolidation ensures **sovereign data security 🛡️**, **privacy-by-design 🔒**, and **Maturity Safety Ceilings (KFCB Compliance)**, drastically reducing operational costs while providing absolute control over sensitive user identity and telemetry.
+By unifying discovery, behavioral tracking, and proactive engagement, Bongas-AI eliminates fragmented third-party SaaS dependency. This architectural consolidation ensures **sovereign data security 🛡️**, **privacy-by-design 🔒**, **Maturity Safety Ceilings (KFCB Compliance)**, drastically reducing operational costs while providing absolute control over sensitive user identity and telemetry.
 
 ---
 
@@ -198,4 +198,4 @@ For technical deep-dives, architectural blueprints, and API contracts, please vi
 
 ---
 
-*Built with 🦀 Rust for uncompromising speed and safety.*
+*Built by*![BBR Logo](./docs/bbr_logo.svg)*with 🦀 for uncompromising speed and safety.*
