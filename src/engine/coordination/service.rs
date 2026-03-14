@@ -22,6 +22,7 @@ use crate::error::{AppResult, AppError, ScenarioError};
 use crate::engine::execution::pillar::service::ExecutionPillar;
 use crate::engine::governance::pillar::service::GovernancePillar;
 use crate::engine::intelligence::pillar::service::IntelligencePillar;
+use crate::notification::NotificationDispatcher;
 
 #[derive(Debug, Clone)]
 pub struct ScenarioDefinition {
@@ -68,6 +69,7 @@ pub struct EngineComponents {
     pub governance: Arc<GovernancePillar>,
     pub ml_pillar: Arc<crate::ml::coordination::service::MlPillar>,
     pub intelligence: Arc<IntelligencePillar>,
+    pub notifications: Arc<NotificationDispatcher>,
     pub cache: Arc<CacheManager>,
     pub shutdown_tx: broadcast::Sender<()>,
     pub resilience_metrics: Arc<ResilienceMetricsCollector>,
@@ -84,6 +86,9 @@ pub struct BongasEngine {
     pub execution: Arc<ExecutionPillar>,
     pub governance: Arc<GovernancePillar>,
     pub intelligence: Arc<IntelligencePillar>,
+    
+    // Side-Effects Hub
+    pub notifications: Arc<NotificationDispatcher>,
     
     // Foundational Shared State
     pub security: Arc<SecurityManager>,
@@ -127,6 +132,7 @@ impl BongasEngine {
             execution: components.execution,
             governance: components.governance,
             intelligence: components.intelligence,
+            notifications: components.notifications,
             security,
             cache: components.cache,
             ingestion: Arc::new(RwLock::new(ingestion_mgr)),

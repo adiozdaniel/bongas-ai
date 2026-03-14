@@ -38,6 +38,7 @@ pub mod ml;
 pub mod engine;
 pub mod pipeline;
 pub mod experiments;
+pub mod notification;
 
 // API and infrastructure
 pub mod api;

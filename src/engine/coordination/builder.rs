@@ -53,6 +53,8 @@ use crate::engine::governance::factory::scenarios_manager::service::ScenariosMan
 use crate::engine::execution::cache::predictive_warmer::service::PredictiveWarmer;
 use crate::ml::inference::features::service::FeatureStore;
 use crate::experiments::coordinator::service::ExperimentCoordinator;
+use crate::notification::{NotificationDispatcher, NotificationRepository};
+use crate::notification::dispatcher::service::{KafkaNotifyAdaptor, PollingAdaptor, NotificationAdaptor};
 use crate::resilience::ResilienceMetricsCollector;
 use crate::resilience::registry::MetricsRegistry;
 use crate::resilience::ResilienceMetricsConfig;
@@ -292,7 +294,25 @@ impl DiscoverySymphony {
             fatigue_sync,
         ));
 
-        // ─── 6. GOVERNANCE (PAGES & DISCOVERY) ────────────────────────────────
+        // ─── 7. NOTIFICATIONS & SIDE-EFFECTS ──────────────────────────────────
+        let notification_repo = Arc::new(NotificationRepository::new(
+            resilient_pool.clone(),
+            Some(clickhouse_client.clone()),
+            resilience_metrics.clone(),
+        ));
+
+        let notification_adaptor: Arc<dyn NotificationAdaptor> = if self.config.ingestion.kafka.enabled {
+            Arc::new(KafkaNotifyAdaptor::new())
+        } else {
+            Arc::new(PollingAdaptor::new())
+        };
+
+        let notification_dispatcher = Arc::new(NotificationDispatcher::new(
+            notification_repo,
+            notification_adaptor,
+        ));
+
+        // ─── 8. GOVERNANCE (PAGES & DISCOVERY) ────────────────────────────────
         let scenario_factory = Arc::new(ScenarioFactory::new(ScenarioRepository::new(resilient_pool.clone(), resilience_metrics.clone())));
         
         let scenarios_manager = Arc::new(ScenariosManager::new(
@@ -318,13 +338,14 @@ impl DiscoverySymphony {
             discovery_repo,
         ));
 
-        // ─── 8. FINAL ENGINE ASSEMBLY ───────────────────────────────────────
+        // ─── 9. FINAL ENGINE ASSEMBLY ───────────────────────────────────────
         let engine = BongasEngine::new(crate::engine::coordination::service::EngineComponents {
             config: self.config.clone(),
             execution,
             governance,
             ml_pillar,
             intelligence,
+            notifications: notification_dispatcher,
             cache: cache_manager,
             shutdown_tx,
             resilience_metrics,
