@@ -2,6 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
+use sqlx::FromRow;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmailPayload {
@@ -13,6 +14,18 @@ pub struct EmailPayload {
     pub metadata: JsonValue,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct PendingEmailRow {
+    pub id: i32,
+    pub profile_id: String,
+    pub email: String,
+    pub subject: String,
+    pub body_html: String,
+    pub template_slug: String,
+    pub metadata: JsonValue,
+    pub status: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InboxNotification {
     pub profile_id: String,
@@ -22,6 +35,19 @@ pub struct InboxNotification {
     pub category: String,
     pub priority: i32,
     pub metadata: JsonValue,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct InboxNotificationRow {
+    pub id: i32,
+    pub profile_id: String,
+    pub title: String,
+    pub message: String,
+    pub action_url: Option<String>,
+    pub category: String,
+    pub priority: i32,
+    pub metadata: JsonValue,
+    pub read: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -7,7 +7,7 @@ use anyhow::Result;
 use chrono::Utc;
 use crate::db::ResilientPool;
 use crate::resilience::ResilienceMetricsCollector;
-use crate::notification::models::{NotificationIntent, NotificationLedgerEntry};
+use crate::notification::models::{NotificationIntent, NotificationLedgerEntry, InboxNotificationRow, PendingEmailRow};
 
 pub struct NotificationRepository {
     pool: Arc<ResilientPool>,
@@ -22,6 +22,62 @@ impl NotificationRepository {
         metrics: Arc<ResilienceMetricsCollector>,
     ) -> Self {
         Self { pool, clickhouse, metrics }
+    }
+
+    /// Retrieve active inbox notifications for a profile.
+    pub async fn get_inbox_notifications(&self, profile_id: &str, limit: i64) -> Result<Vec<InboxNotificationRow>> {
+        let pid = profile_id.to_string();
+        self.pool.execute(|pool| async move {
+            sqlx::query_as::<_, InboxNotificationRow>(
+                r#"
+                SELECT id, profile_id, title, message, action_url, category, priority, metadata, read
+                FROM inbox_notifications
+                WHERE profile_id = $1 AND read = false
+                ORDER BY priority DESC, id DESC
+                LIMIT $2
+                "#
+            )
+            .bind(pid)
+            .bind(limit)
+            .fetch_all(&pool)
+            .await
+        }).await.map_err(Into::into)
+    }
+
+    /// Retrieve pending emails for external dispatchers.
+    pub async fn get_pending_emails(&self, limit: i64) -> Result<Vec<PendingEmailRow>> {
+        self.pool.execute(|pool| async move {
+            sqlx::query_as::<_, PendingEmailRow>(
+                r#"
+                SELECT id, profile_id, email, subject, body_html, template_slug, metadata, status
+                FROM pending_emails
+                WHERE status = 'pending'
+                ORDER BY id ASC
+                LIMIT $1
+                "#
+            )
+            .bind(limit)
+            .fetch_all(&pool)
+            .await
+        }).await.map_err(Into::into)
+    }
+
+    /// Atomically mark emails as dispatched.
+    pub async fn mark_emails_dispatched(&self, ids: &[i32]) -> Result<()> {
+        let ids_vec = ids.to_vec();
+        self.pool.execute(|pool| async move {
+            sqlx::query(
+                r#"
+                UPDATE pending_emails 
+                SET status = 'dispatched' 
+                WHERE id = ANY($1)
+                "#
+            )
+            .bind(ids_vec)
+            .execute(&pool)
+            .await
+        }).await?;
+        Ok(())
     }
 
     /// Persist notification intent to appropriate Postgres table and log to ClickHouse.

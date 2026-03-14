@@ -25,6 +25,12 @@ pub struct KafkaNotifyAdaptor {
     // In a real implementation, this would hold a Kafka producer.
 }
 
+impl Default for KafkaNotifyAdaptor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl KafkaNotifyAdaptor {
     pub fn new() -> Self {
         Self {}
@@ -44,6 +50,12 @@ impl NotificationAdaptor for KafkaNotifyAdaptor {
 
 /// Adaptor for poll-based delivery (Local persistence only).
 pub struct PollingAdaptor;
+
+impl Default for PollingAdaptor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl PollingAdaptor {
     pub fn new() -> Self {
@@ -74,6 +86,11 @@ impl NotificationDispatcher {
         adaptor: Arc<dyn NotificationAdaptor>,
     ) -> Self {
         Self { repository, adaptor }
+    }
+
+    /// Access the underlying repository for direct querying (e.g. API polling endpoints).
+    pub fn repository(&self) -> &Arc<NotificationRepository> {
+        &self.repository
     }
 
     /// Primary entry point: Persist and Dispatch a notification.
