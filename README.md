@@ -4,7 +4,7 @@
 
 Bongas-AI Symphony 2.0 is a next-generation, unified AI-powered search, recommendation, and personalization engine designed for high-scale digital platforms. Built entirely in Rust 🦀, it delivers zero perceived latency and Netflix-grade resilience while orchestrating complex, mixed-media content discovery experiences from a single, sovereign "Intelligence Pillar."
 
-By unifying discovery, behavioral tracking, and proactive engagement, Bongas-AI eliminates fragmented third-party SaaS dependency. This architectural consolidation ensures **sovereign data security 🛡️**, **privacy-by-design 🔒**, **Maturity Safety Ceilings (KFCB Compliance)**, drastically reducing operational costs while providing absolute control over sensitive user identity and telemetry.
+The platform is designed around a **Bifurcated Control Plane**, strictly decoupling the high-performance **Read-Path (The Stage)** from the intelligence-heavy **Write-Path (The Backstage)**. This architectural split ensures that large-scale model training, behavioral clustering and administrative strategy updates never impact the sub-millisecond response times required for user discovery.
 
 ---
 
@@ -24,7 +24,14 @@ The engine executes multiple recommendation scenarios simultaneously using highl
 
 Eliminates loading states by anticipating a user's next action. The engine silently executes the next batch of recommendations in the background and caches them in Redis for zero-latency retrieval.
 
-### 1.4 🧪 The Intelligence Pulse & Experimentation
+### 1.4 🎭 Dual-Plane Orchestration (Stage vs. Backstage)
+
+We eliminate the "Monolithic Contention" bottleneck by isolating the engine's primary functions into two distinct planes:
+
+* **The Stage (Runtime Plane):** A read-optimized, highly concurrent environment dedicated exclusively to sub-millisecond recommendation delivery and event ingestion.
+* **The Backstage (Control Plane):** Where the engine's intelligence is born. This plane handles asynchronous model training (ONNX), behavioral clustering (K-Means), and administrative strategy definition without consuming runtime resources.
+
+### 1.5 🧪 The Intelligence Pulse & Experimentation
 
 A centralized `WorkersManager` orchestrates proactive background tasks and the **Experimentation Engine** (A/B testing/feature flagging), ensuring strategy evolution happens without impacting request latency.
 
