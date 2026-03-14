@@ -57,6 +57,7 @@ impl IntelligencePillar {
     /// Inject engine reference into sub-components.
     pub fn set_engine(&self, engine: std::sync::Weak<crate::engine::coordination::service::BongasEngine>) {
         self.hive_mind.set_engine(engine.clone());
-        self.monitoring.set_engine(engine);
+        self.monitoring.set_engine(engine.clone());
+        self.workers.set_engine(engine);
     }
 }

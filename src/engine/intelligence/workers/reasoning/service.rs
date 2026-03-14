@@ -81,10 +81,7 @@ impl ReasoningWorker {
             LIMIT 50
         "#;
 
-        let pairs: Vec<(String, i32)> = match ch.query(query).fetch_all().await {
-            Ok(res) => res,
-            Err(_) => Vec::new(),
-        };
+        let pairs: Vec<(String, i32)> = ch.query(query).fetch_all().await.unwrap_or_default();
 
         for (pid, iid) in pairs {
             // Check if reason already exists in Redis

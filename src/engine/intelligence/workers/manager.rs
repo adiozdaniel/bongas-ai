@@ -8,6 +8,7 @@ use crate::engine::intelligence::workers::tribe_orchestrator::service::TribeOrch
 use crate::engine::intelligence::workers::regional_pulse::service::RegionalPulseWorker;
 use crate::engine::intelligence::workers::fatigue_sync::service::FatigueSynchronizer;
 use crate::engine::intelligence::workers::reasoning::service::ReasoningWorker;
+use crate::engine::intelligence::workers::digest_worker::service::DigestWorker;
 
 /// 💓 Workers: Background maintenance and task orchestration.
 pub struct WorkersManager {
@@ -15,6 +16,7 @@ pub struct WorkersManager {
     regional_pulse: Option<Arc<RegionalPulseWorker>>,
     fatigue_sync: Option<Arc<FatigueSynchronizer>>,
     reasoning: Option<Arc<ReasoningWorker>>,
+    digest: Option<Arc<DigestWorker>>,
 }
 
 impl Default for WorkersManager {
@@ -30,6 +32,7 @@ impl WorkersManager {
             regional_pulse: None,
             fatigue_sync: None,
             reasoning: None,
+            digest: None,
         }
     }
 
@@ -51,6 +54,18 @@ impl WorkersManager {
     pub fn with_reasoning(mut self, worker: Arc<ReasoningWorker>) -> Self {
         self.reasoning = Some(worker);
         self
+    }
+
+    pub fn with_digest(mut self, worker: Arc<DigestWorker>) -> Self {
+        self.digest = Some(worker);
+        self
+    }
+
+    /// Propagate engine reference to workers that need it (like DigestWorker).
+    pub fn set_engine(&self, engine: std::sync::Weak<BongasEngine>) {
+        if let Some(ref worker) = self.digest {
+            worker.set_engine(engine);
+        }
     }
 
     /// Start all managed background workers.
@@ -86,6 +101,15 @@ impl WorkersManager {
 
         // 4. Start Reasoning Worker
         if let Some(ref worker) = self.reasoning {
+            let worker = worker.clone();
+            let shutdown_rx = shutdown_tx.subscribe();
+            tokio::spawn(async move {
+                worker.start(shutdown_rx).await;
+            });
+        }
+
+        // 5. Start Digest Worker
+        if let Some(ref worker) = self.digest {
             let worker = worker.clone();
             let shutdown_rx = shutdown_tx.subscribe();
             tokio::spawn(async move {

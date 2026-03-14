@@ -5,5 +5,6 @@ pub mod tribe_orchestrator;
 pub mod regional_pulse;
 pub mod fatigue_sync;
 pub mod reasoning;
+pub mod digest_worker;
 
 pub use manager::WorkersManager;

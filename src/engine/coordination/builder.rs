@@ -46,6 +46,7 @@ use crate::engine::intelligence::workers::tribe_orchestrator::service::TribeOrch
 use crate::engine::intelligence::workers::regional_pulse::service::RegionalPulseWorker;
 use crate::engine::intelligence::workers::fatigue_sync::service::FatigueSynchronizer;
 use crate::engine::intelligence::workers::reasoning::service::ReasoningWorker;
+use crate::engine::intelligence::workers::digest_worker::service::DigestWorker;
 use crate::engine::governance::orchestration::manager::service::PagesManager;
 use crate::engine::governance::strategy::resolver::service::StrategyResolver;
 use crate::engine::governance::factory::scenario_factory::service::ScenarioFactory;
@@ -279,11 +280,16 @@ impl DiscoverySymphony {
             std::time::Duration::from_secs(3600), // Hourly cycle
         ));
 
+        let digest_worker = Arc::new(DigestWorker::new(
+            std::time::Duration::from_secs(86400), // Daily cycle
+        ));
+
         let workers = Arc::new(WorkersManager::new()
             .with_tribe_orchestrator(tribe_orchestrator)
             .with_regional_pulse(regional_pulse_worker)
             .with_fatigue_sync(fatigue_sync.clone())
-            .with_reasoning(reasoning_worker));
+            .with_reasoning(reasoning_worker)
+            .with_digest(digest_worker.clone()));
 
         let intelligence = Arc::new(IntelligencePillar::new(
             Arc::new(SuggestionsManager::new()),
