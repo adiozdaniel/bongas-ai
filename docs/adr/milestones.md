@@ -49,6 +49,19 @@ This document tracks the technical execution and strategic alignment of the Bong
 
 ---
 
+## 🔍 Detailed Breakdown: Milestone 13 (Sovereign Binary Security & Anti-Tamper)
+
+| Component | Domain | Technical Impact | Remarks on Client's Manifesto Fulfilment |
+| :--- | :--- | :--- | :--- |
+| **Anti-RE Shield** | Security | Implement code obfuscation and symbol stripping during release. | **Section 8.2:** Protects "Sovereign Intelligence" from being extracted or stolen. |
+| **Anti-Debug Logic** | Security | Detect and crash the binary if a debugger (gdb/lldb) is attached. | **Section 1.0:** Ensures the "Intelligence Pillar" remains a secure black-box. |
+| **Hardware ID Binding** | Security | Generate unique fingerprints based on CPU/NIC/BIOS metadata. | **Section 2.3:** Prevents unauthorized scaling; runs only on purchased "Fixed Infrastructure." |
+| **License Guardian** | Operations | Periodic RSA-signed license heartbeats against the control plane. | **Section 8.1:** Replaces variable SaaS OpEx with a secure, managed subscription. |
+| **TEE Validation** | Security | Validator logic to ensure execution within a verified TEE. | **Section 10.2:** Guarantees "Compliance by Design"—no leaks outside the perimeter. |
+| **Encrypted State** | Persistence | Zero-copy, encrypted serialization using `bytecheck` and `rkyv`. | **Section 1.0:** Ensures "Sovereign Data Security"—even if Redis is compromised. |
+
+---
+
 ## 🔍 Detailed Breakdown: Milestone 15 (Symphony Conductor)
 
 | Component | Domain | Technical Impact | Remarks on Client's Manifesto Fulfilment |
