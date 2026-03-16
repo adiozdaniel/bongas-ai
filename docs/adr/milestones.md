@@ -24,6 +24,7 @@ This document tracks the technical execution and strategic alignment of the Bong
 | **M14: Control Plane** | Operations | ⏳ **Pending** | Remote fleet orchestration and atomic updates. | **Section 7.3:** Provides the "Executive Command Center" for real-time ROI tracking. |
 | **M15: Symphony Conductor** | Orchestration | ⏳ **Pending** | Agentic reasoning interface for technical simulation. | **Section 9.2:** Delivers "Semantic Transparency" through agentic advisory. |
 | **M16: The Swahili Brain** | Intelligence | ⏳ **Pending** | Localized SFT & learning loop for East African dialects. | **Section 6.0:** Golden SFT for localized understanding and cultural relevance. |
+| **M17: Sovereign Sight** | Intelligence | ⏳ **Pending** | V-JEPA 2 World Model for deep visual and forensic DNA. | **Section 6.1:** Achieves "Elite Intelligence" by understanding video natively. |
 
 ---
 
@@ -79,11 +80,11 @@ This document tracks the technical execution and strategic alignment of the Bong
 
 | Component | Domain | Technical Impact | Remarks on Client's Manifesto Fulfilment |
 | :--- | :--- | :--- | :--- |
-| **Sovereign SLM** | Intelligence | Integration of a local, quantized SLM (Phi-3) in ONNX format. | **Section 2.2:** Persona-Based Intelligence without cloud dependency. |
-| **Agentic Reasoning** | Intelligence | Implementation of the ReAct pattern for logical technical advisory. | **Section 9.2:** Delivers "Semantic Transparency" through reasoning. |
-| **Function Bridge** | Operations | Safe execution registry for tool-calls and configuration updates. | **Section 4.0:** Enables "Operational Agility." |
+| **Sovereign SLM** | Intelligence | Local, quantized Phi-3/Mistral (ONNX) sidecar logic. | **Section 2.2:** Persona-Based Intelligence without cloud dependency. |
+| **ReAct Logic** | Intelligence | Implementation of "Reason + Act" for logical technical advisory. | **Section 9.2:** Delivers "Semantic Transparency" through reasoning. |
+| **Function Bridge** | Operations | Tool-registry for safe `simulate_impact` and `update_config` calls. | **Section 4.0:** Enables "Operational Agility" via natural language. |
 | **Simulation Guard** | Operations | Mandatory "Propose -> Approve" flow with impact reports. | **Section 10.2:** Ensures "Compliance by Design" for strategy pivots. |
-| **Insight Synthesis** | Intelligence | Automated translation of raw ClickHouse data into strategic summaries. | **Section 9.2:** Provides "Human-Readable Analytics." |
+| **Layman Translator** | Intelligence | Mapping latent math/scores into human-readable narratives. | **Section 9.0:** Provides "Semantic Transparency" for non-tech admins. |
 
 ---
 
@@ -94,5 +95,18 @@ This document tracks the technical execution and strategic alignment of the Bong
 | **Golden SFT** | Intelligence | Supervised Fine-Tuning of SLM using technical Swahili datasets. | **Section 6.0:** Ready-to-reason in regional dialects on Day 1. |
 | **Continuous Forge** | Backstage | Weekly local fine-tuning loop using client metadata in their VPC. | **Section 5.2:** Zero-Lag Intelligence evolution. |
 | **Dialect Adaptor** | Intelligence | Code-switching logic supporting Swahili, Sheng, and Technical English. | **Section 1.0:** Strategic Moat via cultural intelligence. |
-| **LoRA Syncer** | Backstage | Low-Rank Adaptation (LoRA) logic for efficient localized model updates. | **Section 2.2:** Persona-Based Intelligence in the VPC. |
-| **Pulse Extractor** | Intelligence | Automated background extraction of regional trending terms from ClickHouse. | **Section 6.0:** Ensures the model stays synchronized with the cultural "Now." |
+| **Regional Pulse Sync** | Intelligence | Correlating SLM reasoning with the real-time Regional Pulse (M6). | **Section 6.1:** Aligns discovery with local cultural "Zeitgeist." |
+| **LoRA Syncer** | Backstage | Efficient Low-Rank Adaptation for VPC-local model updates. | **Section 2.2:** Persona-Based Intelligence in the VPC. |
+
+---
+
+## 🔍 Detailed Breakdown: Milestone 17 (Sovereign Sight)
+
+| Component | Domain | Technical Impact | Remarks on Client's Manifesto Fulfilment |
+| :--- | :--- | :--- | :--- |
+| **Sight Sidecar** | Intelligence | Isolated V-JEPA 2 (1.2B) worker with opportunistic "Pause" logic. | **Section 1.0:** Background video scanning without impacting API speed. |
+| **Differential Census** | Backstage | ID-delta tracking between client DB and Bongas Ledger (No migrations). | **Section 8.2:** Zero-friction integration with existing catalogs. |
+| **Visual DNA Architect** | Intelligence | Extraction of "Visual DNA" (e.g., (Gospel, Luhya, Slow)). | **Section 3.1:** Automated categorization via rhythmic/cultural DNA. |
+| **Forensic Auditor** | Security | Automated maturity/age rating with "Human-in-the-Loop" override. | **Section 10.2:** Enforced 18+ isolation for "High-Flesh-Tone" DNA. |
+| **Neural Persona Drift** | Discovery | Updating Tribe Weights (M5) based on V-JEPA visual engagement. | **Section 2.2:** Real-time persona shifts based on "Visual Vibe" matches. |
+| **Hook Factory** | Engagement | Automated extraction of high-entropy `.webp` teasers for notifications. | **Section 10.0:** Feeds the "Engagement Pulse" (M9) with visual hooks. |
