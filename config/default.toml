@@ -69,3 +69,11 @@ level = "info"
 [experiments]
 enabled = false
 assignment_method = "random"
+
+[search]
+host = "http://localhost:7700"
+api_key = "masterKey"
+index_name = "items"
+timeout_ms = 500
+max_hits = 100
+typo_tolerance = true

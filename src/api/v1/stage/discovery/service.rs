@@ -335,6 +335,58 @@ pub async fn get_scenario_recommendations(
     Ok(axum::Json(StandardResponse::success(items).with_request_id(request_id)))
 }
 
+// ─── Search Discovery (JSON) ────────────────────────────────────────────────
+
+#[derive(serde::Deserialize)]
+pub struct SearchParams {
+    pub q: String,
+    pub limit: Option<usize>,
+    pub offset: Option<usize>,
+}
+
+/// GET /api/v1/recommendation/search
+/// Hybrid Search: Keyword matching + Semantic re-ranking.
+pub async fn search_recommendations(
+    Query(search_params): Query<SearchParams>,
+    Query(mut context_params): Query<ContextParams>,
+    Extension(engine): Extension<Arc<BongasEngine>>,
+    req: Request<Body>,
+) -> Result<axum::Json<StandardResponse<Vec<RecommendationItem>>>, crate::error::AppError> {
+    let request_id = extract_request_id(&req);
+    let identity = req.extensions().get::<IdentityContext>().cloned();
+    
+    if let Some(ref id) = identity {
+        context_params.merge_identity(id);
+    }
+
+    let user_id = context_params.user_id;
+    let query = search_params.q.clone();
+    let limit = search_params.limit.unwrap_or(20);
+    let offset = search_params.offset.unwrap_or(0);
+
+    // Prepare context data for the 'fetch_search_results' stage
+    let context_data = serde_json::json!({
+        "q": query
+    });
+
+    // Execute the 'hybrid_search' scenario
+    // This scenario should be defined in the Backstage with:
+    // 1. fetch_search_results (Recovery)
+    // 2. hybrid_search_ranker (Ranking)
+    let items = execute_and_map(crate::api::v1::stage::service::ExecuteAndMapRequest {
+        engine,
+        scenario_slug: "hybrid_search".to_string(),
+        user_id,
+        context_params: Some(context_params),
+        context_data,
+        offset,
+        limit,
+        request_id: request_id.clone(),
+    }).await?;
+
+    Ok(axum::Json(StandardResponse::success(items).with_request_id(request_id)))
+}
+
 // ─── Internal Row Execution Helper ─────────────────────────────────────────
 
 async fn execute_row(

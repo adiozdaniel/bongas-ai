@@ -35,6 +35,13 @@ We eliminate the "Monolithic Contention" bottleneck by strictly isolating the en
 * **The Stage (Runtime Plane):** A read-optimized environment dedicated to sub-millisecond recommendation delivery and real-time event ingestion.
 * **The Backstage (Control Plane):** Managed by the `WorkersManager`, this plane handles heavy intelligence tasks—**Behavioral Clustering**, **Regional Scraping**, and **Semantic Reasoning**. This plane is currently evolving into a **Python-Bridge Architecture** to separate heavy model training from the Rust core.
 
+### 1.6 🔍 Elastic Hybrid Search (Meilisearch)
+
+We eliminate the "Algolia-Cost Trap" by integrating a high-performance, Rust-native search pillar.
+
+* **Mechanism:** A background `SearchSyncWorker` maintains a real-time, typo-tolerant mirror of the PostgreSQL catalog in **Meilisearch**.
+* **Execution:** The `FetchSearchResultsStage` combines exact keyword matches with **Semantic Re-ranking** (via Vector Similarity), ensuring that search results are not just accurate, but personalized to the user's Behavioral Tribe.
+
 ---
 
 ## 2.0 🎨 Smart Pages & Zero-Code Orchestration

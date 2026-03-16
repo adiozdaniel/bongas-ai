@@ -22,6 +22,7 @@ pub fn routes(_engine: Arc<BongasEngine>, _config: Arc<AppConfig>) -> Router {
         .route("/", get(stage::discovery::service::genesis))
         .route("/page/{*slug}", get(stage::discovery::service::get_page_recommendations))
         .route("/scenario/{slug}", get(stage::discovery::service::get_scenario_recommendations))
+        .route("/search", get(stage::discovery::service::search_recommendations))
         .route("/ingest", post(stage::ingestion::service::ingest_activity))
         .route("/ingest/batch", post(stage::ingestion::service::ingest_activities))
         .route("/notifications/inbox", get(stage::notifications::service::get_inbox_notifications))
