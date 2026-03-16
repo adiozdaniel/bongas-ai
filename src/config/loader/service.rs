@@ -224,6 +224,7 @@ impl ConfigLoader {
             },
             fatigue_max_exposures: parse_u32("ml.fatigue_max_exposures", 5)?,
             fatigue_penalty_factor: parse_f64("ml.fatigue_penalty_factor", 0.8)? as f32,
+            retention_days: parse_u32("ml.retention_days", 90)?,
         };
 
         // Pipeline

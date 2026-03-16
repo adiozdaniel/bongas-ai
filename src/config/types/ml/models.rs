@@ -82,6 +82,9 @@ pub struct MlConfig {
     pub fatigue_adaptor: ExposureSourceAdaptor,
     pub fatigue_max_exposures: u32,
     pub fatigue_penalty_factor: f32,
+
+    // ── Signal Decay (Cost Management) ───────────────────────────────────────
+    pub retention_days: u32,
 }
 
 /// Adaptors for tracking item exposure and resetting fatigue.
@@ -166,6 +169,9 @@ impl Default for MlConfig {
             fatigue_adaptor: ExposureSourceAdaptor::InternalHook,
             fatigue_max_exposures: 5,
             fatigue_penalty_factor: 0.8,
+
+            // Signal Decay
+            retention_days: 90,
         }
     }
 }
