@@ -40,3 +40,5 @@ pub use observability::ObservabilityConfig;
 pub use resilience::ResilienceConfig;
 pub use experiments::ExperimentsConfig;
 pub use hive_mind::HiveMindConfig;
+pub mod notification;
+pub use notification::{NotificationConfig, ResendConfig, NotificationAdaptorKind};

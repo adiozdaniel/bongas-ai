@@ -21,6 +21,7 @@ graph TD
     App --> Obs[ObservabilityConfig]
     App --> Exp[ExperimentsConfig]
     App --> HM[HiveMindConfig]
+    App --> Not[NotificationConfig]
     
     R --> CB[CircuitBreakerConfig]
     R --> E[ErrorConfig]

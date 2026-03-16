@@ -4,6 +4,7 @@ use crate::config::types::{
     ServerConfig, DatabaseConfig, RedisConfig, ClickHouseConfig,
     IngestionConfig, KafkaConfig, ApiSourceConfig, ClickHouseSourceConfig,
     SecurityConfig, MlConfig, ExposureSourceAdaptor, PipelineConfig, ObservabilityConfig, ResilienceConfig,
+    NotificationConfig, ResendConfig, NotificationAdaptorKind,
     HiveMindConfig, SlidingWindowType, BackoffStrategy, ExportFormat,
     experiments::ExperimentsConfig, resilience::{ResilienceDefaults, RetryConfig},
 };
@@ -426,6 +427,21 @@ impl ConfigLoader {
             auto_approve_safe_rules: parse_bool("hive_mind.auto_approve_safe_rules", false)?,
         };
 
+        // Notifications
+        let notifications = NotificationConfig {
+            enabled: parse_bool("notifications.enabled", true)?,
+            adaptor: match parse_val("notifications.adaptor", "polling").as_str() {
+                "kafka" => NotificationAdaptorKind::Kafka,
+                "resend" => NotificationAdaptorKind::Resend,
+                _ => NotificationAdaptorKind::Polling,
+            },
+            resend: ResendConfig {
+                api_key: parse_val("notifications.resend.api_key", ""),
+                from_email: parse_val("notifications.resend.from_email", "noreply@bongas-ai.com"),
+                from_name: parse_val("notifications.resend.from_name", "Bongas-AI"),
+            },
+        };
+
         Ok(AppConfig {
             server,
             database,
@@ -444,6 +460,7 @@ impl ConfigLoader {
             resilience_metrics: ResilienceMetricsConfig::default(),
             experiments,
             hive_mind,
+            notifications,
         })
     }
 

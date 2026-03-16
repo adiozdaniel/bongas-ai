@@ -42,6 +42,7 @@ The root `AppConfig` struct is a composite of specialized module configurations:
 | **Observability** | OTLP, Jaeger, Metrics. | Visibility |
 | **Experiments** | A/B test assignment methods. | Logic Branching |
 | **Hive Mind** | Global intelligence linking. | Remote Strategy |
+| **Notifications** | Resend, Kafka, Polling settings. | Outbound Engagement |
 
 ---
 

@@ -9,6 +9,7 @@ use crate::config::types::{
     ServerConfig, DatabaseConfig, RedisConfig, ClickHouseConfig,
     IngestionConfig, SecurityConfig, MlConfig, PipelineConfig,
     ObservabilityConfig, ResilienceConfig, ExperimentsConfig, HiveMindConfig,
+    NotificationConfig,
 };
 use crate::cache::CacheConfig;
 use crate::resilience::ResilienceMetricsConfig;
@@ -33,6 +34,7 @@ pub struct AppConfig {
     pub resilience_metrics: ResilienceMetricsConfig,
     pub experiments: ExperimentsConfig,
     pub hive_mind: HiveMindConfig,
+    pub notifications: NotificationConfig,
 }
 
 impl AppConfig {
