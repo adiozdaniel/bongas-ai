@@ -94,15 +94,38 @@ impl DigestWorker {
                     continue;
                 }
 
-                // 3. Package into EmailPayload
+                // 3. Package into EmailPayload with Dynamic Reasoning
+                let mut email_items = Vec::new();
+                for item in items {
+                    let title = item.metadata.get("title")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string())
+                        .unwrap_or_else(|| format!("Movie #{}", item.item_id));
+
+                    email_items.push(json!({
+                        "id": item.item_id,
+                        "title": title,
+                        "reason": item.reasoning.first().cloned().unwrap_or_else(|| "Recommended for you".to_string())
+                    }));
+                }
+
                 let payload = EmailPayload {
                     profile_id: profile_id.clone(),
                     email: format!("{}@example.com", profile_id), // Mock email resolution
                     subject: "Your personalized picks for the weekend".to_string(),
-                    body_html: "<p>Check out these movies!</p>".to_string(), // In reality, rendered via template engine
+                    body_html: r#"
+                        <h2>Hello!</h2>
+                        <p>We've found some new content you might enjoy based on your recent activity:</p>
+                        <ul>
+                            {{#each items}}
+                                <li><strong>{{title}}</strong>: {{reason}}</li>
+                            {{/each}}
+                        </ul>
+                        <p>Open the app to start watching!</p>
+                    "#.to_string(),
                     template_slug: "weekly_digest_v1".to_string(),
                     metadata: json!({
-                        "item_ids": items.iter().map(|i| i.item_id).collect::<Vec<_>>()
+                        "items": email_items
                     }),
                 };
 
