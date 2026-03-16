@@ -42,6 +42,14 @@ We eliminate the "Algolia-Cost Trap" by integrating a high-performance, Rust-nat
 * **Mechanism:** A background `SearchSyncWorker` maintains a real-time, typo-tolerant mirror of the PostgreSQL catalog in **Meilisearch**.
 * **Execution:** The `FetchSearchResultsStage` combines exact keyword matches with **Semantic Re-ranking** (via Vector Similarity), ensuring that search results are not just accurate, but personalized to the user's Behavioral Tribe.
 
+### 1.7 🐍 Python-Bridge Intelligence (The Training Plane)
+
+We implement a high-performance bridge between Rust's speed and Python's ML ecosystem.
+
+* **Parquet Exporter:** A native `ParquetExporter` dumps ClickHouse telemetry into compressed Apache Parquet files for "Surgical Training."
+* **Artifact Flow:** Models are trained in Python (scikit-learn, PyTorch), exported to **ONNX**, and hot-reloaded into Rust memory without engine restarts.
+* **Signal Decay:** A background `SignalDecayWorker` automatically prunes stale behavioral data, ensuring infrastructure costs remain flat as the system scales.
+
 ---
 
 ## 2.0 🎨 Smart Pages & Zero-Code Orchestration
