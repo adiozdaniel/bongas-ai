@@ -20,6 +20,21 @@ use tokio::io::AsyncWriteExt;
 use crate::config::MlConfig;
 use crate::security::SecurityManager;
 use crate::ml::assets::loader::service::ModelLoader;
+use crate::analytics::uploader::ParquetExporter;
+
+/// Represents metrics reconciled from the Python training suite.
+#[derive(Debug, Serialize, Deserialize, clickhouse::Row)]
+pub struct ModelMetrics {
+    pub model_name: String,
+    pub version: String,
+    pub accuracy: f32,
+    pub precision: f32,
+    pub recall: f32,
+    pub f1_score: f32,
+    pub estimated_roi: f32,
+    pub training_duration_secs: u32,
+    pub created_at: u64,
+}
 
 /// Represents a single interaction sequence for training.
 #[derive(Debug, Serialize, Deserialize, clickhouse::Row)]
@@ -61,6 +76,50 @@ impl TrainingOrchestrator {
             security_manager,
             model_loader,
         }
+    }
+
+    /// Harvest data from ClickHouse and export to a local Parquet file.
+    pub async fn harvest_to_parquet(&self, output_path: impl AsRef<std::path::Path>) -> Result<()> {
+        info!("Harvesting interactions to Parquet: {:?}", output_path.as_ref());
+
+        // ClickHouse Query
+        let query = r#"
+            SELECT 
+                user_id, item_id, interaction_type, 
+                'unknown' as device_type, 'default' as profile_id, 'GE' as maturity_rating, 'unknown' as genre,
+                watch_duration_seconds, created_at
+            FROM user_interactions
+            WHERE created_at > (toUnixTimestamp(now()) - 7776000)
+            ORDER BY user_id, created_at ASC
+        "#;
+
+        let mut cursor = self.clickhouse.query(query).fetch::<HarvestedInteraction>()?;
+        let mut interactions = Vec::new();
+
+        while let Some(row) = cursor.next().await? {
+            interactions.push(row);
+        }
+
+        ParquetExporter::export_to_parquet(&interactions, output_path)?;
+
+        info!(count = interactions.len(), "Data harvest to Parquet complete");
+        Ok(())
+    }
+
+    /// Reconcile model metrics from Python and log to ClickHouse.
+    pub async fn reconcile_metrics(&self, metrics: ModelMetrics) -> Result<()> {
+        info!(
+            model = %metrics.model_name,
+            version = %metrics.version,
+            accuracy = metrics.accuracy,
+            "Reconciling model metrics to ClickHouse"
+        );
+
+        let mut insert = self.clickhouse.insert::<ModelMetrics>("model_performance_metrics").await?;
+        insert.write(&metrics).await?;
+        insert.end().await?;
+
+        Ok(())
     }
 
     /// Run the one-shot harvest if no model is present.
