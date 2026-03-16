@@ -55,7 +55,7 @@ use crate::engine::execution::cache::predictive_warmer::service::PredictiveWarme
 use crate::ml::inference::features::service::FeatureStore;
 use crate::experiments::coordinator::service::ExperimentCoordinator;
 use crate::notification::{NotificationDispatcher, NotificationRepository};
-use crate::notification::dispatcher::service::{KafkaNotifyAdaptor, PollingAdaptor, NotificationAdaptor};
+use crate::notification::dispatcher::service::{KafkaNotifyAdaptor, PollingAdaptor, ResendNotifyAdaptor, NotificationAdaptor};
 use crate::resilience::ResilienceMetricsCollector;
 use crate::resilience::registry::MetricsRegistry;
 use crate::resilience::ResilienceMetricsConfig;
@@ -307,10 +307,10 @@ impl DiscoverySymphony {
             resilience_metrics.clone(),
         ));
 
-        let notification_adaptor: Arc<dyn NotificationAdaptor> = if self.config.ingestion.kafka.enabled {
-            Arc::new(KafkaNotifyAdaptor::new())
-        } else {
-            Arc::new(PollingAdaptor::new())
+        let notification_adaptor: Arc<dyn NotificationAdaptor> = match self.config.notifications.adaptor {
+            crate::config::types::notification::NotificationAdaptorKind::Kafka => Arc::new(KafkaNotifyAdaptor::new()),
+            crate::config::types::notification::NotificationAdaptorKind::Resend => Arc::new(ResendNotifyAdaptor::new(self.config.notifications.resend.clone())),
+            crate::config::types::notification::NotificationAdaptorKind::Polling => Arc::new(PollingAdaptor::new()),
         };
 
         let notification_dispatcher = Arc::new(NotificationDispatcher::new(
