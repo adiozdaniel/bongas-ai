@@ -4,5 +4,7 @@
 //! for robust statistics upload to central server.
 
 pub mod service;
+pub mod parquet_exporter;
 
 pub use service::{StatsUploader, UploadError};
+pub use parquet_exporter::ParquetExporter;

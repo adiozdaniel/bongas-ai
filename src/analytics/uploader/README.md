@@ -1,30 +1,27 @@
-# 📤 Analytics: Uploader
+# 📦 Analytics Uploader: High-Throughput Delivery
 
-The `uploader` module handles the transmission of aggregated statistics to the remote analytics server. It incorporates resilience patterns to ensure that statistics are delivered without degrading the host application's performance.
-
----
-
-## 🛠️ Transmission Logic
-
-```mermaid
-graph LR
-    Payload[Stats Payload] --> Logic{Uploader}
-    Logic -->|Attempt| Network[Remote API]
-    Network -->|Fail| Retry[Retry Strategy]
-    Retry --> Logic
-    
-    Logic -.->|Protect| CB[Circuit Breaker]
-    CB -.->|Open| Rej[Drop Payload / Local Log]
-```
+The Analytics Uploader sub-module handles the resilient delivery of telemetry and harvested training data to central servers.
 
 ---
 
-## 🔑 Key Features
+## 🛠 Components
 
-- **Circuit Breaking**: Prevents the application from stalling on network timeouts.
-- **Backoff & Retry**: Intelligent retry logic with exponential backoff.
-- **Bulkhead Isolation**: Ensures analytics traffic does not exhaust global HTTP connection pools.
+### 1. StatsUploader
+Handles the real-time upload of `ClientStatsPayload` (CPU, Memory, Latency, Error rates) using the **Netflix Hystrix** circuit breaker pattern.
+
+### 2. ParquetExporter
+A high-performance utility that converts raw ClickHouse/PostgreSQL interaction data into compressed **Apache Parquet** files.
+- **Compression**: Uses Zstd for maximum storage efficiency.
+- **Format**: Implements the Apache Arrow schema for seamless integration with Python (Pandas/PyArrow).
 
 ---
 
-[🏠 Hub](../../../docs/HUB.md)  | [📊  Back to Analytics Main](../README.md) |  [🔝 Top](#-analytics-uploader)
+## 🚀 Execution Flow
+
+1. **Harvest**: `TrainingOrchestrator` fetches interaction sequences from ClickHouse.
+2. **Serialize**: `ParquetExporter` maps Rust structs into Arrow record batches.
+3. **Persist**: Writes the results to `.parquet` files for "Backstage Training."
+
+---
+
+[🏠 Hub](../../../docs/HUB.md) | [⬅️ Back to Analytics](../README.md)
