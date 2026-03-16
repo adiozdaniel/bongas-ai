@@ -163,6 +163,12 @@ impl DiscoverySymphony {
             None,
         ).await?);
 
+        // ─── 4. SEARCH PILLAR (Meilisearch) ──────────────────────────────────
+        let search_client = Arc::new(meilisearch_sdk::client::Client::new(
+            self.config.search.host.clone(),
+            Some(self.config.search.api_key.clone()),
+        ).expect("Meilisearch client init failed"));
+
         let clickhouse_client = clickhouse::Client::default()
             .with_url(self.config.clickhouse.url.clone())
             .with_user(self.config.clickhouse.user.clone())
@@ -224,6 +230,7 @@ impl DiscoverySymphony {
             experiment_coordinator,
             Arc::new(crate::middlewares::MetricsCollector::default()),
             Some(Arc::new(clickhouse_client.clone())),
+            Some(search_client.clone()),
             hot_registry.clone(),
             scenarios.clone(),
             linked_scenarios.clone(),
@@ -284,12 +291,20 @@ impl DiscoverySymphony {
             std::time::Duration::from_secs(86400), // Daily cycle
         ));
 
+        let search_sync_worker = Arc::new(crate::engine::intelligence::workers::search_sync::service::SearchSyncWorker::new(
+            self.config.search.host.clone(),
+            self.config.search.api_key.clone(),
+            self.config.search.index_name.clone(),
+            std::time::Duration::from_secs(3600), // Hourly sync
+        ));
+
         let workers = Arc::new(WorkersManager::new()
             .with_tribe_orchestrator(tribe_orchestrator)
             .with_regional_pulse(regional_pulse_worker)
             .with_fatigue_sync(fatigue_sync.clone())
             .with_reasoning(reasoning_worker)
-            .with_digest(digest_worker.clone()));
+            .with_digest(digest_worker.clone())
+            .with_search_sync(search_sync_worker));
 
         let intelligence = Arc::new(IntelligencePillar::new(
             Arc::new(SuggestionsManager::new()),

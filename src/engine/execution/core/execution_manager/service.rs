@@ -47,6 +47,7 @@ pub struct ExecutionManager {
     pub(crate) experiment_coordinator: Arc<ExperimentCoordinator>,
     pub(crate) metrics_collector: Arc<MetricsCollector>,
     pub(crate) clickhouse: Option<Arc<clickhouse::Client>>,
+    pub(crate) search_client: Option<Arc<meilisearch_sdk::client::Client>>,
     pub(crate) hot_registry: Arc<crate::cache::HotRegistry>,
     
     // Coordination with Scenarios
@@ -72,6 +73,7 @@ impl ExecutionManager {
         experiment_coordinator: Arc<ExperimentCoordinator>,
         metrics_collector: Arc<MetricsCollector>,
         clickhouse: Option<Arc<clickhouse::Client>>,
+        search_client: Option<Arc<meilisearch_sdk::client::Client>>,
         hot_registry: Arc<crate::cache::HotRegistry>,
         scenarios: Arc<RwLock<HashMap<String, ScenarioDefinition>>>,
         linked_scenarios: Arc<ArcSwap<HashMap<String, Arc<ExecutablePipeline>>>>,
@@ -89,6 +91,7 @@ impl ExecutionManager {
             experiment_coordinator,
             metrics_collector,
             clickhouse,
+            search_client,
             hot_registry,
             scenarios,
             linked_scenarios,
@@ -154,6 +157,10 @@ impl ExecutionManager {
 
         if let Some(ref ch) = self.clickhouse {
             context = context.with_clickhouse_client(ch.clone());
+        }
+
+        if let Some(ref sc) = self.search_client {
+            context = context.with_search_client(sc.clone());
         }
 
         let resolved_pipeline = self.strategy_resolver.resolve(&ctx.scenario_slug, &context);
