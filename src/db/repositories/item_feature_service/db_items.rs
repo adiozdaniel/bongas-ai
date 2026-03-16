@@ -418,4 +418,50 @@ impl ItemFeatureService {
 
         Ok(rows)
     }
+
+    /// Fetch a batch of active items for search synchronization.
+    pub async fn get_items_for_search_sync(
+        &self,
+        limit: i64,
+    ) -> Result<Vec<ItemFeatureRow>> {
+        let start = std::time::Instant::now();
+
+        let rows: Vec<ItemFeatureRow> = self
+            .pool
+            .execute(|pool| async move {
+                sqlx::query_as::<_, ItemFeatureRow>(
+                    r#"
+                    SELECT item_id, title, description, genres, tags, creators,
+                           directors, studios, actors,
+                           content_type, language, audio_languages, subtitle_languages,
+                           age_rating, duration_seconds, release_year, release_date,
+                           published_at, added_date, available_from, available_until, is_active,
+                           max_resolution, has_hdr, has_dolby_vision, has_dolby_atmos,
+                           is_explicit, has_violence, has_strong_language, has_drug_content,
+                           available_countries, blocked_countries,
+                           seasonal_tags, holiday_tags, themes, is_award_winner,
+                           required_tier, is_free,
+                           view_count, like_count, comment_count, share_count, save_count,
+                           completion_rate, trending_score, popularity_score,
+                           user_rating, user_rating_count, critic_rating, critic_rating_count,
+                           embedding, tfidf_vector
+                    FROM item_features
+                    WHERE is_active = true
+                    ORDER BY updated_at DESC
+                    LIMIT $1
+                    "#,
+                )
+                .bind(limit)
+                .fetch_all(&pool)
+                .await
+            })
+            .await?;
+
+        let duration = start.elapsed();
+        let metrics = self.metrics.registry().get_or_create("item_feature_service.search_sync");
+        metrics.latency.record_duration(duration);
+        metrics.successes.increment();
+
+        Ok(rows)
+    }
 }
