@@ -15,6 +15,7 @@ use crate::pipeline::recovery::fetch_new_releases::service::FetchNewReleasesStag
 use crate::pipeline::recovery::fetch_user_preferences::service::FetchUserPreferencesStage;
 use crate::pipeline::recovery::fetch_seasonal_content::service::FetchSeasonalContentStage;
 use crate::pipeline::recovery::fetch_behavioral_tribe::service::FetchBehavioralTribeStage;
+use crate::pipeline::recovery::fetch_search_results::service::FetchSearchResultsStage;
 
 // Category 2: Processing (The Backstage)
 use crate::pipeline::processing::filter_already_watched::service::FilterAlreadyWatchedStage;
@@ -50,6 +51,7 @@ use crate::pipeline::ranking::paginate_results::service::PaginateResultsStage;
 use crate::pipeline::ranking::meta_scorer::service::MetaScorerStage;
 use crate::pipeline::ranking::heuristic_aggregator::service::HeuristicAggregatorStage;
 use crate::pipeline::ranking::sort_by_relevance::service::SortByRelevanceStage;
+use crate::pipeline::ranking::hybrid_search_ranker::service::HybridSearchRankerStage;
 
 // Category 2 additions
 use crate::pipeline::processing::filter_by_availability::service::FilterByAvailabilityStage;
@@ -113,6 +115,7 @@ fn register_static_stages(registry: &mut HashMap<String, Arc<dyn PipelineStage>>
     registry.insert("fetch_user_preferences".into(), Arc::new(FetchUserPreferencesStage));
     registry.insert("fetch_seasonal_content".into(), Arc::new(FetchSeasonalContentStage));
     registry.insert("fetch_behavioral_tribe".into(), Arc::new(FetchBehavioralTribeStage));
+    registry.insert("fetch_search_results".into(), Arc::new(FetchSearchResultsStage));
 
     // Processing
     registry.insert("filter_already_watched".into(), Arc::new(FilterAlreadyWatchedStage));
@@ -166,6 +169,7 @@ fn register_static_stages(registry: &mut HashMap<String, Arc<dyn PipelineStage>>
     registry.insert("meta_scorer".into(), Arc::new(MetaScorerStage));
     registry.insert("heuristic_aggregator".into(), Arc::new(HeuristicAggregatorStage));
     registry.insert("sort_by_relevance".into(), Arc::new(SortByRelevanceStage));
+    registry.insert("hybrid_search_ranker".into(), Arc::new(HybridSearchRankerStage));
 }
 
 fn register_dynamic_stages(registry: &mut HashMap<String, Arc<dyn PipelineStage>>) {

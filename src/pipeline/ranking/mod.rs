@@ -27,3 +27,4 @@ pub mod diversify_by_creator;
 pub mod multi_action_ranker;
 pub mod ml_inference_two_tower;
 pub mod ml_inference_similarity;
+pub mod hybrid_search_ranker;

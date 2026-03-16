@@ -45,6 +45,9 @@ pub struct ExecutionContext {
     /// ClickHouse client for analytics-heavy retrieval stages.
     pub clickhouse_client: Option<Arc<clickhouse::Client>>,
 
+    /// Meilisearch client for keyword-based search recovery stages.
+    pub search_client: Option<Arc<meilisearch_sdk::client::Client>>,
+
     // ── ML infrastructure (resilient) ───────────────────────────────────
     pub feature_store: Arc<FeatureStore>,
     pub embedding_manager: Option<Arc<EmbeddingManager>>,
@@ -94,6 +97,7 @@ impl ExecutionContext {
             hot_registry: None,
             item_feature_service,
             clickhouse_client: None,
+            search_client: None,
             feature_store,
             embedding_manager: None,
             analytics: None,
@@ -181,6 +185,11 @@ impl ExecutionContext {
 
     pub fn with_clickhouse_client(mut self, client: Arc<clickhouse::Client>) -> Self {
         self.clickhouse_client = Some(client);
+        self
+    }
+
+    pub fn with_search_client(mut self, client: Arc<meilisearch_sdk::client::Client>) -> Self {
+        self.search_client = Some(client);
         self
     }
 
