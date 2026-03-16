@@ -165,9 +165,11 @@ The **Analytical Ledger (ClickHouse)** tracks KPIs in real-time: **Consumption V
 
 ---
 
-## 7.0 🗺️ Future Horizons: The Roadmap to 3.0
+## 🗺️ Future Horizons: The Roadmap to 3.0
 
 The Symphony architecture is designed for continuous evolution. Phase 3 focuses on production-grade engagement, Algolia-scale search, and deep intelligence training.
+
+👉 **[View the Complete Strategic Roadmap & Milestones](./docs/adr/milestones.md)**
 
 ### 7.1 📧 Production Outbound: Resend Integration
 
