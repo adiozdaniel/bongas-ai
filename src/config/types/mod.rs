@@ -21,9 +21,11 @@ pub mod observability;
 pub mod resilience;
 pub mod experiments;
 pub mod hive_mind;
+pub mod search;
 
 // Re-export commonly used types
 pub use app::AppConfig;
+pub use search::SearchConfig;
 pub use circuit_breaker::{CircuitBreakerConfig, SlidingWindowType};
 pub use error::{ErrorConfig, BackoffStrategy};
 pub use analytics::{AnalyticsConfig, ExportFormat};

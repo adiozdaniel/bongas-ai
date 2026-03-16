@@ -5,7 +5,7 @@ use crate::config::types::{
     IngestionConfig, KafkaConfig, ApiSourceConfig, ClickHouseSourceConfig,
     SecurityConfig, MlConfig, ExposureSourceAdaptor, PipelineConfig, ObservabilityConfig, ResilienceConfig,
     NotificationConfig, ResendConfig, NotificationAdaptorKind,
-    HiveMindConfig, SlidingWindowType, BackoffStrategy, ExportFormat,
+    HiveMindConfig, SearchConfig, SlidingWindowType, BackoffStrategy, ExportFormat,
     experiments::ExperimentsConfig, resilience::{ResilienceDefaults, RetryConfig},
 };
 use crate::cache::CacheConfig;
@@ -442,6 +442,16 @@ impl ConfigLoader {
             },
         };
 
+        // Search
+        let search = SearchConfig {
+            host: parse_val("search.host", "http://localhost:7700"),
+            api_key: parse_val("search.api_key", ""),
+            index_name: parse_val("search.index_name", "items"),
+            timeout_ms: parse_u64("search.timeout_ms", 500)?,
+            max_hits: parse_u32("search.max_hits", 100)? as usize,
+            typo_tolerance: parse_bool("search.typo_tolerance", true)?,
+        };
+
         Ok(AppConfig {
             server,
             database,
@@ -461,6 +471,7 @@ impl ConfigLoader {
             experiments,
             hive_mind,
             notifications,
+            search,
         })
     }
 

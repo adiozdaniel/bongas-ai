@@ -9,7 +9,7 @@ use crate::config::types::{
     ServerConfig, DatabaseConfig, RedisConfig, ClickHouseConfig,
     IngestionConfig, SecurityConfig, MlConfig, PipelineConfig,
     ObservabilityConfig, ResilienceConfig, ExperimentsConfig, HiveMindConfig,
-    NotificationConfig,
+    NotificationConfig, SearchConfig,
 };
 use crate::cache::CacheConfig;
 use crate::resilience::ResilienceMetricsConfig;
@@ -35,32 +35,24 @@ pub struct AppConfig {
     pub experiments: ExperimentsConfig,
     pub hive_mind: HiveMindConfig,
     pub notifications: NotificationConfig,
+    pub search: SearchConfig,
 }
 
 impl AppConfig {
-    /// Get enabled services for logging.
+    /// List all enabled services for diagnostics and telemetry.
     pub fn enabled_services(&self) -> Vec<&'static str> {
-
         let mut services = Vec::new();
 
-        
-
         if self.database.url.is_some() {
-
             services.push("database");
-
         }
 
         if !self.redis.url.is_empty() {
-
             services.push("redis");
-
         }
 
         if !self.clickhouse.url.is_empty() {
-
             services.push("clickhouse");
-
         }
 
         if !self.ingestion.kafka.brokers.is_empty() {
@@ -74,33 +66,25 @@ impl AppConfig {
         }
 
         if self.circuit_breaker.enabled {
-
             services.push("circuit_breaker");
-
         }
 
         if self.analytics.enabled {
-
             services.push("analytics");
-
         }
 
         if self.experiments.enabled {
-
             services.push("experiments");
-
         }
 
         if self.hive_mind.enabled {
-
             services.push("hive_mind");
-
         }
 
-        
+        if !self.search.host.is_empty() {
+            services.push("search:meilisearch");
+        }
 
         services
-
     }
-
 }
