@@ -7,5 +7,6 @@ pub mod fatigue_sync;
 pub mod reasoning;
 pub mod digest_worker;
 pub mod search_sync;
+pub mod signal_decay;
 
 pub use manager::WorkersManager;

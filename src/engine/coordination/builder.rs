@@ -298,13 +298,20 @@ impl DiscoverySymphony {
             std::time::Duration::from_secs(3600), // Hourly sync
         ));
 
+        let signal_decay_worker = Arc::new(crate::engine::intelligence::workers::signal_decay::service::SignalDecayWorker::new(
+            clickhouse_client.clone(),
+            std::time::Duration::from_secs(86400), // Daily decay
+            self.config.ml.retention_days,
+        ));
+
         let workers = Arc::new(WorkersManager::new()
             .with_tribe_orchestrator(tribe_orchestrator)
             .with_regional_pulse(regional_pulse_worker)
             .with_fatigue_sync(fatigue_sync.clone())
             .with_reasoning(reasoning_worker)
             .with_digest(digest_worker.clone())
-            .with_search_sync(search_sync_worker));
+            .with_search_sync(search_sync_worker)
+            .with_signal_decay(signal_decay_worker));
 
         let intelligence = Arc::new(IntelligencePillar::new(
             Arc::new(SuggestionsManager::new()),
