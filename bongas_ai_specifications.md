@@ -59,6 +59,23 @@ Bongas-AI uses a highly modular `PipelineRegistry` that allows administrators to
 * **Mechanism:** A background `ReasoningWorker` proactively identifies high-probability profile/item matches and uses the HiveMind LLM to generate human-readable explanations.
 * **Execution:** Surfaces trust-building reasons (e.g., "Because you enjoy cyberpunk documentaries") to build user trust. It falls back to high-speed heuristic matching of profile affinities to item tags if a pre-computed reason isn't available.
 
+### Domain C: Blackbox Sovereign Intelligence (On-Premise)
+
+To balance **Data Sovereignty** with **IP Protection**, Bongas-AI utilizes a bifurcated on-premise training architecture:
+
+#### **5. Frozen Base Models (The Senses)**
+
+* **Mechanism:** Massive pre-trained models (e.g., `sight-core` for visual DNA, `slm-base` for natural language) are shipped to the client's environment as read-only, optimized `.safetensors` assets. They perform heavy feature extraction without data exfiltration.
+
+#### **6. Cythonized Local Trainer (`trainer.so`)**
+
+* **Mechanism:** An obfuscated, compiled Python worker runs locally on the client's infrastructure. It accesses the client's private ClickHouse ledgers and uses the Frozen Base Models to asynchronously train three lightweight "Student Heads":
+
+* **`vision_head.onnx` (The Auditor):** Maps raw visual DNA to specific safety ceilings (18+, Kids) and semantic vibes.
+* **`slm_head.onnx` (The Librarian):** Generates natural language summaries and taxonomy tags.
+* **`ranking.onnx` (The Conductor):** Learns aggregate Tribe-level content affinities.
+* **Execution:** These specialized ONNX models are hot-reloaded into the Rust *Stage* for sub-millisecond real-time execution, ensuring the core ranking path never blocks on heavy ML training.
+
 ---
 
 ## 3. User Engagement & Side-Effects

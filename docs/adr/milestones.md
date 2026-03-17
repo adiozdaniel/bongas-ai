@@ -24,7 +24,8 @@ This document tracks the technical execution and strategic alignment of the Bong
 | **M14: Control Plane** | Operations | ⏳ **Pending** | Remote fleet orchestration and atomic updates. | **Section 7.3:** Provides the "Executive Command Center" for real-time ROI tracking. |
 | **M15: Symphony Conductor** | Orchestration | ⏳ **Pending** | Agentic reasoning interface for technical simulation. | **Section 9.2:** Delivers "Semantic Transparency" through agentic advisory. |
 | **M16: The Swahili Brain** | Intelligence | ⏳ **Pending** | Localized SFT & learning loop for East African dialects. | **Section 6.0:** Golden SFT for localized understanding and cultural relevance. |
-| **M17: Sovereign Sight** | Intelligence | ⏳ **Pending** | V-JEPA 2 World Model for deep visual and forensic DNA. | **Section 6.1:** Achieves "Elite Intelligence" by understanding video natively. |
+| **M17: Sovereign Sight** | Intelligence | ⏳ **Pending** | `sight-core` World Model for deep visual and forensic DNA. | **Section 6.1:** Achieves "Elite Intelligence" by understanding video natively. |
+| **M18: Sovereign Discovery** | Intelligence | ⏳ **Pending** | Blackbox On-Premise architecture with Cythonized `trainer.so` and offline batch processing. | **Section 8.2:** 100% Data Sovereignty and IP protection via frozen base models within the VPC. |
 
 ---
 
@@ -104,9 +105,22 @@ This document tracks the technical execution and strategic alignment of the Bong
 
 | Component | Domain | Technical Impact | Remarks on Client's Manifesto Fulfilment |
 | :--- | :--- | :--- | :--- |
-| **Sight Sidecar** | Intelligence | Isolated V-JEPA 2 (1.2B) worker with opportunistic "Pause" logic. | **Section 1.0:** Background video scanning without impacting API speed. |
+| **Sight Sidecar** | Intelligence | Isolated `sight-core` (1.2B) worker with opportunistic "Pause" logic. | **Section 1.0:** Background video scanning without impacting API speed. |
 | **Differential Census** | Backstage | ID-delta tracking between client DB and Bongas Ledger (No migrations). | **Section 8.2:** Zero-friction integration with existing catalogs. |
 | **Visual DNA Architect** | Intelligence | Extraction of "Visual DNA" (e.g., (Gospel, Luhya, Slow)). | **Section 3.1:** Automated categorization via rhythmic/cultural DNA. |
 | **Forensic Auditor** | Security | Automated maturity/age rating with "Human-in-the-Loop" override. | **Section 10.2:** Enforced 18+ isolation for "High-Flesh-Tone" DNA. |
-| **Neural Persona Drift** | Discovery | Updating Tribe Weights (M5) based on V-JEPA visual engagement. | **Section 2.2:** Real-time persona shifts based on "Visual Vibe" matches. |
+| **Neural Persona Drift** | Discovery | Updating Tribe Weights (M5) based on `sight-core` visual engagement. | **Section 2.2:** Real-time persona shifts based on "Visual Vibe" matches. |
 | **Hook Factory** | Engagement | Automated extraction of high-entropy `.webp` teasers for notifications. | **Section 10.0:** Feeds the "Engagement Pulse" (M9) with visual hooks. |
+
+---
+
+## 🔍 Detailed Breakdown: Milestone 18 (Sovereign Discovery)
+
+| Component | Domain | Technical Impact | Remarks on Client's Manifesto Fulfilment |
+| :--- | :--- | :--- | :--- |
+| **Blackbox Trainer Draft** | Backstage | Python implementation of the `trainer.so` logic before Cythonization. | **Section 8.2:** The core training loop for Local Student Heads. |
+| **Blackbox Trainer** | Backstage | Cythonized `trainer.so` deployed on-premise. | **Section 8.2:** Protects IP while running on client infrastructure. |
+| **Frozen Base Models** | Intelligence | Read-only `sight-core` and `slm-base` shipped to client. | **Section 1.0:** Zero data exfiltration for heavy feature extraction. |
+| **Local Student Heads** | Intelligence | Local training of `vision_head.onnx` and `slm_head.onnx`. | **Section 2.2:** Client-specific taxonomy and vibe categorization. |
+| **Offline Tribe Sync** | Backstage | Batch processing of `ranking.onnx` using interaction ledgers. | **Section 5.2:** Avoids live latency overhead while keeping affinities fresh. |
+| **Sight Sidecar** | Orchestration | Asynchronous trigger fetching DNA vectors from the Frozen Base. | **Section 1.0:** Decouples video inference from the request path. |

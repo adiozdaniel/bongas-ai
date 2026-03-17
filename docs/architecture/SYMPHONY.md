@@ -71,6 +71,14 @@ To ensure long-term maintainability and architectural integrity, Symphony 2.0 en
 - **Type Safety**: Deeply nested generic types are simplified via descriptive aliases (e.g., `PageLayoutCache`), reducing cognitive load for engineers.
 - **Idiomatic Alignment**: All core system types implement standard Rust traits (`Default`, `FromStr`) for seamless ecosystem integration.
 
+### 7. Blackbox Sovereign Intelligence (Data Sovereignty vs IP)
+
+To ensure **Data Sovereignty** without sacrificing **IP Protection**, Bongas-AI utilizes a bifurcated "Sovereign Intelligence" approach:
+
+- **Frozen Senses:** Massive foundation models (`sight-core`, `slm-base`) are deployed locally as read-only assets to extract semantic DNA without sending client content to the cloud.
+- **Local Cython Trainer:** An obfuscated Python backend (`trainer.so`) trains fast, lightweight "Student Heads" (`vision_head.onnx`, `slm_head.onnx`, `ranking.onnx`) directly on the client's private ClickHouse interaction data.
+- **Sidecar Execution:** The Rust engine uses background workers (e.g., `SovereignSightWorker`) to asynchronously run the heavy feature extraction off the main request thread, caching the results to ensure sub-millisecond API responsiveness.
+
 ---
 
 ## 🚀 Architectural Deep-Dives
