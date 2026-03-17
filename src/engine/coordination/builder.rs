@@ -47,6 +47,7 @@ use crate::engine::intelligence::workers::regional_pulse::service::RegionalPulse
 use crate::engine::intelligence::workers::fatigue_sync::service::FatigueSynchronizer;
 use crate::engine::intelligence::workers::reasoning::service::ReasoningWorker;
 use crate::engine::intelligence::workers::digest_worker::service::DigestWorker;
+use crate::engine::intelligence::workers::sovereign_sight::service::SovereignSightWorker;
 use crate::engine::governance::orchestration::manager::service::PagesManager;
 use crate::engine::governance::strategy::resolver::service::StrategyResolver;
 use crate::engine::governance::factory::scenario_factory::service::ScenarioFactory;
@@ -304,6 +305,14 @@ impl DiscoverySymphony {
             self.config.ml.retention_days,
         ));
 
+        let sovereign_sight_worker = Arc::new(SovereignSightWorker::new(
+            resilient_pool.clone(),
+            clickhouse_client.clone(),
+            cache_manager.clone(),
+            resilience_metrics.clone(),
+            std::time::Duration::from_secs(3600), // Hourly audit pulse
+        ));
+
         let workers = Arc::new(WorkersManager::new()
             .with_tribe_orchestrator(tribe_orchestrator)
             .with_regional_pulse(regional_pulse_worker)
@@ -311,7 +320,8 @@ impl DiscoverySymphony {
             .with_reasoning(reasoning_worker)
             .with_digest(digest_worker.clone())
             .with_search_sync(search_sync_worker)
-            .with_signal_decay(signal_decay_worker));
+            .with_signal_decay(signal_decay_worker)
+            .with_sovereign_sight(sovereign_sight_worker));
 
         let intelligence = Arc::new(IntelligencePillar::new(
             Arc::new(SuggestionsManager::new()),

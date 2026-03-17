@@ -11,6 +11,7 @@ use crate::engine::intelligence::workers::reasoning::service::ReasoningWorker;
 use crate::engine::intelligence::workers::digest_worker::service::DigestWorker;
 use crate::engine::intelligence::workers::search_sync::service::SearchSyncWorker;
 use crate::engine::intelligence::workers::signal_decay::service::SignalDecayWorker;
+use crate::engine::intelligence::workers::sovereign_sight::service::SovereignSightWorker;
 
 /// 💓 Workers: Background maintenance and task orchestration.
 pub struct WorkersManager {
@@ -21,6 +22,7 @@ pub struct WorkersManager {
     digest: Option<Arc<DigestWorker>>,
     search_sync: Option<Arc<SearchSyncWorker>>,
     signal_decay: Option<Arc<SignalDecayWorker>>,
+    sovereign_sight: Option<Arc<SovereignSightWorker>>,
 }
 
 impl Default for WorkersManager {
@@ -39,6 +41,7 @@ impl WorkersManager {
             digest: None,
             search_sync: None,
             signal_decay: None,
+            sovereign_sight: None,
         }
     }
 
@@ -74,6 +77,11 @@ impl WorkersManager {
 
     pub fn with_signal_decay(mut self, worker: Arc<SignalDecayWorker>) -> Self {
         self.signal_decay = Some(worker);
+        self
+    }
+
+    pub fn with_sovereign_sight(mut self, worker: Arc<SovereignSightWorker>) -> Self {
+        self.sovereign_sight = Some(worker);
         self
     }
 
@@ -147,6 +155,15 @@ impl WorkersManager {
 
         // 7. Start Signal Decay Worker
         if let Some(ref worker) = self.signal_decay {
+            let worker = worker.clone();
+            let shutdown_rx = shutdown_tx.subscribe();
+            tokio::spawn(async move {
+                worker.start(shutdown_rx).await;
+            });
+        }
+
+        // 8. Start Sovereign Sight Worker (Milestone 17)
+        if let Some(ref worker) = self.sovereign_sight {
             let worker = worker.clone();
             let shutdown_rx = shutdown_tx.subscribe();
             tokio::spawn(async move {
