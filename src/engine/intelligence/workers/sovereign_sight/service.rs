@@ -149,7 +149,7 @@ impl SovereignSightWorker {
     /// Internal logic for visual DNA and maturity forensic extraction.
     async fn perform_visual_audit(&self, external_id: i32) -> Result<SovereignSightLedger> {
         // Step 3: Visual DNA Extraction (Simulated)
-        // Production: ort::Session::new(&env, "models/vjepa2_1.2b.onnx", &opts)?
+        // Production: ort::Session::new(&env, "models/sight_core.onnx", &opts)?
         
         let entropy = 0.45; // Steady pace
         let appearance = "Photorealistic".to_string();
