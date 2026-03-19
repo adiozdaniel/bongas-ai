@@ -266,7 +266,7 @@ impl DiscoverySymphony {
             self.config.ml.tribe_num_clusters,
         ));
 
-        let hive_mind = Arc::new(HiveMindConnector::new(self.config.hive_mind.clone(), resilient_pool.clone(), shutdown_tx.subscribe()));
+        let hive_mind = Arc::new(HiveMindConnector::new(self.config.hive_mind.clone(), Some(resilient_pool.clone()), shutdown_tx.subscribe()));
 
         let regional_pulse_worker = Arc::new(RegionalPulseWorker::new(
             hive_mind.clone(),
