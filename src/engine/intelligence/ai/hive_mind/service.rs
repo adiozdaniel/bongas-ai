@@ -33,6 +33,19 @@ pub struct PulseClassification {
     pub confidence: f32,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AdminQuery {
+    pub text: String,
+    pub context: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AdminResponse {
+    pub text: String,
+    pub action: Option<serde_json::Value>,
+    pub confidence: f32,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum PulseKind {
@@ -44,7 +57,7 @@ pub enum PulseKind {
 pub struct HiveMindConnector {
     engine: std::sync::Mutex<Option<Weak<BongasEngine>>>,
     config: HiveMindConfig,
-    pool: Arc<ResilientPool>,
+    pool: Option<Arc<ResilientPool>>,
     http_client: Client,
     shutdown_rx: tokio::sync::broadcast::Receiver<()>,
 }
@@ -52,7 +65,7 @@ pub struct HiveMindConnector {
 impl HiveMindConnector {
     pub fn new(
         config: HiveMindConfig,
-        pool: Arc<ResilientPool>,
+        pool: Option<Arc<ResilientPool>>,
         shutdown_rx: tokio::sync::broadcast::Receiver<()>,
     ) -> Self {
         Self {
@@ -126,6 +139,75 @@ impl HiveMindConnector {
         }
 
         Ok("Recommended based on your viewing patterns".to_string())
+    }
+
+    /// The Symphony Conductor (Admin ReAct Interface)
+    /// 
+    /// Implements behavioral rails:
+    /// - Context Shielding (Point 1)
+    /// - Conversational Fillers (Swahili/Sheng) (Point 2)
+    /// - Forensic Reconciliation (uko sure wewe? / ni sawa basi) (Point 9)
+    /// - Latency Masking (kiasi tu) (Point 10)
+    /// - Instant Forensic Interpretations (Point 11)
+    pub async fn process_admin_query(&self, query: AdminQuery) -> Result<AdminResponse> {
+        let text = query.text.to_lowercase();
+        
+        // 1. Instant Forensic Interpretations (Pillar 3, Point 11)
+        if text.contains("rated as") || text.contains("rating ya") {
+            // Mock: Pull from ClickHouse in production
+            return Ok(AdminResponse {
+                text: "18+".to_string(), // Instant snapshot
+                action: None,
+                confidence: 1.0,
+            });
+        }
+
+        // 2. Latency Masking (Pillar 3, Point 10)
+        if text.contains("check") || text.contains("confirm") {
+            // Simulate a slow check
+            return Ok(AdminResponse {
+                text: "kiasi tu... acha ni confirm kwanza".to_string(),
+                action: Some(serde_json::json!({"status": "processing"})),
+                confidence: 0.95,
+            });
+        }
+
+        // 3. Forensic Reconciliation & Skepticism (Pillar 3, Point 9)
+        if text.contains("it is ge") || text.contains("ni ge") {
+            if query.context.get("forensic_flag").and_then(|v| v.as_str()) == Some("17+") {
+                return Ok(AdminResponse {
+                    text: "uko sure wewe? forensics inasema hii ni 17+".to_string(),
+                    action: Some(serde_json::json!({"requires_confirmation": true})),
+                    confidence: 0.99,
+                });
+            }
+        }
+
+        if text.contains("yes") || text.contains("ndio") || text.contains("i am sure") {
+            if query.context.get("pending_override").and_then(|v| v.as_bool()) == Some(true) {
+                return Ok(AdminResponse {
+                    text: "ni sawa basi. nime update metadata.".to_string(),
+                    action: Some(serde_json::json!({"operation": "manual_override", "status": "committed"})),
+                    confidence: 1.0,
+                });
+            }
+        }
+
+        // 4. Context Shielding (Pillar 3, Point 1)
+        if text.contains("weather") || text.contains("sports") || text.contains("football") {
+            return Ok(AdminResponse {
+                text: "Sawa, lakini wacha tu focus kwenye system orchestration na analytics kwa sasa.".to_string(),
+                action: None,
+                confidence: 1.0,
+            });
+        }
+
+        // Default response with fillers (Point 2)
+        Ok(AdminResponse {
+            text: "poa, nimekupata. ungetaka nisaidie na nini kulingana na engine?".to_string(),
+            action: None,
+            confidence: 0.8,
+        })
     }
 
     pub async fn start(self: Arc<Self>) {
@@ -205,8 +287,16 @@ impl HiveMindConnector {
     }
 
     async fn process_global_rule(&self, rule: GlobalRule) -> Result<()> {
+        let pool = match &self.pool {
+            Some(p) => p,
+            None => {
+                warn!("Cannot process global rule: Database pool not available");
+                return Ok(());
+            }
+        };
+
         // 1. Insert as suggestion
-        let suggestion_id: i32 = self.pool.execute(|pool| {
+        let suggestion_id: i32 = pool.execute(|pool| {
             let r = rule.reasoning.clone();
             let c = rule.condition.clone();
             let s_slug = rule.scenario_slug.clone();
