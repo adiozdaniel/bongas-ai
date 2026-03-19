@@ -11,6 +11,103 @@ In Symphony 2.0, we have evolved beyond simple Server-Driven UI (SDUI). Bongas-A
 **Bongas-AI flips the script.** The server is the Orchestrator, and the client is the Canvas.
 
 👉 **[View the Interactive Data-Flow Architecture Diagram](./SYMPHONY_INTERACTIVE_DIAGRAM.html)**
+> ⚠️ **GitLab/GitHub Notice:** By default, repository platforms render `.html` files as raw source code for security reasons. To view the animations and interactive elements, please **download** the `SYMPHONY_INTERACTIVE_DIAGRAM.html` file to your computer and open it in your web browser.
+
+```mermaid
+graph LR
+    %% External Actors
+    subgraph ClientSpace ["External Actors"]
+        UI["Clients (Web/Mobile/TV)<br/>SDUI Canvas"]
+        Telemetry["Client Events<br/>Telemetry Stream"]
+        Admin["Admin / CI/CD<br/>Strategy Control"]
+    end
+
+    %% Bongas-AI Application
+    subgraph BongasAI ["Bongas-AI Core Engine"]
+        
+        %% API Gateway Layer
+        subgraph APIGateway ["Symphony Gateway"]
+            StageAPI["🌍 THE STAGE"]
+            BackstageAPI["🔐 THE BACKSTAGE"]
+        end
+
+        Resolver["Symphony Resolver"]
+        OTLP["OTLP Shield"]
+
+        %% The Read Path
+        subgraph RuntimePlane ["Runtime (Read Path)"]
+            Registry["Pipeline Registry"]
+            SSE["SSE Fan-Out"]
+            Ghost["Ghost Cache"]
+        end
+        
+        %% The Write/Async Path
+        subgraph ControlPlane ["Intelligence (Write Path)"]
+            Workers["WorkersManager"]
+            
+            TribeWorker["Tribe Orchestrator"]
+            SearchWorker["Search Sync"]
+            PulseWorker["Regional Pulse"]
+            ReasoningWorker["Reasoning Engine"]
+            FatigueWorker["Fatigue Sync"]
+            ExportWorker["Parquet Export"]
+        end
+
+        Notifier["Notification Dispatcher"]
+    end
+
+    %% Data Storage Layer
+    subgraph DataLayer ["Sovereign Infrastructure"]
+        PG[(PostgreSQL)]
+        Redis[(Redis)]
+        ClickHouse[(ClickHouse)]
+        Meili[(Meilisearch)]
+        Kafka{"Kafka Topic"}
+    end
+
+    %% ML / Intelligence Integration
+    subgraph IntelligenceLayer ["ML Assets"]
+        ONNX["ONNX Models"]
+        HiveMind["HiveMind SLM"]
+    end
+
+    %% --- CONNECTIONS ---
+    
+    %% --- DISCOVERY PATHS ---
+    UI <--> StageAPI
+    Telemetry <--> StageAPI
+    StageAPI <--> Resolver
+    Resolver <--> OTLP
+    OTLP <--> Registry
+    Registry <--> SSE
+    Registry <--> Ghost
+    Registry <--> Redis
+    Registry <--> PG
+    Registry <--> Meili
+    Registry <--> ONNX
+    Ghost <--> Redis
+
+    %% --- INTELLIGENCE PATHS ---
+    Workers <--> SearchWorker
+    Workers <--> ReasoningWorker
+    Workers <--> ExportWorker
+    SearchWorker <--> PG
+    SearchWorker <--> Meili
+    ExportWorker <--> ClickHouse
+    ReasoningWorker <--> HiveMind
+    PulseWorker <--> HiveMind
+    OTLP -.- ClickHouse
+
+    %% --- MANAGEMENT PATHS ---
+    Admin <--> BackstageAPI
+    BackstageAPI <--> Resolver
+    Workers <--> TribeWorker
+    Workers <--> PulseWorker
+    Workers <--> FatigueWorker
+    FatigueWorker <--> Redis
+    TribeWorker <--> ClickHouse
+    Notifier <--> Kafka
+```
 
 ## 🌟 Key Architectural Pillars
 
