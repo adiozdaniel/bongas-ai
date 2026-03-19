@@ -120,6 +120,7 @@ This document tracks the technical execution and strategic alignment of the Bong
 | Component | Domain | Technical Impact | Remarks on Client's Manifesto Fulfilment |
 | :--- | :--- | :--- | :--- |
 | **Blackbox Trainer Draft** | Backstage | Python implementation of the `trainer.so` logic before Cythonization. | **Section 8.2:** The core training loop for Local Student Heads. |
+| **Refining Student Heads** | Backstage | Iterative optimization of Vision, SLM and Ranking training loops. | **Section 8.2:** Continuous intelligence improvement on-premise. |
 | **Blackbox Trainer** | Backstage | Cythonized `trainer.so` deployed on-premise. | **Section 8.2:** Protects IP while running on client infrastructure. |
 | **Frozen Base Models** | Intelligence | Read-only `sight-core` and `slm-base` shipped to client. | **Section 1.0:** Zero data exfiltration for heavy feature extraction. |
 | **Local Student Heads** | Intelligence | Local training of `vision_head.onnx` and `slm_head.onnx`. | **Section 2.2:** Client-specific taxonomy and vibe categorization. |

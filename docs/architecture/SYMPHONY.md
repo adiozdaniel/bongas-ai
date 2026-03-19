@@ -10,18 +10,7 @@ In Symphony 2.0, we have evolved beyond simple Server-Driven UI (SDUI). Bongas-A
 
 **Bongas-AI flips the script.** The server is the Orchestrator, and the client is the Canvas.
 
-```mermaid
-graph TD
-    A[Genesis Request: /api/v1/recommendation/page/home] --> B[Middleware: OTLP Shield & Identity]
-    B --> C{Symphony Resolver}
-    C --> D[Identify Context: Visitor/Device/Profile]
-    C --> E[Resolve Page Composition & Ranking]
-    E --> F[Parallel Execution: Fan-Out factor 5]
-    F --> G[Streaming SSE Results]
-    F --> H[Ghost Pre-warm: Server-Side Look-Ahead]
-    G --> I[Client: Instant-On Rendering]
-    H --> J[(Redis Ghost Cache)]
-```
+👉 **[View the Interactive Data-Flow Architecture Diagram](./SYMPHONY_INTERACTIVE_DIAGRAM.html)**
 
 ## 🌟 Key Architectural Pillars
 
