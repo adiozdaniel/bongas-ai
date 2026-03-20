@@ -33,6 +33,7 @@ pub mod cache;
 pub mod db;
 pub mod ingestion;
 pub mod ml;
+pub mod search;
 
 // Business logic modules
 pub mod engine;
