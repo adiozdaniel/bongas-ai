@@ -18,7 +18,10 @@ impl BongasRuntime {
     /// Initialize and bootstrap the application using the DiscoverySymphony factory.
     pub async fn init() -> Result<Self> {
         // 1. Load Configuration
-        let config = Arc::new(ConfigLoader::new().load()?);
+        let config = Arc::new(ConfigLoader::new()
+            .with_defaults()
+            .with_env()
+            .load()?);
 
         // 2. Initialize Telemetry
         let telemetry_config = TelemetryConfig::builder()

@@ -58,8 +58,8 @@ impl EnvSource {
             };
 
             // Convert to dot-separated
-            // Pattern: APP__SECURITY__WEB_API_KEY -> security.web_api_key
-            let dot_key = clean_key.replace("_", ".");
+            // Pattern: DATABASE__URL -> database.url
+            let dot_key = clean_key.replace("__", ".");
             
             result.insert(dot_key, value);
         }

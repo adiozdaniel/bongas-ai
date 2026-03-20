@@ -68,43 +68,52 @@ impl ConfigLoader {
 
     /// Parse flat configuration map into typed AppConfig.
     fn parse_config_map(config_map: HashMap<String, String>) -> ConfigResult<AppConfig> {
-        let parse_val = |key: &str, default: &str| {
-            config_map.get(key).cloned().unwrap_or_else(|| default.to_string())
+        // Normalize all keys to lowercase for robust lookup
+        let normalized_map: HashMap<String, String> = config_map.into_iter()
+            .map(|(k, v)| (k.to_lowercase(), v))
+            .collect();
+
+        let get_val = |key: &str, default: &str| {
+            normalized_map.get(&key.to_lowercase())
+                .cloned()
+                .unwrap_or_else(|| default.to_string())
         };
 
         let require_val = |key: &str| -> ConfigResult<String> {
-            config_map.get(key).cloned()
-                .ok_or_else(|| ConfigError::Parse(format!("Mandatory configuration variable {} is missing", key)))
+            normalized_map.get(&key.to_lowercase())
+                .cloned()
+                .filter(|v| !v.is_empty())
+                .ok_or_else(|| ConfigError::Parse(format!("Mandatory configuration variable {} is missing or empty", key)))
         };
 
         let parse_u32 = |key: &str, default: u32| -> ConfigResult<u32> {
-            let val = parse_val(key, &default.to_string());
+            let val = get_val(key, &default.to_string());
             val.parse().map_err(|e| ConfigError::Parse(format!("Invalid u32 for {}: {}", key, e)))
         };
 
         let parse_u64 = |key: &str, default: u64| -> ConfigResult<u64> {
-            let val = parse_val(key, &default.to_string());
+            let val = get_val(key, &default.to_string());
             val.parse().map_err(|e| ConfigError::Parse(format!("Invalid u64 for {}: {}", key, e)))
         };
 
         let parse_bool = |key: &str, default: bool| -> ConfigResult<bool> {
-            let val = parse_val(key, &default.to_string());
+            let val = get_val(key, &default.to_string());
             val.parse().map_err(|e| ConfigError::Parse(format!("Invalid boolean for {}: {}", key, e)))
         };
 
         let parse_f64 = |key: &str, default: f64| -> ConfigResult<f64> {
-            let val = parse_val(key, &default.to_string());
+            let val = get_val(key, &default.to_string());
             val.parse().map_err(|e| ConfigError::Parse(format!("Invalid float for {}: {}", key, e)))
         };
 
         // Server
         let server = ServerConfig {
-            host: parse_val("server.host", "0.0.0.0"),
+            host: get_val("server.host", "0.0.0.0"),
             port: parse_u32("server.port", 8080)? as u16,
-            environment: parse_val("server.environment", "development"),
+            environment: get_val("server.environment", "development"),
             tls_enabled: parse_bool("server.tls_enabled", false)?,
-            tls_cert_path: config_map.get("server.tls_cert_path").cloned(),
-            tls_key_path: config_map.get("server.tls_key_path").cloned(),
+            tls_cert_path: normalized_map.get("server.tls_cert_path").cloned(),
+            tls_key_path: normalized_map.get("server.tls_key_path").cloned(),
             max_connections: parse_u32("server.max_connections", 1000)? as usize,
             request_timeout: parse_u64("server.request_timeout", 30)?,
             keep_alive_timeout: parse_u64("server.keep_alive_timeout", 5)?,
@@ -113,7 +122,7 @@ impl ConfigLoader {
         // Database (MANDATORY CORE)
         let database = DatabaseConfig {
             url: Some(require_val("database.url")?),
-            read_replicas: config_map.get("database.read_replicas")
+            read_replicas: normalized_map.get("database.read_replicas")
                 .map(|s| s.split(',').map(|s| s.trim().to_string()).collect())
                 .unwrap_or_default(),
             max_connections: parse_u32("database.max_connections", 100)?,
@@ -128,7 +137,7 @@ impl ConfigLoader {
         // Redis (MANDATORY CORE)
         let redis = RedisConfig {
             url: require_val("redis.url")?,
-            cluster_nodes: config_map.get("redis.cluster_nodes")
+            cluster_nodes: normalized_map.get("redis.cluster_nodes")
                 .map(|s| s.split(',').map(|s| s.trim().to_string()).collect())
                 .unwrap_or_default(),
             pool_size: parse_u32("redis.pool_size", 50)?,
@@ -142,8 +151,8 @@ impl ConfigLoader {
         // ClickHouse (MANDATORY CORE)
         let clickhouse = ClickHouseConfig {
             url: require_val("clickhouse.url")?,
-            user: parse_val("clickhouse.user", ""),
-            password: parse_val("clickhouse.password", ""),
+            user: get_val("clickhouse.user", ""),
+            password: get_val("clickhouse.password", ""),
             database: require_val("clickhouse.database")?,
             connection_timeout: parse_u64("clickhouse.connection_timeout", 10)?,
             request_timeout: parse_u64("clickhouse.request_timeout", 60)?,
@@ -154,13 +163,13 @@ impl ConfigLoader {
         let ingestion = IngestionConfig {
             kafka: KafkaConfig {
                 enabled: parse_bool("kafka.enabled", false)?,
-                brokers: parse_val("kafka.brokers", ""), // No default
-                group_id: parse_val("kafka.group_id", "bongas-ai-consumers"),
-                profile_topic: parse_val("kafka.profile_topic", "profile.events"),
-                reaction_topic: parse_val("kafka.reaction_topic", "reaction.events"),
-                notification_topic: parse_val("kafka.notification_topic", "notification.events"),
-                playback_topic: parse_val("kafka.playback_topic", "playback.events"),
-                sync_topic: parse_val("kafka.sync_topic", "recommendations.sync"),
+                brokers: get_val("kafka.brokers", ""),
+                group_id: get_val("kafka.group_id", "bongas-ai-consumers"),
+                profile_topic: get_val("kafka.profile_topic", "profile.events"),
+                reaction_topic: get_val("kafka.reaction_topic", "reaction.events"),
+                notification_topic: get_val("kafka.notification_topic", "notification.events"),
+                playback_topic: get_val("kafka.playback_topic", "playback.events"),
+                sync_topic: get_val("kafka.sync_topic", "recommendations.sync"),
                 connection_timeout: parse_u64("kafka.connection_timeout", 10)?,
                 request_timeout: parse_u64("kafka.request_timeout", 30)?,
                 max_retries: parse_u32("kafka.max_retries", 3)?,
@@ -181,10 +190,10 @@ impl ConfigLoader {
 
         // ML
         let ml = MlConfig {
-            model_path: PathBuf::from(parse_val("ml.model_path", "./models")),
+            model_path: PathBuf::from(get_val("ml.model_path", "./models")),
             batch_size: parse_u32("ml.batch_size", 64)? as usize,
             onnx_enabled: parse_bool("onnx.enabled", true)?,
-            onnx_execution_provider: parse_val("onnx.execution_provider", "cpu"),
+            onnx_execution_provider: get_val("onnx.execution_provider", "cpu"),
             onnx_graph_optimization: parse_bool("onnx.graph_optimization", true)?,
             onnx_memory_map: parse_bool("onnx.memory_map", true)?,
             onnx_intra_threads: parse_u32("onnx.intra_threads", 4)? as usize,
@@ -218,11 +227,11 @@ impl ConfigLoader {
             fallback_max_stale_age: Duration::from_secs(parse_u64("ml.fallback_max_stale_age_secs", 3600)?),
             analytics_enabled: parse_bool("ml.analytics_enabled", true)?,
             analytics_sample_rate: parse_f64("ml.analytics_sample_rate", 1.0)?,
-            central_server_url: parse_val("ml.central_server_url", ""), // No default
+            central_server_url: get_val("ml.central_server_url", ""),
             tribe_num_clusters: parse_u32("ml.tribe_num_clusters", 100)? as usize,
             tribe_clustering_interval: Duration::from_secs(parse_u64("ml.tribe_clustering_interval_secs", 14400)?),
             fatigue_enabled: parse_bool("ml.fatigue_enabled", true)?,
-            fatigue_adaptor: match parse_val("ml.fatigue_adaptor", "internal_hook").as_str() {
+            fatigue_adaptor: match get_val("ml.fatigue_adaptor", "internal_hook").as_str() {
                 "kafka_stream" => ExposureSourceAdaptor::KafkaStream,
                 "clickhouse_poll" => ExposureSourceAdaptor::ClickHousePoll,
                 _ => ExposureSourceAdaptor::InternalHook,
@@ -267,7 +276,7 @@ impl ConfigLoader {
             l2_ttl: Duration::from_secs(parse_u64("cache.l2_ttl_seconds", 3600)?),
             warming_enabled: true,
             warming_interval: Duration::from_secs(parse_u64("cache.warming_interval_minutes", 30)? * 60),
-            warm_scenarios: config_map.get("cache.warm_scenarios")
+            warm_scenarios: normalized_map.get("cache.warm_scenarios")
                 .map(|s| s.split(',').map(|s| s.trim().to_string()).collect())
                 .unwrap_or_else(|| vec![
                     "personalized_home".into(),
@@ -281,26 +290,15 @@ impl ConfigLoader {
         let observability = ObservabilityConfig {
             tracing_enabled: parse_bool("observability.tracing_enabled", true)?,
             metrics_enabled: parse_bool("observability.metrics_enabled", true)?,
-            log_level: parse_val("logging.level", "info"),
-            log_format: parse_val("logging.format", "text"),
-            jaeger_endpoint: config_map.get("observability.jaeger_endpoint").cloned(),
-            prometheus_endpoint: config_map.get("observability.prometheus_endpoint").cloned(),
-            otlp_endpoint: parse_val("tracing.otlp_endpoint", ""), // No default
-            otlp_protocol: parse_val("tracing.otlp_protocol", "http"),
+            log_level: get_val("logging.level", "info"),
+            log_format: get_val("logging.format", "text"),
+            jaeger_endpoint: normalized_map.get("observability.jaeger_endpoint").cloned(),
+            prometheus_endpoint: normalized_map.get("observability.prometheus_endpoint").cloned(),
+            otlp_endpoint: get_val("tracing.otlp_endpoint", ""),
+            otlp_protocol: get_val("tracing.otlp_protocol", "http"),
             sampling_rate: parse_f64("tracing.sampling_rate", 1.0)?,
             batch_size: parse_u32("tracing.batch_size", 512)? as usize,
             max_queue_size: parse_u32("tracing.max_queue_size", 2048)? as usize,
-        };
-
-        // Create a normalized map for case-insensitive lookup
-        let normalized_map: HashMap<String, String> = config_map.iter()
-            .map(|(k, v)| (k.to_lowercase(), v.clone()))
-            .collect();
-
-        let get_val = |key: &str, default: &str| {
-            normalized_map.get(&key.to_lowercase())
-                .cloned()
-                .unwrap_or_else(|| default.to_string())
         };
 
         // Security (NO DEFAULTS FOR API KEYS)
@@ -323,7 +321,7 @@ impl ConfigLoader {
         // Experiments
         let experiments = ExperimentsConfig {
             enabled: parse_bool("experiments.enabled", false)?,
-            assignment_method: match parse_val("experiments.assignment_method", "random").as_str() {
+            assignment_method: match get_val("experiments.assignment_method", "random").as_str() {
                 "hash" => AssignmentMethod::Hash,
                 "thompson_sampling" => AssignmentMethod::ThompsonSampling,
                 _ => AssignmentMethod::Random,
@@ -340,7 +338,7 @@ impl ConfigLoader {
             wait_duration_in_open_state: Some(Duration::from_secs(parse_u64("resilience.circuit_breaker.wait_duration_in_open_state_secs", 30)?)),
             permitted_calls_in_half_open_state: Some(parse_u64("resilience.circuit_breaker.permitted_calls_in_half_open_state", 3)?),
             sliding_window_size: parse_u64("resilience.circuit_breaker.sliding_window_size", 100)? as usize,
-            sliding_window_type: match parse_val("resilience.circuit_breaker.sliding_window_type", "count").as_str() {
+            sliding_window_type: match get_val("resilience.circuit_breaker.sliding_window_type", "count").as_str() {
                 "time" => SlidingWindowType::TimeBased,
                 _ => SlidingWindowType::CountBased,
             },
@@ -360,7 +358,7 @@ impl ConfigLoader {
             enabled: parse_bool("resilience.error.enabled", true)?,
             retry_enabled: parse_bool("resilience.error.retry_enabled", true)?,
             max_retries: parse_u32("resilience.error.max_retries", 3)?,
-            retry_backoff_strategy: match parse_val("resilience.error.retry_backoff_strategy", "exponential").as_str() {
+            retry_backoff_strategy: match get_val("resilience.error.retry_backoff_strategy", "exponential").as_str() {
                 "linear" => BackoffStrategy::Linear { 
                     increment: Duration::from_millis(100), 
                     max_delay: Duration::from_secs(5) 
@@ -389,13 +387,13 @@ impl ConfigLoader {
             histogram_precision: parse_u32("resilience.analytics.histogram_precision", 3)?,
             histogram_max_value: parse_u64("resilience.analytics.histogram_max_value", 60_000_000)?,
             histogram_min_value: parse_u64("resilience.analytics.histogram_min_value", 1)?,
-            export_format: match parse_val("resilience.analytics.export_format", "json").as_str() {
+            export_format: match get_val("resilience.analytics.export_format", "json").as_str() {
                 "prometheus" => ExportFormat::Prometheus,
                 "csv" => ExportFormat::Csv,
                 _ => ExportFormat::Json,
             },
             export_interval: Duration::from_secs(parse_u64("resilience.analytics.export_interval_secs", 60)?),
-            export_path: parse_val("resilience.analytics.export_path", "./metrics"),
+            export_path: get_val("resilience.analytics.export_path", "./metrics"),
             error_classification_enabled: parse_bool("resilience.analytics.error_classification_enabled", true)?,
             degraded_failure_tracking_enabled: parse_bool("resilience.analytics.degraded_failure_tracking_enabled", true)?,
             partial_failure_tracking_enabled: parse_bool("resilience.analytics.partial_failure_tracking_enabled", true)?,
@@ -428,8 +426,8 @@ impl ConfigLoader {
         // Hive Mind
         let hive_mind = HiveMindConfig {
             enabled: parse_bool("hive_mind.enabled", false)?,
-            url: parse_val("hive_mind.url", ""), // No default
-            api_key: config_map.get("hive_mind.api_key").cloned(),
+            url: get_val("hive_mind.url", ""),
+            api_key: normalized_map.get("hive_mind.api_key").cloned(),
             poll_interval_seconds: parse_u64("hive_mind.poll_interval_seconds", 3600)?,
             auto_approve_safe_rules: parse_bool("hive_mind.auto_approve_safe_rules", false)?,
         };
@@ -437,24 +435,24 @@ impl ConfigLoader {
         // Notifications
         let notifications = NotificationConfig {
             enabled: parse_bool("notifications.enabled", true)?,
-            adaptor: match parse_val("notifications.adaptor", "polling").as_str() {
+            adaptor: match get_val("notifications.adaptor", "polling").as_str() {
                 "kafka" => NotificationAdaptorKind::Kafka,
                 "resend" => NotificationAdaptorKind::Resend,
                 _ => NotificationAdaptorKind::Polling,
             },
             resend: ResendConfig {
-                api_key: parse_val("notifications.resend.api_key", ""),
-                from_email: parse_val("notifications.resend.from_email", ""),
-                from_name: parse_val("notifications.resend.from_name", "Bongas-AI"),
+                api_key: get_val("notifications.resend.api_key", ""),
+                from_email: get_val("notifications.resend.from_email", ""),
+                from_name: get_val("notifications.resend.from_name", "Bongas-AI"),
             },
         };
 
         // Search
         let search = SearchConfig {
             enabled: parse_bool("search.enabled", true)?,
-            index_path: require_val("search.index_path")?, // MANDATORY
+            index_path: require_val("search.index_path")?,
             writer_memory_mb: parse_u32("search.writer_memory_mb", 50)? as usize,
-            index_name: parse_val("search.index_name", "items"),
+            index_name: get_val("search.index_name", "items"),
             timeout_ms: parse_u64("search.timeout_ms", 500)?,
             max_hits: parse_u32("search.max_hits", 100)? as usize,
             typo_tolerance: parse_bool("search.typo_tolerance", true)?,
