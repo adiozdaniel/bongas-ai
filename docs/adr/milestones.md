@@ -145,7 +145,11 @@ This document tracks the technical execution and strategic alignment of the Bong
 
 | Component | Domain | Technical Impact | Status | Remarks on Client's Manifesto Fulfilment |
 | :--- | :--- | :--- | :--- | :--- |
-| **Tantivy Engine** | Discovery | Integration of the Rust-native Tantivy library for embedded full-text search. | ⏳ **Pending** | **Section 1.0:** Total infrastructure sovereignty (No sidecars). |
-| **Sound Listener** | Intelligence | Background ML worker extracting spoken words from video DNA into ClickHouse/Tantivy. | ⏳ **Pending** | **Section 3.1:** Deep Content understanding via spoken-word indexing. |
-| **Relevance Fusion** | Discovery | In-binary hybrid ranking merging BM25, Vision DNA, and User History. | ⏳ **Pending** | **Section 3.2:** High-precision, zero-latency personalized search. |
-| **Indestructible Index** | Infrastructure | WAL-based recovery and background "Auto-Repair" for index integrity. | ⏳ **Pending** | **Section 1.0:** "Blackbox" reliability; zero-maintenance search. |
+| **Embedded Foundation** | Infrastructure | Purge Meilisearch; Implement Tantivy Lifecycle Manager. | ⏳ **In Progress** | **Section 1.0:** Total infrastructure sovereignty (No sidecars). |
+| **Search Schema v1** | Discovery | Define multi-modal schema (Keyword + DNA + Spoken Text). | ⏳ **Pending** | **Section 3.1:** Hybrid understanding of content. |
+| **Indestructible WAL** | Infrastructure | Write-Ahead Log & Atomic commits for zero-loss recovery. | ⏳ **Pending** | **Section 1.0:** "Blackbox" reliability. |
+| **Auto-Repair Mode** | Infrastructure | Background full re-indexing from Postgres/ClickHouse. | ⏳ **Pending** | **Section 5.2:** Zero-lag data synchronization. |
+| **Sound Listener** | Intelligence | ML worker for audio-to-text extraction into Tantivy. | ⏳ **Pending** | **Section 6.0:** Localized understanding via spoken word. |
+| **Sheng-Native Search** | Intelligence | Specialized tokenizers for Swahili/Sheng dialects. | ⏳ **Pending** | **Section 6.1:** Cultural relevance at the search bar. |
+| **Relevance Fusion** | Discovery | Hybrid Ranking: BM25 + DNA Proximity + History. | ⏳ **Pending** | **Section 3.2:** High-precision precision matching. |
+| **Ghost Search** | Orchestration | Pre-warm search results during active keystrokes. | ⏳ **Pending** | **Section 4.0:** Perceived zero-latency search. |
