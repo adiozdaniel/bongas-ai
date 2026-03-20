@@ -74,6 +74,17 @@ thiserror = "2.0"
 # Time & Dates
 chrono = { version = "0.4", features = ["serde"] }
 
+# System Health & Monitoring (Milestone 21)
+sysinfo = "0.33"
+
+# Native Rust ML & Training (Milestone 21)
+candle-core = "0.8"
+candle-nn = "0.8"
+candle-transformers = "0.8"
+safetensors = "0.5"
+
+# Background Parallelism (Milestone 21)
+rayon = "1.10"
 
 # Misc
 uuid = { version = "1", features = ["v4", "serde"] }
