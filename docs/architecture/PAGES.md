@@ -47,6 +47,11 @@ When a user requests a page, the engine performs a **stable sort** of the compos
 - **Affinity Score:** High-engagement scenarios (like "Continue Watching" or "Preferred Genres") automatically bubble to the top.
 - **Persistence:** High-affinity rows are given priority during the **Parallel Fan-Out**, ensuring they arrive at the client first.
 
+### 3. Search-Driven Contexts
+When a user performs an active search, the **Symphony Resolver** dynamically injects the **[fetch_embedded_search](../recovery/fetch_embedded_search/README.md)** stage.
+- **Fusion Logic:** The page is assembled using hybrid results (Keyword + DNA).
+- **Personalized Results:** Even search pages are algorithmically reordered to match the user's "Tribe" affinity.
+
 ## 📺 Presentation Directives (SDUI)
 
 | Row Type | UI Style | Best For |
@@ -55,6 +60,7 @@ When a user requests a page, the engine performs a **stable sort** of the compos
 | `list` | `horizontal` | Standard browsing experience. |
 | `grid` | `standard` | Category exploration. |
 | `billboard` | `tall_cards` | Ads or creator-focused rows. |
+| `search_results` | `masonry` | Dynamic, relevance-sorted search discovery. |
 
 ---
 

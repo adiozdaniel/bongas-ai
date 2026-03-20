@@ -50,12 +50,18 @@ graph TD
 
 ## 👻 Ghost Execution: Server-Side Anticipation
 
-We eliminate client-side complex pre-warming logic. The engine automatically anticipates the user's next scroll.
+We eliminate client-side complex pre-warming logic. The engine automatically anticipates the user's next scroll or search intent.
 
+### 1. Paginated Look-Ahead
 - **Trigger:** Every `genesis` or paginated request triggers a background task for the *next* batch.
 - **The "Ghost Cache":** Results are stored in Redis with a key format: `ghost:user_{id}:page_{slug}:offset_{offset}`.
 - **TTL:** 5 minutes (300s).
 - **Concurrency:** Uses `buffer_unordered` to maximize pre-warming speed without blocking the main request thread.
+
+### 2. Ghost Search (Predictive Querying)
+- **Trigger:** Active keystroke events from the client.
+- **Logic:** The engine performs a low-latency "Reflex Search" against the **Embedded Tantivy Index** before the user even hits Enter.
+- **Impact:** Populates the UI search context with "zero-wait" relevant items.
 
 ## 💓 The Pulse: Background Orchestration
 
@@ -66,14 +72,16 @@ While the request-handling layer is high-performance and reactive, the engine's 
 All background workers respond to the global engine shutdown signal and run in dedicated tokio tasks to ensure zero impact on request latency.
 
 - **TribeOrchestrator**: Periodically clusters user profiles into behavioral "tribes" using K-Means clustering on embeddings. These tribes are cached in Redis for high-speed lookup during content recovery.
+- **SoundListenerWorker**: Monitors the content ledger for unindexed videos. It extracts spoken words and pushes them to ClickHouse (Forensics) and the **Embedded Index (Search)**.
+- **SearchSyncWorker**: Performs a **Differential Census** between Postgres metadata and the local Tantivy index to ensure 100% search consistency without external dependencies.
 - **RegionalPulseWorker**: Scrapes and vectorizes regional news and events. It populates Redis with "Semantic Pulses" that the ranking layer uses to boost content relevant to the user's location.
 - **FatigueSynchronizer**: Pluggable state-synchronizer that tracks item exposures across the cluster, ensuring that "Content Fatigue" logic is always based on the most recent interaction data.
 
 ### 2. Synchronization Strategy
 
-Workers primarily communicate with the request path via **Redis**. This creates a clean separation of concerns:
-- **Write-Path (Workers):** Perform heavy computation or I/O-intensive scraping and write the refined intelligence to Redis.
-- **Read-Path (Pipeline):** Perform sub-millisecond lookups from Redis to apply intelligence to recommendations.
+Workers primarily communicate with the request path via **Redis** or the **Embedded Search Index**. This creates a clean separation of concerns:
+- **Write-Path (Workers):** Perform heavy computation or I/O-intensive scraping and write the refined intelligence to Redis or Tantivy.
+- **Read-Path (Pipeline):** Perform sub-millisecond lookups from Redis or memory-resident index files to apply intelligence to recommendations.
 
 ## 🎻 The Middleware Symphony
 
