@@ -145,10 +145,10 @@ This document tracks the technical execution and strategic alignment of the Bong
 
 | Component | Domain | Technical Impact | Status | Remarks on Client's Manifesto Fulfilment |
 | :--- | :--- | :--- | :--- | :--- |
-| **Embedded Foundation** | Infrastructure | Purge Meilisearch; Implement Tantivy Lifecycle Manager. | ⏳ **In Progress** | **Section 1.0:** Total infrastructure sovereignty (No sidecars). |
-| **Search Schema v1** | Discovery | Define multi-modal schema (Keyword + DNA + Spoken Text). | ⏳ **Pending** | **Section 3.1:** Hybrid understanding of content. |
-| **Indestructible WAL** | Infrastructure | Write-Ahead Log & Atomic commits for zero-loss recovery. | ⏳ **Pending** | **Section 1.0:** "Blackbox" reliability. |
-| **Auto-Repair Mode** | Infrastructure | Background full re-indexing from Postgres/ClickHouse. | ⏳ **Pending** | **Section 5.2:** Zero-lag data synchronization. |
+| **Embedded Foundation** | Infrastructure | Purge Meilisearch; Implement Tantivy Lifecycle Manager. | ✅ **Done** | **Section 1.0:** Total infrastructure sovereignty (No sidecars). |
+| **Search Schema v1** | Discovery | Define multi-modal schema (Keyword + DNA + Spoken Text). | ✅ **Done** | **Section 3.1:** Hybrid understanding of content. |
+| **Indestructible WAL** | Infrastructure | Write-Ahead Log & Atomic commits for zero-loss recovery. | ✅ **Done** | **Section 1.0:** "Blackbox" reliability. |
+| **Auto-Repair Mode** | Infrastructure | Background full re-indexing from Postgres/ClickHouse. | ✅ **Done** | **Section 5.2:** Zero-lag data synchronization. |
 | **Sound Listener** | Intelligence | ML worker for audio-to-text extraction into Tantivy. | ⏳ **Pending** | **Section 6.0:** Localized understanding via spoken word. |
 | **Sheng-Native Search** | Intelligence | Specialized tokenizers for Swahili/Sheng dialects. | ⏳ **Pending** | **Section 6.1:** Cultural relevance at the search bar. |
 | **Relevance Fusion** | Discovery | Hybrid Ranking: BM25 + DNA Proximity + History. | ⏳ **Pending** | **Section 3.2:** High-precision precision matching. |
