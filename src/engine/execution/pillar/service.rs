@@ -32,7 +32,6 @@ pub struct ExecutionPillar {
 }
 
 impl ExecutionPillar {
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
         manager: Arc<ExecutionManager>,
         feature_repo: Arc<FeatureRepository>,
