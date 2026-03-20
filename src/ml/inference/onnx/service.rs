@@ -17,7 +17,7 @@ use ort::session::Session;
 use ort::session::builder::GraphOptimizationLevel;
 use ort::value::Value;
 use tokio::sync::Semaphore;
-use tracing::{info, warn, debug, error};
+use tracing::{info, debug};
 
 use crate::circuit_breaker::{CircuitBreaker, CircuitBreakerConfig, CircuitBreakerId};
 use crate::circuit_breaker::observer::ResilienceObserver;
@@ -31,7 +31,7 @@ use crate::error::ModelError;
 /// - **Bulkhead semaphore**: Limits concurrent inference calls
 /// - **Analytics**: Records latency, throughput, and errors
 pub struct OnnxInferenceEngine {
-    session: Mutex<Session>,
+    session: Option<Arc<Mutex<Session>>>,
     model_name: String,
     input_names: Vec<String>,
     output_names: Vec<String>,
@@ -117,7 +117,7 @@ impl OnnxInferenceEngine {
         let bulkhead = Arc::new(Semaphore::new(config.inference_max_concurrent));
 
         Ok(Self {
-            session: Mutex::new(session),
+            session: Some(Arc::new(Mutex::new(session))),
             model_name,
             input_names,
             output_names,
@@ -152,13 +152,8 @@ impl OnnxInferenceEngine {
     pub fn with_defaults(id: CircuitBreakerId) -> Self {
         let observer = Arc::new(crate::circuit_breaker::observer::NoOpObserver);
         
-        // This is a placeholder session that will fail on run() but allows bootstrap
-        // In a real system, we'd load a small embedded base model
-        let session = Session::builder().unwrap()
-            .commit_from_memory(&[]).unwrap(); // This will fail, but it's a dummy
-
         Self {
-            session: Mutex::new(session),
+            session: None,
             model_name: id.label().to_string(),
             input_names: vec![],
             output_names: vec![],
@@ -178,7 +173,11 @@ impl OnnxInferenceEngine {
         let start = Instant::now();
         let batch_size = user_features.nrows();
         let metric_key = format!("ml.inference.{}", self.model_name);
-        let engine = self.clone();
+        
+        // Clone needed data for the task
+        let session = self.session.clone();
+        let model_name = self.model_name.clone();
+        let input_names = self.input_names.clone();
 
         debug!(
             model = %self.model_name,
@@ -200,12 +199,38 @@ impl OnnxInferenceEngine {
 
         // Execute via circuit breaker + spawn_blocking
         let result = self.breaker.call(|| async move {
+            let session = session.ok_or_else(|| ModelError::InferenceFailed("Dummy engine (no session)".to_string()))?;
+            
             tokio::task::spawn_blocking(move || {
-                engine.execute_two_tower(user_features, item_features)
-            }).await.map_err(|e| ModelError::InferenceFailed(format!("spawn_blocking failed: {e}")))?
+                // Shape validation
+                if user_features.shape()[0] != item_features.shape()[0] {
+                    return Err(ModelError::InferenceFailed("Batch size mismatch".to_string()));
+                }
+
+                let user_input = Value::from_array(user_features)
+                    .map_err(|e| ModelError::InferenceFailed(format!("user tensor: {e}")))?;
+                let item_input = Value::from_array(item_features)
+                    .map_err(|e| ModelError::InferenceFailed(format!("item tensor: {e}")))?;
+
+                let mut session_guard = session.lock().unwrap_or_else(|e| e.into_inner());
+                
+                if input_names.len() < 2 {
+                    return Err(ModelError::InferenceFailed("Missing input names".to_string()));
+                }
+
+                let outputs = session_guard.run(ort::inputs![
+                    input_names[0].clone() => user_input,
+                    input_names[1].clone() => item_input,
+                ]).map_err(|e| ModelError::InferenceFailed(format!("run: {e}")))?;
+
+                let extracted = outputs[0].try_extract_tensor::<f32>()
+                    .map_err(|e| ModelError::InferenceFailed(format!("extract: {e}")))?;
+
+                Ok(extracted.1.to_vec())
+            }).await.map_err(|e| ModelError::InferenceFailed(format!("spawn_blocking: {e}")))?
         }).await.map_err(|e| match e {
             crate::circuit_breaker::CircuitBreakerError::ExecutionFailed { source, .. } => source,
-            crate::circuit_breaker::CircuitBreakerError::Rejected { .. } => ModelError::CircuitOpen(self.model_name.clone()),
+            crate::circuit_breaker::CircuitBreakerError::Rejected { .. } => ModelError::CircuitOpen(model_name),
             crate::circuit_breaker::CircuitBreakerError::TimedOut { .. } => ModelError::InferenceFailed("timeout".to_string()),
         });
 
@@ -217,25 +242,6 @@ impl OnnxInferenceEngine {
             analytics.increment_throughput(&metric_key);
             if result.is_err() {
                 analytics.increment_error(&metric_key);
-            }
-        }
-
-        match &result {
-            Ok(scores) => {
-                debug!(
-                    model = %self.model_name,
-                    score_count = scores.len(),
-                    latency_ms = latency.as_millis() as u64,
-                    "ONNX inference complete"
-                );
-            }
-            Err(e) => {
-                warn!(
-                    model = %self.model_name,
-                    error = %e,
-                    latency_ms = latency.as_millis() as u64,
-                    "ONNX inference failed"
-                );
             }
         }
 
@@ -280,63 +286,6 @@ impl OnnxInferenceEngine {
         self.predict_two_tower(user_array, item_array).await
     }
 
-    /// Raw two-tower execution (no resilience wrappers — called inside breaker).
-    fn execute_two_tower(
-        &self,
-        user_features: Array2<f32>,
-        item_features: Array2<f32>,
-    ) -> Result<Vec<f32>, ModelError> {
-        // 🛡️ HARDENING: Explicit shape validation before entering FFI
-        let user_shape = user_features.shape();
-        let item_shape = item_features.shape();
-        
-        if user_shape[0] != item_shape[0] {
-            return Err(ModelError::InferenceFailed(format!(
-                "Batch size mismatch: user={} vs item={}", user_shape[0], item_shape[0]
-            )));
-        }
-
-        // OWNED Tensors: Critical for FFI safety
-        let user_input = Value::from_array(user_features)
-            .map_err(|e| ModelError::InferenceFailed(format!("user tensor conversion: {e}")))?;
-        let item_input = Value::from_array(item_features)
-            .map_err(|e| ModelError::InferenceFailed(format!("item tensor conversion: {e}")))?;
-
-        let mut session = self.session.lock().unwrap_or_else(|e| {
-            warn!(model = %self.model_name, "ONNX session mutex poisoned, recovering");
-            e.into_inner()
-        });
-        
-        // Ensure input names exist
-        if self.input_names.len() < 2 {
-            return Err(ModelError::InferenceFailed(format!(
-                "Model {} expects fewer than 2 inputs, but two-tower requires 2", self.model_name
-            )));
-        }
-
-        let outputs = session.run(ort::inputs![
-            self.input_names[0].clone() => user_input,
-            self.input_names[1].clone() => item_input,
-        ])
-        .map_err(|e| {
-            error!(model = %self.model_name, error = %e, "ONNX Runtime C++ execution error");
-            ModelError::InferenceFailed(format!("session run: {e}"))
-        })?;
-
-        // Extract tensor (ort 2.0 rc.11 returns a tuple in this environment)
-        let extracted = outputs[0]
-            .try_extract_tensor::<f32>()
-            .map_err(|e| ModelError::InferenceFailed(format!("extract tensor: {e}")))?;
-
-        let (_shape, scores_slice) = extracted;
-
-        if scores_slice.is_empty() {
-            return Err(ModelError::InferenceFailed("Model returned empty scores".to_string()));
-        }
-
-        Ok(scores_slice.to_vec())
-    }
-
     /// Run multi-action inference (multi-head output).
     pub async fn predict_multi_action(
         self: Arc<Self>,
@@ -345,8 +294,11 @@ impl OnnxInferenceEngine {
     ) -> Result<Vec<Vec<f32>>, ModelError> {
         let start = Instant::now();
         let batch_size = user_features.nrows();
-        let engine = self.clone();
         let metric_key = format!("ml.inference.multi.{}", self.model_name);
+        
+        let session = self.session.clone();
+        let model_name = self.model_name.clone();
+        let input_names = self.input_names.clone();
 
         let _permit = self.bulkhead.clone().try_acquire_owned()
             .map_err(|_| {
@@ -361,67 +313,49 @@ impl OnnxInferenceEngine {
 
         // Execute via circuit breaker + spawn_blocking
         let result = self.breaker.call(|| async move {
+            let session = session.ok_or_else(|| ModelError::InferenceFailed("Dummy engine (no session)".to_string()))?;
+
             tokio::task::spawn_blocking(move || {
-                // 🛡️ HARDENING: Explicit shape validation
-                let user_shape = user_features.shape();
-                let item_shape = item_features.shape();
-                
-                if user_shape[0] != item_shape[0] {
-                    return Err(ModelError::InferenceFailed(format!(
-                        "Batch size mismatch (multi): user={} vs item={}", user_shape[0], item_shape[0]
-                    )));
+                if user_features.shape()[0] != item_features.shape()[0] {
+                    return Err(ModelError::InferenceFailed("Batch mismatch".to_string()));
                 }
 
-                let mut session = engine.session.lock().unwrap_or_else(|e| {
-                    warn!(model = %engine.model_name, "ONNX session mutex poisoned (multi), recovering");
-                    e.into_inner()
-                });
+                let mut session_guard = session.lock().unwrap_or_else(|e| e.into_inner());
 
-                // OWNED Tensors: Critical for FFI safety
                 let user_input = Value::from_array(user_features)
-                    .map_err(|e| ModelError::InferenceFailed(format!("user tensor conversion: {e}")))?;
+                    .map_err(|e| ModelError::InferenceFailed(format!("user tensor: {e}")))?;
                 let item_input = Value::from_array(item_features)
-                    .map_err(|e| ModelError::InferenceFailed(format!("item tensor conversion: {e}")))?;
+                    .map_err(|e| ModelError::InferenceFailed(format!("item tensor: {e}")))?;
 
-                if engine.input_names.len() < 2 {
-                    return Err(ModelError::InferenceFailed(format!(
-                        "Model {} expects fewer than 2 inputs, but multi-tower requires 2", engine.model_name
-                    )));
+                if input_names.len() < 2 {
+                    return Err(ModelError::InferenceFailed("Missing input names".to_string()));
                 }
 
-                let outputs = session.run(ort::inputs![
-                    engine.input_names[0].clone() => user_input,
-                    engine.input_names[1].clone() => item_input,
-                ])
-                .map_err(|e| {
-                    error!(model = %engine.model_name, error = %e, "ONNX Runtime C++ execution error (multi)");
-                    ModelError::InferenceFailed(format!("session run: {e}"))
-                })?;
+                let outputs = session_guard.run(ort::inputs![
+                    input_names[0].clone() => user_input,
+                    input_names[1].clone() => item_input,
+                ]).map_err(|e| ModelError::InferenceFailed(format!("run: {e}")))?;
 
-                // Extract multi-dimensional output (Batch x Actions)
-                let extracted = outputs[0]
-                    .try_extract_tensor::<f32>()
-                    .map_err(|e| ModelError::InferenceFailed(format!("extract tensor: {e}")))?;
+                let extracted = outputs[0].try_extract_tensor::<f32>()
+                    .map_err(|e| ModelError::InferenceFailed(format!("extract: {e}")))?;
 
                 let (shape, scores_slice) = extracted;
-
                 if shape.len() < 2 {
-                    return Err(ModelError::InferenceFailed(format!("Unexpected output shape: {:?}", shape)));
+                    return Err(ModelError::InferenceFailed("Invalid shape".to_string()));
                 }
 
                 let actions_dim = shape[1] as usize;
                 let mut results = Vec::with_capacity(batch_size);
-                
                 for i in 0..batch_size {
                     let start = i * actions_dim;
                     let end = start + actions_dim;
                     results.push(scores_slice[start..end].to_vec());
                 }
                 Ok(results)
-            }).await.map_err(|e| ModelError::InferenceFailed(format!("spawn_blocking failed: {e}")))?
+            }).await.map_err(|e| ModelError::InferenceFailed(format!("spawn_blocking: {e}")))?
         }).await.map_err(|e| match e {
             crate::circuit_breaker::CircuitBreakerError::ExecutionFailed { source, .. } => source,
-            crate::circuit_breaker::CircuitBreakerError::Rejected { .. } => ModelError::CircuitOpen(self.model_name.clone()),
+            crate::circuit_breaker::CircuitBreakerError::Rejected { .. } => ModelError::CircuitOpen(model_name),
             crate::circuit_breaker::CircuitBreakerError::TimedOut { .. } => ModelError::InferenceFailed("timeout".to_string()),
         });
 
