@@ -1,22 +1,17 @@
 //! Metrics collector implementing the Observer pattern.
 //!
 //! Bridges circuit breaker events to the metrics registry.
-//!
-//! # Netflix Resilience Features
-//! - **Error Classification Tracking**: Records failures by classification type
-//! - **Degraded Response Tracking**: Tracks degraded/partial failures separately
 
 use std::sync::Arc;
 use std::time::Duration;
+use async_trait::async_trait;
 
 use crate::circuit_breaker::{CircuitBreakerEvent, ResilienceObserver};
 use crate::error::ErrorClassification;
-
 use crate::resilience::registry::MetricsRegistry;
+use crate::ml::training::online::service::{FeedbackWriter, FeedbackEvent};
 
 /// Collects circuit breaker events and records them in the registry.
-///
-/// Implements `ResilienceObserver` to receive events from circuit breakers.
 pub struct ResilienceMetricsCollector {
     registry: Arc<MetricsRegistry>,
 }
@@ -35,7 +30,6 @@ impl ResilienceMetricsCollector {
         let metrics = self.registry.get_or_create(breaker_id);
         metrics.classifications.record(classification);
 
-        // Also track degraded separately if applicable
         if classification == ErrorClassification::Degraded {
             metrics.degraded_calls.increment();
         }
@@ -55,12 +49,9 @@ impl ResilienceMetricsCollector {
     }
 }
 
-use crate::ml::training::online::service::{FeedbackWriter, FeedbackEvent};
-
-#[async_trait::async_trait]
+#[async_trait]
 impl FeedbackWriter for ResilienceMetricsCollector {
     async fn write_batch(&self, events: &[FeedbackEvent]) -> anyhow::Result<()> {
-        // Record batch feedback in metrics
         let metrics = self.registry.get_or_create("ml_feedback_batch");
         for _ in events {
             metrics.successes.increment();
@@ -90,8 +81,6 @@ impl ResilienceObserver for ResilienceMetricsCollector {
                 let metrics = self.registry.get_or_create(&label);
                 metrics.failures.increment();
                 metrics.latency.record_duration(*latency);
-
-                // Record classification for detailed breakdown
                 self.record_classified_failure(&label, *classification);
             }
 
@@ -103,8 +92,6 @@ impl ResilienceObserver for ResilienceMetricsCollector {
                 let metrics = self.registry.get_or_create(&label);
                 metrics.timeouts.increment();
                 metrics.latency.record_duration(*timeout);
-
-                // Timeouts are classified as Timeout
                 self.record_classified_failure(&label, ErrorClassification::Timeout);
             }
 
@@ -122,9 +109,7 @@ impl ResilienceObserver for ResilienceMetricsCollector {
                 metrics.update_state(*to);
             }
 
-            CircuitBreakerEvent::MetricsReset { .. } => {
-                // No action needed - registry tracks independently
-            }
+            CircuitBreakerEvent::MetricsReset { .. } => {}
 
             CircuitBreakerEvent::SlowCall {
                 breaker_id,
