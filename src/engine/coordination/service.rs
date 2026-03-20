@@ -103,7 +103,10 @@ impl BongasEngine {
     pub async fn new(
         components: EngineComponents,
     ) -> anyhow::Result<Self> {
-        // Create security manager
+        // 1. Run Migrations (MANDATORY CORE)
+        components.execution.cache_repo.pool().run_migrations().await?;
+
+        // 2. Create security manager
         let security = Arc::new(SecurityManager::new(
             components.config.security.clone(),
             &components.config.server.environment,

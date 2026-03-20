@@ -39,9 +39,9 @@ impl ScenarioFactory {
                     r.condition, 
                     p.slug as pipeline_slug, 
                     p.definition as pipeline_definition
-                FROM scenario_rules r
-                JOIN scenarios s ON r.scenario_id = s.id
-                JOIN pipelines p ON r.pipeline_id = p.id
+                FROM bongas.scenario_rules r
+                JOIN bongas.scenarios s ON r.scenario_id = s.id
+                JOIN bongas.pipelines p ON r.pipeline_id = p.id
                 WHERE r.is_active = true
                 ORDER BY s.slug, r.priority DESC
                 "#
