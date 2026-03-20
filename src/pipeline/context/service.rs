@@ -1,11 +1,7 @@
-//! Execution context for pipeline stages with Netflix resilience dependencies.
+//! Execution context passed to all pipeline stages.
 //!
-//! Every pipeline stage receives this context, which carries:
-//! - User/request metadata
-//! - Database pool, cache manager, model loader
-//! - Feature store and embedding manager (resilient ML infrastructure)
-//! - Performance analytics for per-stage metrics
-//! - Pipeline resilience configuration
+//! Stages use this context to access shared dependencies without
+//! creating their own connections or duplicating feature-fetching logic.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -19,9 +15,6 @@ use crate::ml::inference::embeddings::service::EmbeddingManager;
 use crate::search::EmbeddedSearchManager;
 
 /// Execution context passed to all pipeline stages.
-///
-/// Stages use this context to access shared dependencies without
-/// creating their own connections or duplicating feature-fetching logic.
 #[derive(Clone)]
 pub struct ExecutionContext {
     // ── Request metadata ────────────────────────────────────────────────
@@ -32,6 +25,7 @@ pub struct ExecutionContext {
     pub location: Option<String>,
     pub request_id: String,
     pub request_time: chrono::DateTime<chrono::Utc>,
+    pub context_params: serde_json::Value,
 
     // ── Core dependencies ───────────────────────────────────────────────
     pub cache_manager: Arc<CacheManager>,
@@ -39,14 +33,8 @@ pub struct ExecutionContext {
     pub hot_registry: Option<Arc<HotRegistry>>,
 
     // ── Resilient data access ───────────────────────────────────────────
-    /// Unified item/user feature service — pipeline stages should use this
-    /// instead of querying db_pool directly.
     pub item_feature_service: Arc<ItemFeatureService>,
-
-    /// ClickHouse client for analytics-heavy retrieval stages.
     pub clickhouse_client: Option<Arc<clickhouse::Client>>,
-
-    /// Embedded search manager for keyword-based search and re-ranking.
     pub search_manager: Option<Arc<EmbeddedSearchManager>>,
 
     // ── ML infrastructure (resilient) ───────────────────────────────────
@@ -93,6 +81,7 @@ impl ExecutionContext {
             location: None,
             request_id,
             request_time: chrono::Utc::now(),
+            context_params: serde_json::json!({}),
             cache_manager,
             model_loader,
             hot_registry: None,
@@ -120,7 +109,6 @@ impl ExecutionContext {
             Arc::new(MetricsRegistry::new(ResilienceMetricsConfig::default())),
         ));
         
-        // Use a dummy pool that won't connect unless used
         let db_pool = sqlx::PgPool::connect_lazy("postgres://localhost/dummy").unwrap();
         let circuit_breaker_registry = Arc::new(CircuitBreakerRegistry::default());
         
@@ -132,7 +120,7 @@ impl ExecutionContext {
 
         let cache_config = CacheConfig {
             l1_enabled: true,
-            l2_enabled: false, // Disable Redis for benchmarks
+            l2_enabled: false,
             ..Default::default()
         };
         let redis_config = crate::config::RedisConfig {
@@ -176,6 +164,11 @@ impl ExecutionContext {
 
     pub fn with_request_time(mut self, request_time: chrono::DateTime<chrono::Utc>) -> Self {
         self.request_time = request_time;
+        self
+    }
+
+    pub fn with_context_params(mut self, params: serde_json::Value) -> Self {
+        self.context_params = params;
         self
     }
 
