@@ -6,7 +6,7 @@ use parquet::arrow::arrow_writer::ArrowWriter;
 use arrow_array::{Int32Array, StringArray, UInt64Array, RecordBatch};
 use arrow_schema::{DataType, Field, Schema};
 
-use crate::ml::training::orchestration::service::HarvestedInteraction;
+use crate::analytics::types::HarvestedInteraction;
 
 /// 📦 Parquet Exporter: High-performance telemetry serialization.
 pub struct ParquetExporter;

@@ -251,3 +251,17 @@ impl ResourceStats {
         self.network_bytes.load(Ordering::Relaxed)
     }
 }
+
+/// Represents a single interaction sequence for training and telemetry export.
+#[derive(Debug, serde::Serialize, serde::Deserialize, clickhouse::Row)]
+pub struct HarvestedInteraction {
+    pub user_id: i32,
+    pub item_id: i32,
+    pub interaction_type: String,
+    pub device_type: String,
+    pub profile_id: String,
+    pub maturity_rating: String,
+    pub genre: String,
+    pub watch_duration_seconds: i32,
+    pub created_at: u64,
+}
