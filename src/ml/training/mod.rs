@@ -1,6 +1,7 @@
-//! Training Pillar: Model refinement and heavy compute.
+//! Training domain — orchestrates the learning lifecycle for the Bongas engine.
 
+pub mod candle;
 pub mod online;
-pub mod orchestration;
-pub mod workers;
 pub mod pillar;
+
+pub use pillar::service::TrainingPillar;
