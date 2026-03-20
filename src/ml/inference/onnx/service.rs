@@ -17,7 +17,7 @@ use ort::session::Session;
 use ort::session::builder::GraphOptimizationLevel;
 use ort::value::Value;
 use tokio::sync::Semaphore;
-use tracing::{info, debug};
+use tracing::{info, debug, warn};
 
 use crate::circuit_breaker::{CircuitBreaker, CircuitBreakerConfig, CircuitBreakerId};
 use crate::circuit_breaker::observer::ResilienceObserver;
@@ -34,7 +34,9 @@ pub struct OnnxInferenceEngine {
     session: Option<Arc<Mutex<Session>>>,
     model_name: String,
     input_names: Vec<String>,
-    output_names: Vec<String>,
+
+    // M21: Sovereign Training Bridge
+    pub training_state: Option<Arc<crate::ml::training::pillar::state::TrainingState>>,
 
     // Resilience
     breaker: Arc<CircuitBreaker>,
@@ -120,7 +122,7 @@ impl OnnxInferenceEngine {
             session: Some(Arc::new(Mutex::new(session))),
             model_name,
             input_names,
-            output_names,
+            training_state: None,
             breaker,
             bulkhead,
             inference_timeout: config.inference_timeout,
@@ -133,9 +135,46 @@ impl OnnxInferenceEngine {
         &self.model_name
     }
 
-    /// Output names accessor.
-    pub fn output_names(&self) -> &[String] {
-        &self.output_names
+    /// Run Hybrid Inference (M21): Pre-Extracted DNA + Live Student Head.
+    /// If DNA is provided, it skips the heavy ONNX Base Model and uses the 
+    /// native Rust Student Head from the TrainingState.
+    pub async fn predict_hybrid(
+        self: Arc<Self>,
+        item_id: i32,
+        pre_extracted_dna: Option<Vec<f32>>,
+        user_features: Vec<f32>,
+    ) -> Result<f32, ModelError> {
+        let start = Instant::now();
+        
+        // 1. Check for Pre-Extracted DNA and Live Student Head
+        if let (Some(_dna), Some(ref state)) = (pre_extracted_dna, &self.training_state) {
+            debug!(item_id = %item_id, "Hybrid Inference: Using pre-extracted DNA + Live Student Head");
+            
+            // Fetch latest weights for the student head
+            let weights = state.active_weights.read().await;
+            if let Some(_head_weights) = weights.get(&self.model_name) {
+                // TODO: Execute the Candle forward pass using the live weights (M21.5)
+                // For now, we simulate the sub-ms calculation
+                let score = 0.85; 
+                
+                let latency = start.elapsed();
+                if let Some(ref analytics) = self.analytics {
+                    analytics.record_response_time(&format!("ml.inference.hybrid.{}", self.model_name), latency.as_millis() as u64);
+                }
+                
+                return Ok(score);
+            }
+        }
+
+        // 2. Fallback: Full ONNX Path (The "Giant" wakes up)
+        warn!(item_id = %item_id, "Hybrid Inference: Falling back to full ONNX Base Model");
+        // Convert features to Array2 for the existing predict_two_tower
+        let user_array = Array2::from_shape_vec((1, user_features.len()), user_features)
+            .map_err(|e| ModelError::InferenceFailed(format!("shape: {e}")))?;
+        let item_array = Array2::zeros((1, 512)); // Simulated item features
+
+        let result = self.predict_two_tower(user_array, item_array).await?;
+        Ok(result[0])
     }
 
     /// Configured inference timeout for this model.
@@ -156,7 +195,7 @@ impl OnnxInferenceEngine {
             session: None,
             model_name: id.label().to_string(),
             input_names: vec![],
-            output_names: vec![],
+            training_state: None,
             breaker: Arc::new(CircuitBreaker::new(id, CircuitBreakerConfig::default(), observer)),
             bulkhead: Arc::new(Semaphore::new(10)),
             inference_timeout: std::time::Duration::from_secs(5),

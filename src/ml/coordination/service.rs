@@ -1,11 +1,12 @@
+//! Coordination domain for Machine Learning.
+//! Orchestrates the Inference and Training pillars.
+
 use std::sync::Arc;
 use crate::ml::inference::pillar::service::InferencePillar;
 use crate::ml::training::pillar::service::TrainingPillar;
 use crate::ml::assets::pillar::service::AssetsPillar;
 
-/// 🧬 THE CORTEX: The central ML coordination handle for BONGAS-AI.
-/// 
-/// Orchestrates Inference, Training, and ML Assets into a unified Discovery Cortex.
+/// Unified orchestrator for all ML-related activities.
 pub struct MlPillar {
     pub inference: Arc<InferencePillar>,
     pub training: Arc<TrainingPillar>,
