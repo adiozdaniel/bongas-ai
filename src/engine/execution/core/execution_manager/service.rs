@@ -17,6 +17,7 @@ use crate::ml::inference::features::service::FeatureStore;
 use crate::analytics::types::PerformanceStats;
 use crate::experiments::ExperimentCoordinator;
 use crate::middlewares::MetricsCollector;
+use crate::search::EmbeddedSearchManager;
 use tokio::sync::RwLock;
 use arc_swap::ArcSwap;
 use crate::pipeline::types::models::ExecutablePipeline;
@@ -47,7 +48,7 @@ pub struct ExecutionManager {
     pub(crate) experiment_coordinator: Arc<ExperimentCoordinator>,
     pub(crate) metrics_collector: Arc<MetricsCollector>,
     pub(crate) clickhouse: Option<Arc<clickhouse::Client>>,
-    pub(crate) search_client: Option<Arc<meilisearch_sdk::client::Client>>,
+    pub(crate) search_manager: Option<Arc<EmbeddedSearchManager>>,
     pub(crate) hot_registry: Arc<crate::cache::HotRegistry>,
     
     // Coordination with Scenarios
@@ -73,7 +74,7 @@ impl ExecutionManager {
         experiment_coordinator: Arc<ExperimentCoordinator>,
         metrics_collector: Arc<MetricsCollector>,
         clickhouse: Option<Arc<clickhouse::Client>>,
-        search_client: Option<Arc<meilisearch_sdk::client::Client>>,
+        search_manager: Option<Arc<EmbeddedSearchManager>>,
         hot_registry: Arc<crate::cache::HotRegistry>,
         scenarios: Arc<RwLock<HashMap<String, ScenarioDefinition>>>,
         linked_scenarios: Arc<ArcSwap<HashMap<String, Arc<ExecutablePipeline>>>>,
@@ -91,7 +92,7 @@ impl ExecutionManager {
             experiment_coordinator,
             metrics_collector,
             clickhouse,
-            search_client,
+            search_manager,
             hot_registry,
             scenarios,
             linked_scenarios,
@@ -159,8 +160,8 @@ impl ExecutionManager {
             context = context.with_clickhouse_client(ch.clone());
         }
 
-        if let Some(ref sc) = self.search_client {
-            context = context.with_search_client(sc.clone());
+        if let Some(ref sm) = self.search_manager {
+            context = context.with_search_manager(sm.clone());
         }
 
         let resolved_pipeline = self.strategy_resolver.resolve(&ctx.scenario_slug, &context);

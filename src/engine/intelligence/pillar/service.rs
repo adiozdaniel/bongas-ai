@@ -9,6 +9,7 @@ use crate::engine::intelligence::workers::WorkersManager;
 use crate::engine::intelligence::workers::fatigue_sync::service::FatigueSynchronizer;
 use crate::engine::intelligence::ai::simulator::service::SafetySimulator;
 use crate::engine::intelligence::identity::service::IdentityStitcher;
+use crate::search::EmbeddedSearchManager;
 
 use crate::engine::intelligence::monitoring::analytics_sidecar::service::UserEvent;
 
@@ -21,6 +22,7 @@ pub struct IntelligencePillar {
     pub fatigue_sync: Arc<FatigueSynchronizer>,
     pub simulator: Arc<SafetySimulator>,
     pub identity: Arc<IdentityStitcher>,
+    pub search_manager: Arc<EmbeddedSearchManager>,
 }
 
 impl IntelligencePillar {
@@ -31,6 +33,7 @@ impl IntelligencePillar {
         staleness: Arc<StalenessEngine>,
         workers: Arc<WorkersManager>,
         fatigue_sync: Arc<FatigueSynchronizer>,
+        search_manager: Arc<EmbeddedSearchManager>,
     ) -> Self {
         Self {
             suggestions,
@@ -41,6 +44,7 @@ impl IntelligencePillar {
             fatigue_sync,
             simulator: Arc::new(SafetySimulator::new()),
             identity: Arc::new(IdentityStitcher::new()),
+            search_manager,
         }
     }
 

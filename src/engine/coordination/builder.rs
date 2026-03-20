@@ -49,6 +49,7 @@ use crate::engine::intelligence::workers::reasoning::service::ReasoningWorker;
 use crate::engine::intelligence::workers::digest_worker::service::DigestWorker;
 use crate::engine::intelligence::workers::sovereign_sight::service::SovereignSightWorker;
 use crate::engine::intelligence::workers::ghost_execution::service::GhostExecutionWorker;
+use crate::search::EmbeddedSearchManager;
 use crate::engine::governance::orchestration::manager::service::PagesManager;
 use crate::engine::governance::strategy::resolver::service::StrategyResolver;
 use crate::engine::governance::factory::scenario_factory::service::ScenarioFactory;
@@ -165,11 +166,8 @@ impl DiscoverySymphony {
             None,
         ).await?);
 
-        // ─── 4. SEARCH PILLAR (Meilisearch) ──────────────────────────────────
-        let search_client = Arc::new(meilisearch_sdk::client::Client::new(
-            self.config.search.host.clone(),
-            Some(self.config.search.api_key.clone()),
-        ).expect("Meilisearch client init failed"));
+        // ─── 4. SEARCH PILLAR (Embedded Tantivy) ────────────────────────────
+        let search_manager = Arc::new(EmbeddedSearchManager::new(self.config.search.clone())?);
 
         let clickhouse_client = clickhouse::Client::default()
             .with_url(self.config.clickhouse.url.clone())
@@ -232,7 +230,7 @@ impl DiscoverySymphony {
             experiment_coordinator,
             Arc::new(crate::middlewares::MetricsCollector::default()),
             Some(Arc::new(clickhouse_client.clone())),
-            Some(search_client.clone()),
+            Some(search_manager.clone()),
             hot_registry.clone(),
             scenarios.clone(),
             linked_scenarios.clone(),
@@ -294,9 +292,7 @@ impl DiscoverySymphony {
         ));
 
         let search_sync_worker = Arc::new(crate::engine::intelligence::workers::search_sync::service::SearchSyncWorker::new(
-            self.config.search.host.clone(),
-            self.config.search.api_key.clone(),
-            self.config.search.index_name.clone(),
+            search_manager.clone(),
             std::time::Duration::from_secs(3600), // Hourly sync
         ));
 
@@ -337,6 +333,7 @@ impl DiscoverySymphony {
             staleness_engine,
             workers,
             fatigue_sync,
+            search_manager,
         ));
 
         // ─── 7. NOTIFICATIONS & SIDE-EFFECTS ──────────────────────────────────
