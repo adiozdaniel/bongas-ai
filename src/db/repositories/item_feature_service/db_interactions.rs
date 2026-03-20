@@ -18,7 +18,7 @@ impl ItemFeatureService {
                 sqlx::query_as::<_, RecentWatchRow>(
                     r#"
                     SELECT item_id, MAX(created_at) as last_watched
-                    FROM user_interactions
+                    FROM bongas.user_interactions
                     WHERE user_id = $1
                         AND interaction_type = 'view'
                         AND created_at >= NOW() - make_interval(hours => $2)
@@ -60,7 +60,7 @@ impl ItemFeatureService {
                 sqlx::query_as::<_, Row>(
                     r#"
                     SELECT item_id
-                    FROM user_interactions
+                    FROM bongas.user_interactions
                     WHERE user_id = $1
                         AND interaction_type = 'view'
                         AND (completion_rate >= $2 OR completion_percentage >= $2)
@@ -97,7 +97,7 @@ impl ItemFeatureService {
                 sqlx::query_as::<_, WatchlistItemRow>(
                     r#"
                     SELECT item_id, added_at
-                    FROM user_watchlist
+                    FROM bongas.user_watchlist
                     WHERE user_id = $1
                     ORDER BY added_at DESC
                     LIMIT $2

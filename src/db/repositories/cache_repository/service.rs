@@ -59,7 +59,7 @@ impl CacheRepository {
         let result: AppResult<Option<RecommendationCacheL2>> = self.pool.execute(|pool| async move {
             sqlx::query_as::<_, RecommendationCacheL2>(
                 r#"
-                SELECT * FROM recommendation_cache_l2
+                SELECT * FROM bongas.recommendation_cache_l2
                 WHERE cache_key = $1
                     AND expires_at > NOW()
                     AND is_stale = false
@@ -86,7 +86,7 @@ impl CacheRepository {
                     tokio::spawn(async move {
                         let _ = pool.execute(|pool| async move {
                             sqlx::query(
-                                "UPDATE recommendation_cache_l2 SET hit_count = hit_count + 1, last_hit_at = NOW() WHERE cache_key = $1",
+                                "UPDATE bongas.recommendation_cache_l2 SET hit_count = hit_count + 1, last_hit_at = NOW() WHERE cache_key = $1",
                             )
                             .bind(&key)
                             .execute(&pool)
@@ -122,7 +122,7 @@ impl CacheRepository {
             async move {
                 sqlx::query(
                     r#"
-                    INSERT INTO recommendation_cache_l2 (
+                    INSERT INTO bongas.recommendation_cache_l2 (
                         cache_key, scenario_slug, user_id, profile_id, context_hash,
                         recommendations, expires_at
                     )
@@ -173,7 +173,7 @@ impl CacheRepository {
             let profile_id = profile_id.clone();
             let reason = reason.clone();
             async move {
-                let mut query_str = "UPDATE recommendation_cache_l2 SET is_stale = true, staleness_reason = $1 WHERE 1=1".to_string();
+                let mut query_str = "UPDATE bongas.recommendation_cache_l2 SET is_stale = true, staleness_reason = $1 WHERE 1=1".to_string();
                 let mut arg_idx = 2;
                 
                 if user_id.is_some() {
@@ -212,7 +212,7 @@ impl CacheRepository {
         self.pool.execute(|pool| {
             let key = key.clone();
             async move {
-                sqlx::query("DELETE FROM recommendation_cache_l2 WHERE cache_key = $1")
+                sqlx::query("DELETE FROM bongas.recommendation_cache_l2 WHERE cache_key = $1")
                     .bind(key)
                     .execute(&pool)
                     .await
@@ -236,7 +236,7 @@ impl CacheRepository {
         self.pool.execute(|pool| {
             let p = pg_pattern.clone();
             async move {
-                sqlx::query("DELETE FROM recommendation_cache_l2 WHERE cache_key LIKE $1")
+                sqlx::query("DELETE FROM bongas.recommendation_cache_l2 WHERE cache_key LIKE $1")
                     .bind(p)
                     .execute(&pool)
                     .await
@@ -255,7 +255,7 @@ impl CacheRepository {
     /// Clear all entries in the cache table.
     pub async fn clear(&self) -> AppResult<()> {
         self.pool.execute(|pool| async move {
-            sqlx::query("DELETE FROM recommendation_cache_l2")
+            sqlx::query("DELETE FROM bongas.recommendation_cache_l2")
                 .execute(&pool)
                 .await
         })
@@ -273,7 +273,7 @@ impl CacheRepository {
     pub async fn cleanup_expired(&self) -> AppResult<u64> {
         self.pool.execute(|pool| async move {
             sqlx::query(
-                "DELETE FROM recommendation_cache_l2 WHERE expires_at < NOW() OR is_stale = true",
+                "DELETE FROM bongas.recommendation_cache_l2 WHERE expires_at < NOW() OR is_stale = true",
             )
             .execute(&pool)
             .await

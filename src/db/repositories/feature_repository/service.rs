@@ -41,7 +41,7 @@ impl FeatureRepository {
         let result = self.pool
             .execute(|pool| async move {
                 sqlx::query_as::<_, ProfileFeatures>(
-                    "SELECT * FROM profile_features WHERE profile_id = $1",
+                    "SELECT * FROM bongas.profile_features WHERE profile_id = $1",
                 )
                 .bind(profile_id)
                 .fetch_optional(&pool)
@@ -81,7 +81,7 @@ impl FeatureRepository {
         let result = self.pool
             .execute(|pool| async move {
                 sqlx::query_as::<_, VisitorFeatures>(
-                    "SELECT * FROM visitor_features WHERE visitor_id = $1",
+                    "SELECT * FROM bongas.visitor_features WHERE visitor_id = $1",
                 )
                 .bind(visitor_id)
                 .fetch_optional(&pool)
@@ -113,7 +113,7 @@ impl FeatureRepository {
         self.pool
             .execute(|pool| async move {
                 sqlx::query_as::<_, ItemFeatures>(
-                    "SELECT * FROM item_features WHERE item_id = $1",
+                    "SELECT * FROM bongas.item_features WHERE item_id = $1",
                 )
                 .bind(item_id)
                 .fetch_optional(&pool)
@@ -133,7 +133,7 @@ impl FeatureRepository {
         self.pool
             .execute(|pool| async move {
                 sqlx::query_as::<_, ItemFeatures>(
-                    "SELECT * FROM item_features ORDER BY trending_score DESC LIMIT $1",
+                    "SELECT * FROM bongas.item_features ORDER BY trending_score DESC LIMIT $1",
                 )
                 .bind(limit)
                 .fetch_all(&pool)
@@ -154,7 +154,7 @@ impl FeatureRepository {
         self.pool
             .execute(|pool| async move {
                 sqlx::query_as::<_, ProfileFeatures>(
-                    "SELECT * FROM profile_features WHERE profile_id = ANY($1)",
+                    "SELECT * FROM bongas.profile_features WHERE profile_id = ANY($1)",
                 )
                 .bind(&profile_ids)
                 .fetch_all(&pool)
@@ -175,7 +175,7 @@ impl FeatureRepository {
         self.pool
             .execute(|pool| async move {
                 sqlx::query_as::<_, ItemFeatures>(
-                    "SELECT * FROM item_features WHERE item_id = ANY($1)",
+                    "SELECT * FROM bongas.item_features WHERE item_id = ANY($1)",
                 )
                 .bind(&item_ids)
                 .fetch_all(&pool)
@@ -198,13 +198,13 @@ impl FeatureRepository {
         self.pool.execute(move |pool| async move {
             sqlx::query(
                 r#"
-                INSERT INTO profile_features (profile_id, user_id, genre_affinity, total_watch_time_minutes, features_updated_at)
+                INSERT INTO bongas.profile_features (profile_id, user_id, genre_affinity, total_watch_time_minutes, features_updated_at)
                 SELECT $1, $2, genre_affinity, total_watch_time_minutes, NOW()
-                FROM visitor_features
+                FROM bongas.visitor_features
                 WHERE visitor_id = $3
                 ON CONFLICT (profile_id) DO UPDATE SET
-                    genre_affinity = profile_features.genre_affinity || EXCLUDED.genre_affinity,
-                    total_watch_time_minutes = profile_features.total_watch_time_minutes + EXCLUDED.total_watch_time_minutes,
+                    genre_affinity = bongas.profile_features.genre_affinity || EXCLUDED.genre_affinity,
+                    total_watch_time_minutes = bongas.profile_features.total_watch_time_minutes + EXCLUDED.total_watch_time_minutes,
                     features_updated_at = NOW()
                 "#
             )

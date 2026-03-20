@@ -40,7 +40,7 @@ impl ModelRepository {
             .execute(|pool| async move {
                 sqlx::query_as::<_, ModelRegistry>(
                     r#"
-                    SELECT * FROM model_registry
+                    SELECT * FROM bongas.model_registry
                     WHERE status = 'deployed'
                     AND model_format = 'onnx'
                     ORDER BY created_at DESC
@@ -56,14 +56,14 @@ impl ModelRepository {
         match result {
             Ok(models) => {
                 // Record successful operation
-                let metrics = self.metrics_collector.registry().get_or_create("model_registry");
+                let metrics = self.metrics_collector.registry().get_or_create("bongas.model_registry");
                 metrics.latency.record_duration(duration);
                 metrics.successes.increment();
                 Ok(models)
             }
             Err(e) => {
                 // Record failed operation
-                let metrics = self.metrics_collector.registry().get_or_create("model_registry");
+                let metrics = self.metrics_collector.registry().get_or_create("bongas.model_registry");
                 metrics.latency.record_duration(duration);
                 metrics.failures.increment();
                 
@@ -88,7 +88,7 @@ impl ModelRepository {
             .execute(|pool| async move {
                 sqlx::query_as::<_, ModelRegistry>(
                     r#"
-                    SELECT * FROM model_registry
+                    SELECT * FROM bongas.model_registry
                     WHERE model_name = $1
                     AND version = $2
                     AND model_format = 'onnx'
@@ -119,7 +119,7 @@ impl ModelRepository {
             .execute(|pool| async move {
                 sqlx::query_as::<_, ModelRegistry>(
                     r#"
-                    SELECT * FROM model_registry
+                    SELECT * FROM bongas.model_registry
                     WHERE model_name = $1
                     AND status = 'deployed'
                     ORDER BY deployed_at DESC
@@ -148,7 +148,7 @@ impl ModelRepository {
             .execute(|pool| async move {
                 sqlx::query_as::<_, ModelRegistry>(
                     r#"
-                    SELECT * FROM model_registry
+                    SELECT * FROM bongas.model_registry
                     WHERE status = $1
                     ORDER BY created_at DESC
                     "#,

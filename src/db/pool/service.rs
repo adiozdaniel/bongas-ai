@@ -14,6 +14,7 @@
 use std::future::Future;
 use std::sync::Arc;
 use std::time::Duration;
+use tracing::info;
 
 use anyhow::{Context, Result};
 use sqlx::postgres::PgPoolOptions;
@@ -274,6 +275,17 @@ impl ResilientPool {
     }
 
     /// Get the underlying pool for raw access (use sparingly).
+    /// Automatically run pending migrations against the database.
+    pub async fn run_migrations(&self) -> Result<()> {
+        info!("Running pending database migrations...");
+        sqlx::migrate!("./migrations")
+            .run(&self.pool)
+            .await
+            .context("Failed to run database migrations")?;
+        info!("Database migrations complete");
+        Ok(())
+    }
+
     pub fn inner(&self) -> &PgPool {
         &self.pool
     }

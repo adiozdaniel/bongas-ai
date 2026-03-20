@@ -46,7 +46,7 @@ impl PageLayoutRepository {
             .execute(move |pool| async move {
                 let row: PageLayout = sqlx::query_as(
                     r#"
-                    INSERT INTO page_layouts 
+                    INSERT INTO bongas.page_layouts 
                         (page_slug, is_landing, nav_type, composition, device_type, maturity_rating, priority, is_active, is_deleted, updated_at)
                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, false, NOW())
                     ON CONFLICT (page_slug, device_type, maturity_rating) DO UPDATE
@@ -89,7 +89,7 @@ impl PageLayoutRepository {
         self.pool
             .execute(|pool| async move {
                 let result = sqlx::query(
-                    "UPDATE page_layouts SET is_active = false, is_deleted = true, updated_at = NOW() WHERE page_slug = $1 AND is_deleted = false"
+                    "UPDATE bongas.page_layouts SET is_active = false, is_deleted = true, updated_at = NOW() WHERE page_slug = $1 AND is_deleted = false"
                 )
                 .bind(&slug)
                 .execute(&pool)
@@ -119,7 +119,7 @@ impl PageLayoutRepository {
             let row: Option<PageLayout> = sqlx::query_as(
                 r#"
                 SELECT id, page_slug, is_landing, nav_type, composition, device_type, maturity_rating, priority, is_active, is_deleted, created_at, updated_at 
-                FROM page_layouts 
+                FROM bongas.page_layouts 
                 WHERE is_landing = true 
                   AND is_active = true 
                   AND is_deleted = false
@@ -167,7 +167,7 @@ impl PageLayoutRepository {
                 let row: Option<PageLayout> = sqlx::query_as(
                     r#"
                     SELECT id, page_slug, is_landing, nav_type, composition, device_type, maturity_rating, priority, is_active, is_deleted, created_at, updated_at 
-                    FROM page_layouts 
+                    FROM bongas.page_layouts 
                     WHERE page_slug = $1 
                       AND is_active = true 
                       AND is_deleted = false
@@ -215,7 +215,7 @@ impl PageLayoutRepository {
             .execute(|pool| async move {
                 let rows: Vec<PageLayout> = sqlx::query_as(
                     "SELECT id, page_slug, is_landing, nav_type, composition, device_type, maturity_rating, priority, is_active, is_deleted, created_at, updated_at 
-                     FROM page_layouts 
+                     FROM bongas.page_layouts 
                      WHERE is_active = true AND is_deleted = false
                      ORDER BY nav_type ASC, priority DESC, page_slug ASC"
                 )

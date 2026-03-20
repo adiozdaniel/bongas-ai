@@ -37,7 +37,7 @@ impl ItemFeatureService {
                            completion_rate, trending_score, popularity_score,
                            user_rating, user_rating_count, critic_rating, critic_rating_count,
                            embedding, tfidf_vector
-                    FROM item_features
+                    FROM bongas.item_features
                     WHERE item_id = ANY($1)
                     "#,
                 )
@@ -62,7 +62,7 @@ impl ItemFeatureService {
         let count: i64 = self
             .pool
             .execute(|pool| async move {
-                sqlx::query_scalar::<_, i64>("SELECT count(*) FROM item_features WHERE is_active = true")
+                sqlx::query_scalar::<_, i64>("SELECT count(*) FROM bongas.item_features WHERE is_active = true")
                     .fetch_one(&pool)
                     .await
             })
@@ -103,7 +103,7 @@ impl ItemFeatureService {
                            completion_rate, trending_score, popularity_score,
                            user_rating, user_rating_count, critic_rating, critic_rating_count,
                            embedding, tfidf_vector
-                    FROM item_features
+                    FROM bongas.item_features
                     WHERE genres @> $1::jsonb
                         AND is_active = true
                     ORDER BY popularity_score DESC NULLS LAST
@@ -140,7 +140,7 @@ impl ItemFeatureService {
                     r#"
                     SELECT item_id, title, is_explicit, view_count, trending_score, 
                            completion_rate, age_rating, published_at, genres
-                    FROM item_features
+                    FROM bongas.item_features
                     WHERE view_count >= $1
                     ORDER BY view_count DESC
                     LIMIT $2
@@ -171,7 +171,7 @@ impl ItemFeatureService {
                 sqlx::query_as::<_, NewReleaseRow>(
                     r#"
                     SELECT item_id, title, published_at, trending_score
-                    FROM item_features
+                    FROM bongas.item_features
                     WHERE published_at >= NOW() - make_interval(days => $1)
                     ORDER BY published_at DESC
                     LIMIT $2
@@ -207,7 +207,7 @@ impl ItemFeatureService {
                 sqlx::query_as::<_, GenreItemRow>(
                     r#"
                     SELECT item_id, title, popularity_score
-                    FROM item_features
+                    FROM bongas.item_features
                     WHERE genres ?| $1
                         AND is_active = true
                     ORDER BY popularity_score DESC NULLS LAST
@@ -263,7 +263,7 @@ impl ItemFeatureService {
                    i.completion_rate, i.trending_score, i.popularity_score,
                    i.user_rating, i.user_rating_count, i.critic_rating, i.critic_rating_count,
                    i.embedding, i.tfidf_vector
-            FROM item_features i
+            FROM bongas.item_features i
             JOIN item_categories ic ON i.item_id = ic.item_id
             WHERE ic.category_slug = ANY($1)
                 AND i.is_active = true
@@ -334,7 +334,7 @@ impl ItemFeatureService {
                    completion_rate, trending_score, popularity_score,
                    user_rating, user_rating_count, critic_rating, critic_rating_count,
                    embedding, tfidf_vector
-            FROM item_features
+            FROM bongas.item_features
             WHERE is_active = true
                 AND (release_date >= $1 OR added_date >= $1)
             "#
@@ -445,9 +445,9 @@ impl ItemFeatureService {
                            completion_rate, trending_score, popularity_score,
                            user_rating, user_rating_count, critic_rating, critic_rating_count,
                            embedding, tfidf_vector
-                    FROM item_features
+                    FROM bongas.item_features
                     WHERE is_active = true
-                    ORDER BY updated_at DESC
+                    ORDER BY features_updated_at DESC
                     LIMIT $1
                     "#,
                 )

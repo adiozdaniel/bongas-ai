@@ -65,7 +65,7 @@ impl InteractionRepository {
             async move {
                 sqlx::query(
                     r#"
-                    INSERT INTO user_interactions
+                    INSERT INTO bongas.user_interactions
                         (user_id, profile_id, item_id, interaction_type, implicit_rating, scenario_slug, visitor_id, device_hash, device_type, created_at)
                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
                     "#,
@@ -105,7 +105,7 @@ impl InteractionRepository {
             async move {
                 sqlx::query(
                     r#"
-                    INSERT INTO user_interactions
+                    INSERT INTO bongas.user_interactions
                         (user_id, profile_id, item_id, interaction_type, implicit_rating, watch_duration_seconds, scenario_slug, visitor_id, device_hash, device_type, created_at)
                     VALUES ($1, $2, $3, 'implicit_rating', $4, $5, $6, $7, $8, $9, NOW())
                     "#,
@@ -144,7 +144,7 @@ impl InteractionRepository {
         self.pool.execute(move |pool| async move {
             sqlx::query(
                 r#"
-                INSERT INTO user_interactions (user_id, item_id, interaction_type, implicit_rating, watch_duration_seconds, visitor_id, device_hash, device_type, created_at)
+                INSERT INTO bongas.user_interactions (user_id, item_id, interaction_type, implicit_rating, watch_duration_seconds, visitor_id, device_hash, device_type, created_at)
                 SELECT * FROM unnest($1::int[], $2::int[], $3::text[], $4::float4[], $5::int[], $6::text[], $7::text[], $8::text[], $9::timestamptz[])
                 "#
             )
@@ -161,9 +161,9 @@ impl InteractionRepository {
         self.pool.execute(|pool| async move {
             sqlx::query(
                 r#"
-                INSERT INTO user_arrival_patterns (user_id, hour_mask, last_active_at)
+                INSERT INTO bongas.user_arrival_patterns (user_id, hour_mask, last_active_at)
                 VALUES ($1, $2, NOW())
-                ON CONFLICT (user_id) DO UPDATE SET hour_mask = user_arrival_patterns.hour_mask | $2, last_active_at = NOW()
+                ON CONFLICT (user_id) DO UPDATE SET hour_mask = bongas.user_arrival_patterns.hour_mask | $2, last_active_at = NOW()
                 "#
             ).bind(user_id).bind(bit_mask).execute(&pool).await.map(|_| ())
         }).await.map_err(|e| AppError::Postgres(PostgresError::Query { message: e.to_string(), source: None }))
@@ -172,7 +172,7 @@ impl InteractionRepository {
     pub async fn get_likely_arrivals(&self, target_hour: u32) -> AppResult<Vec<i32>> {
         let bit_mask = 1i64 << target_hour;
         self.pool.execute(|pool| async move {
-            sqlx::query_as::<_, (i32,)>("SELECT user_id FROM user_arrival_patterns WHERE (hour_mask & $1) != 0")
+            sqlx::query_as::<_, (i32,)>("SELECT user_id FROM bongas.user_arrival_patterns WHERE (hour_mask & $1) != 0")
             .bind(bit_mask).fetch_all(&pool).await.map(|rows| rows.into_iter().map(|r| r.0).collect())
         }).await.map_err(|e| AppError::Postgres(PostgresError::Query { message: e.to_string(), source: None }))
     }
@@ -183,7 +183,7 @@ impl InteractionRepository {
             sqlx::query_as::<_, (i32,)> (
                 r#"
                 SELECT user_id
-                FROM user_interactions
+                FROM bongas.user_interactions
                 WHERE created_at > NOW() - INTERVAL '30 days'
                 GROUP BY user_id
                 ORDER BY COUNT(*) DESC
@@ -197,7 +197,6 @@ impl InteractionRepository {
         }).await.map_err(|e| AppError::Postgres(PostgresError::Query { message: e.to_string(), source: None }))
     }
 
-    /// Get scenario engagement scores for a specific identity (visitor or user).
     /// Get scenario engagement scores for a specific identity (visitor or profile).
     pub async fn get_scenario_engagement_scores(
         &self,
@@ -212,7 +211,7 @@ impl InteractionRepository {
                 r#"
                 SELECT scenario_slug, 
                        (COUNT(*) * 1.0 + SUM(CASE WHEN interaction_type = 'click' THEN 2.0 ELSE 0.0 END)) as score
-                FROM user_interactions
+                FROM bongas.user_interactions
                 WHERE (profile_id = $1 AND $1 IS NOT NULL) OR (visitor_id = $2 AND $2 IS NOT NULL)
                 AND created_at > NOW() - INTERVAL '7 days'
                 AND scenario_slug IS NOT NULL
@@ -239,7 +238,7 @@ impl InteractionRepository {
         self.pool.execute(move |pool| async move {
             let res = sqlx::query(
                 r#"
-                UPDATE user_interactions 
+                UPDATE bongas.user_interactions 
                 SET user_id = $1, profile_id = $2 
                 WHERE visitor_id = $3 AND (user_id = 0 OR user_id IS NULL)
                 "#

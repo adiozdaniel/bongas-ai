@@ -1,6 +1,7 @@
 use anyhow::Result;
 use crate::db::repositories::item_feature_service::models::*;
 use crate::db::repositories::item_feature_service::service::ItemFeatureService;
+use crate::error::{AppError, PostgresError};
 
 impl ItemFeatureService {
     /// Get pre-computed personalization scores for a set of items.
@@ -20,7 +21,7 @@ impl ItemFeatureService {
                 sqlx::query_as::<_, UserItemScoreRow>(
                     r#"
                     SELECT item_id, score, model_type
-                    FROM user_item_scores
+                    FROM bongas.user_item_scores
                     WHERE user_id = $1
                         AND item_id = ANY($2)
                         AND model_type = $3
@@ -55,7 +56,7 @@ impl ItemFeatureService {
             .execute(|pool| async move {
                 sqlx::query_as::<_, WatchedItemRow>(
                     r#"
-                    SELECT item_id FROM item_features
+                    SELECT item_id FROM bongas.item_features
                     WHERE item_id != ALL($1)
                       AND (embedding IS NOT NULL OR tfidf_vector IS NOT NULL)
                     ORDER BY trending_score DESC NULLS LAST, view_count DESC NULLS LAST
@@ -109,7 +110,7 @@ impl ItemFeatureService {
                            completion_rate, trending_score, popularity_score,
                            user_rating, user_rating_count, critic_rating, critic_rating_count,
                            embedding, tfidf_vector
-                    FROM item_features
+                    FROM bongas.item_features
                     WHERE item_id != $1
                         AND is_active = true
                         AND (genres ?| $2 OR creators ?| $3)
@@ -150,7 +151,7 @@ impl ItemFeatureService {
                 sqlx::query_as::<_, SeasonalItemRowExtended>(
                     r#"
                     SELECT item_id, title, seasonal_tags, holiday_tags, themes, popularity_score
-                    FROM item_features
+                    FROM bongas.item_features
                     WHERE is_active = true
                         AND (
                             seasonal_tags ?| $1
@@ -192,7 +193,7 @@ impl ItemFeatureService {
                 sqlx::query_as::<_, ItemSimilarityRow>(
                     r#"
                     SELECT similar_item_id, similarity_score
-                    FROM item_similarities
+                    FROM bongas.item_similarities
                     WHERE item_id = $1 AND similarity_type = 'embedding'
                     ORDER BY similarity_score DESC
                     LIMIT $2
@@ -228,7 +229,7 @@ impl ItemFeatureService {
             .execute(|pool| async move {
                 sqlx::query_as::<_, CategoryRow>(
                     r#"
-                    SELECT slug FROM categories
+                    SELECT slug FROM bongas.categories
                     WHERE parent_slug = $1 OR slug = $1
                     "#,
                 )
@@ -267,13 +268,14 @@ impl ItemFeatureService {
                     r#"
                     WITH target_users AS (
                         SELECT DISTINCT user_id 
-                        FROM user_interactions 
+                        FROM bongas.user_interactions 
                         WHERE item_id = $1 
                           AND interaction_type = 'view'
                           AND created_at > (now() - INTERVAL '30 days')
                     )
                     SELECT ui.item_id, COUNT(*) as co_watch_count
-                    FROM user_interactions ui
+                    FROM bongas.user_interactions ui
+
                     JOIN target_users tu ON ui.user_id = tu.user_id
                     WHERE ui.item_id != $1
                       AND ui.interaction_type = 'view'
@@ -288,7 +290,11 @@ impl ItemFeatureService {
                 .fetch_all(&pool)
                 .await
             })
-            .await?;
+            .await
+            .map_err(|e| AppError::Postgres(PostgresError::Query {
+                message: format!("Failed to fetch co-watched items: {}", e),
+                source: None,
+            }))?;
 
         let duration = start.elapsed();
         let metrics = self.metrics.registry().get_or_create("item_feature_service.co_watched");
@@ -312,8 +318,9 @@ impl ItemFeatureService {
                 sqlx::query_as::<_, WatchedItemRow>(
                     r#"
                     SELECT item_id
-                    FROM user_interactions
+                    FROM bongas.user_interactions
                     WHERE user_id = $1 AND interaction_type = 'view'
+
                     ORDER BY created_at DESC
                     LIMIT $2
                     "#,

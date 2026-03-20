@@ -16,7 +16,7 @@ impl ItemFeatureService {
                     SELECT profile_id, user_id, genre_affinity, disliked_genres, total_watch_time_minutes,
                            total_videos_watched, avg_completion_rate,
                            favorite_genres, favorite_creators, preferred_content_type, embedding
-                    FROM profile_features
+                    FROM bongas.profile_features
                     WHERE profile_id = $1
                     "#,
                 )
@@ -47,7 +47,7 @@ impl ItemFeatureService {
                 sqlx::query_as::<_, UserContentPreferencesRow>(
                     r#"
                     SELECT allow_explicit, allow_violence, allow_language, allow_drugs
-                    FROM user_content_preferences
+                    FROM bongas.user_content_preferences
                     WHERE user_id = $1
                     "#,
                 )
@@ -75,7 +75,7 @@ impl ItemFeatureService {
                 sqlx::query_as::<_, UserProfileRow>(
                     r#"
                     SELECT segment, subscription_tier
-                    FROM user_profiles
+                    FROM bongas.user_profiles
                     WHERE user_id = $1
                     "#,
                 )
@@ -103,8 +103,9 @@ impl ItemFeatureService {
                 sqlx::query_as::<_, WatchedItemRow>(
                     r#"
                     SELECT DISTINCT item_id
-                    FROM user_interactions
+                    FROM bongas.user_interactions
                     WHERE user_id = $1
+
                         AND interaction_type = 'view'
                         AND completion_percentage > 0.9
                     "#,

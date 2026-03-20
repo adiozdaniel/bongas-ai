@@ -34,7 +34,7 @@ impl DiscoveryConfigRepository {
             .execute(|pool| async move {
                 let row: DiscoveryConfig = sqlx::query_as(
                     r#"
-                    INSERT INTO discovery_configs 
+                    INSERT INTO bongas.discovery_configs 
                         (device_type, initial_batch_size, continuation_batch_size, prewarm_lookahead, ghost_ttl_seconds, cache_ttl_seconds, updated_at)
                     VALUES ($1, $2, $3, $4, $5, $6, NOW())
                     ON CONFLICT (device_type) DO UPDATE
@@ -75,7 +75,7 @@ impl DiscoveryConfigRepository {
         let result: AppResult<Vec<DiscoveryConfig>> = self.pool
             .execute(|pool| async move {
                 let rows: Vec<DiscoveryConfig> = sqlx::query_as(
-                    "SELECT device_type, initial_batch_size, continuation_batch_size, prewarm_lookahead, ghost_ttl_seconds, cache_ttl_seconds, updated_at FROM discovery_configs"
+                    "SELECT device_type, initial_batch_size, continuation_batch_size, prewarm_lookahead, ghost_ttl_seconds, cache_ttl_seconds, updated_at FROM bongas.discovery_configs"
                 )
                 .fetch_all(&pool)
                 .await?;
@@ -102,7 +102,7 @@ impl DiscoveryConfigRepository {
         let result: AppResult<Option<DiscoveryConfig>> = self.pool
             .execute(|pool| async move {
                 let row: Option<DiscoveryConfig> = sqlx::query_as(
-                    "SELECT device_type, initial_batch_size, continuation_batch_size, prewarm_lookahead, ghost_ttl_seconds, cache_ttl_seconds, updated_at FROM discovery_configs WHERE device_type = $1"
+                    "SELECT device_type, initial_batch_size, continuation_batch_size, prewarm_lookahead, ghost_ttl_seconds, cache_ttl_seconds, updated_at FROM bongas.discovery_configs WHERE device_type = $1"
                 )
                 .bind(&device)
                 .fetch_optional(&pool)

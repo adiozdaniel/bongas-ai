@@ -89,7 +89,7 @@ impl ScenarioRepository {
                 // 1. Insert into scenarios
                 let scenario_id: i32 = sqlx::query_scalar(
                     r#"
-                    INSERT INTO scenarios (
+                    INSERT INTO bongas.scenarios (
                         slug, name, description, category, target_kpi,
                         maturity_rating, initial_display_limit, scope,
                         cache_ttl_seconds, use_l2_cache
@@ -115,7 +115,7 @@ impl ScenarioRepository {
                 let pipeline_slug = format!("{}_strategy_v1", req.slug);
                 let pipeline_id: i32 = sqlx::query_scalar(
                     r#"
-                    INSERT INTO pipelines (slug, name, definition)
+                    INSERT INTO bongas.pipelines (slug, name, definition)
                     VALUES ($1, $2, $3)
                     RETURNING id
                     "#,
@@ -129,7 +129,7 @@ impl ScenarioRepository {
                 // 3. Link them in scenario_rules (Default Rule)
                 sqlx::query(
                     r#"
-                    INSERT INTO scenario_rules (scenario_id, pipeline_id, priority, condition, is_active, description)
+                    INSERT INTO bongas.scenario_rules (scenario_id, pipeline_id, priority, condition, is_active, description)
                     VALUES ($1, $2, $3, '{}'::jsonb, true, 'Default Strategy')
                     "#,
                 )
@@ -162,7 +162,7 @@ impl ScenarioRepository {
                 // 1. Update scenario metadata
                 let scenario_id: i32 = sqlx::query_scalar(
                     r#"
-                    UPDATE scenarios
+                    UPDATE bongas.scenarios
                     SET name = COALESCE($2, name),
                         description = COALESCE($3, description),
                         category = COALESCE($4, category),
@@ -193,11 +193,11 @@ impl ScenarioRepository {
                 if let Some(ref pipeline_def) = req.pipeline {
                     sqlx::query(
                         r#"
-                        UPDATE pipelines
+                        UPDATE bongas.pipelines
                         SET definition = $2, updated_at = NOW()
                         WHERE id = (
                             SELECT pipeline_id 
-                            FROM scenario_rules 
+                            FROM bongas.scenario_rules 
                             WHERE scenario_id = $1 AND condition = '{}'::jsonb
                             LIMIT 1
                         )
@@ -213,7 +213,7 @@ impl ScenarioRepository {
                 if req.priority.is_some() || req.enabled.is_some() {
                     sqlx::query(
                         r#"
-                        UPDATE scenario_rules
+                        UPDATE bongas.scenario_rules
                         SET priority = COALESCE($2, priority),
                             is_active = COALESCE($3, is_active),
                             updated_at = NOW()
@@ -245,7 +245,7 @@ impl ScenarioRepository {
         let slug = slug.to_string();
         self.pool
             .execute(|pool| async move {
-                sqlx::query("DELETE FROM scenarios WHERE slug = $1")
+                sqlx::query("DELETE FROM bongas.scenarios WHERE slug = $1")
                 .bind(&slug)
                 .execute(&pool)
                 .await
@@ -275,9 +275,9 @@ impl ScenarioRepository {
                         s.created_at,
                         p.definition as pipeline,
                         r.is_active, r.priority
-                    FROM scenarios s
-                    JOIN scenario_rules r ON s.id = r.scenario_id AND r.condition = '{}'::jsonb
-                    JOIN pipelines p ON r.pipeline_id = p.id
+                    FROM bongas.scenarios s
+                    JOIN bongas.scenario_rules r ON s.id = r.scenario_id AND r.condition = '{}'::jsonb
+                    JOIN bongas.pipelines p ON r.pipeline_id = p.id
                     WHERE r.is_active = true
                     ORDER BY r.priority DESC, s.slug
                     "#,
@@ -324,9 +324,9 @@ impl ScenarioRepository {
                         s.created_at,
                         p.definition as pipeline,
                         r.is_active, r.priority
-                    FROM scenarios s
-                    JOIN scenario_rules r ON s.id = r.scenario_id AND r.condition = '{}'::jsonb
-                    JOIN pipelines p ON r.pipeline_id = p.id
+                    FROM bongas.scenarios s
+                    JOIN bongas.scenario_rules r ON s.id = r.scenario_id AND r.condition = '{}'::jsonb
+                    JOIN bongas.pipelines p ON r.pipeline_id = p.id
                     WHERE s.slug = $1
                     "#,
                 )
@@ -357,9 +357,9 @@ impl ScenarioRepository {
                 s.created_at,
                 p.definition as pipeline,
                 r.is_active, r.priority
-            FROM scenarios s
-            JOIN scenario_rules r ON s.id = r.scenario_id AND r.condition = '{}'::jsonb
-            JOIN pipelines p ON r.pipeline_id = p.id
+            FROM bongas.scenarios s
+            JOIN bongas.scenario_rules r ON s.id = r.scenario_id AND r.condition = '{}'::jsonb
+            JOIN bongas.pipelines p ON r.pipeline_id = p.id
             WHERE s.id = $1
             "#,
         )
