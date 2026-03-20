@@ -5,12 +5,12 @@
 
 use std::path::Path;
 use std::sync::{Arc, Mutex};
-use tantivy::{Index, IndexReader, IndexWriter, ReloadPolicy};
-use tracing::{info, warn, error};
+use tantivy::{Index, IndexReader, IndexWriter, ReloadPolicy, directory::MmapDirectory, IndexSettings};
+use tracing::{info, warn};
 use anyhow::{Context, Result};
 
 use crate::search::SearchSchema;
-use crate::config::SearchConfig;
+use crate::config::types::SearchConfig;
 
 /// High-performance manager for the embedded search index.
 pub struct EmbeddedSearchManager {
@@ -18,7 +18,7 @@ pub struct EmbeddedSearchManager {
     reader: IndexReader,
     writer: Arc<Mutex<IndexWriter>>,
     schema: SearchSchema,
-    config: SearchConfig,
+    _config: SearchConfig,
 }
 
 impl EmbeddedSearchManager {
@@ -34,19 +34,24 @@ impl EmbeddedSearchManager {
             info!(path = %config.index_path, "Created search index directory");
         }
 
+        let directory = MmapDirectory::open(index_path)?;
+
         // 2. Open or Create the Index
-        let index = if Index::exists(index_path)? {
+        let index = if Index::exists(&directory)? {
             info!(path = %config.index_path, "Opening existing search index");
-            Index::open_in_dir(index_path)?
+            Index::open(directory)?
         } else {
             info!(path = %config.index_path, "Creating new search index");
-            Index::create_in_dir(index_path, schema_wrapper.schema.clone())?
+            Index::create(directory, schema_wrapper.schema.clone(), IndexSettings::default())?
         };
 
-        // 3. Initialize Reader (Manual reload for deterministic performance)
+        // Phase 3.3: Register specialized "sheng" analyzer
+        index.tokenizers().register("sheng", crate::search::sheng_analyzer());
+
+        // 3. Initialize Reader
         let reader = index
             .reader_builder()
-            .reload_policy(ReloadPolicy::OnCommit)
+            .reload_policy(ReloadPolicy::Manual)
             .try_into()?;
 
         // 4. Initialize Writer (Memory budget from config)
@@ -58,7 +63,7 @@ impl EmbeddedSearchManager {
             reader,
             writer: Arc::new(Mutex::new(writer)),
             schema: schema_wrapper,
-            config,
+            _config: config,
         })
     }
 
@@ -78,7 +83,7 @@ impl EmbeddedSearchManager {
     }
 
     /// Add or update a document in the index.
-    pub async fn upsert_document(&self, doc: tantivy::Document) -> Result<()> {
+    pub async fn upsert_document(&self, doc: tantivy::TantivyDocument) -> Result<()> {
         let writer = self.writer.lock().map_err(|_| anyhow::anyhow!("Search writer mutex poisoned"))?;
         writer.add_document(doc)?;
         Ok(())
@@ -88,7 +93,9 @@ impl EmbeddedSearchManager {
     pub fn commit(&self) -> Result<()> {
         let mut writer = self.writer.lock().map_err(|_| anyhow::anyhow!("Search writer mutex poisoned"))?;
         writer.commit()?;
-        info!("Search index committed successfully");
+        // Trigger manual reload of the reader
+        self.reader.reload()?;
+        info!("Search index committed and reloaded successfully");
         Ok(())
     }
 

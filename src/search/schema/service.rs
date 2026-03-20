@@ -21,26 +21,28 @@ impl SearchSchema {
     pub fn new() -> Self {
         let mut schema_builder = Schema::builder();
 
-        // 1. Primary Key: Item ID (i64 for Postgres parity)
+        // Phase 3.3: Use specialized "sheng" analyzer for text fields
+        let text_options = TextOptions::default()
+            .set_indexing_options(TextFieldIndexing::default()
+                .set_tokenizer("sheng")
+                .set_index_option(IndexRecordOption::WithFreqsAndPositions))
+            .set_stored();
+
+        // 1. Primary Key: Item ID
         let id = schema_builder.add_i64_field("id", INDEXED | STORED);
 
-        // 2. Metadata Search: Title and Description
-        // Using TEXT with STORED so we can show snippets or results directly
-        let title = schema_builder.add_text_field("title", TEXT | STORED);
-        let description = schema_builder.add_text_field("description", TEXT | STORED);
+        // 2. Metadata Search: Title and Description (Sheng-Native)
+        let title = schema_builder.add_text_field("title", text_options.clone());
+        let description = schema_builder.add_text_field("description", text_options.clone());
 
-        // 3. Deep Content: Spoken Words (extracted via Sound Listener)
-        // We don't necessarily need to store the raw text here if it's large,
-        // just index it for retrieval.
-        let spoken_content = schema_builder.add_text_field("spoken_content", TEXT);
+        // 3. Deep Content: Spoken Words (Sheng-Native)
+        let spoken_content = schema_builder.add_text_field("spoken_content", text_options);
 
-        // 4. Vision DNA: Vector Storage (for Phase 4 Relevance Fusion)
-        // tantivy 0.22 doesn't have a native dense vector type yet, so we store
-        // the DNA as a raw byte blob for memory-resident re-ranking.
+        // 4. Vision DNA: Vector Storage (Stored as bytes)
         let vision_dna = schema_builder.add_bytes_field("vision_dna", STORED);
 
-        // 5. Raw Metadata: JSON blob for UI flexibility
-        let metadata = schema_builder.add_json_field("metadata", STORED);
+        // 5. Raw Metadata: JSON blob (Stored as a string in 0.22)
+        let metadata = schema_builder.add_text_field("metadata", STORED);
 
         Self {
             schema: schema_builder.build(),
