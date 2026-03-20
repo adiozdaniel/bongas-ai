@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use tokio::sync::{broadcast, RwLock};
 use anyhow::Result;
-use tracing::info;
+use tracing::{info, warn};
 use std::collections::HashMap;
 use arc_swap::ArcSwap;
 
@@ -352,10 +352,16 @@ impl DiscoverySymphony {
             resilience_metrics.clone(),
         ));
 
-        let notification_adaptor: Arc<dyn NotificationAdaptor> = match self.config.notifications.adaptor {
-            crate::config::types::notification::NotificationAdaptorKind::Kafka => Arc::new(KafkaNotifyAdaptor::new()),
-            crate::config::types::notification::NotificationAdaptorKind::Resend => Arc::new(ResendNotifyAdaptor::new(self.config.notifications.resend.clone())),
-            crate::config::types::notification::NotificationAdaptorKind::Polling => Arc::new(PollingAdaptor::new()),
+        let resend_key = &self.config.notifications.resend.api_key;
+        let notification_adaptor: Arc<dyn NotificationAdaptor> = if resend_key.is_empty() && matches!(self.config.notifications.adaptor, crate::config::types::notification::NotificationAdaptorKind::Resend) {
+            warn!("Resend API Key not provided. Falling back to PollingAdaptor for notifications.");
+            Arc::new(crate::notification::dispatcher::service::PollingAdaptor::new())
+        } else {
+            match self.config.notifications.adaptor {
+                crate::config::types::notification::NotificationAdaptorKind::Kafka => Arc::new(KafkaNotifyAdaptor::new()),
+                crate::config::types::notification::NotificationAdaptorKind::Resend => Arc::new(ResendNotifyAdaptor::new(self.config.notifications.resend.clone())),
+                crate::config::types::notification::NotificationAdaptorKind::Polling => Arc::new(PollingAdaptor::new()),
+            }
         };
 
         let notification_dispatcher = Arc::new(NotificationDispatcher::new(

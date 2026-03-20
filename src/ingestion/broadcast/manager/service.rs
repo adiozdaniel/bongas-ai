@@ -60,9 +60,13 @@ impl IngestionManager {
 
         // Add Kafka if configured
         if components.kafka_config.enabled {
-            let kafka_source_config = crate::ingestion::recovery::kafka::service::KafkaSourceConfig::from(components.kafka_config);
-            let kafka = KafkaSource::new(kafka_source_config, components.breaker_registry.clone());
-            sources.push(Arc::new(kafka));
+            if components.kafka_config.brokers.is_empty() {
+                tracing::warn!("Kafka ingestion is enabled but KAFKA_BROKERS is empty. Disabling Kafka source.");
+            } else {
+                let kafka_source_config = crate::ingestion::recovery::kafka::service::KafkaSourceConfig::from(components.kafka_config);
+                let kafka = KafkaSource::new(kafka_source_config, components.breaker_registry.clone());
+                sources.push(Arc::new(kafka));
+            }
         }
 
         // Add ClickHouse Source if configured
