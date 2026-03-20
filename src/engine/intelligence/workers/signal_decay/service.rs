@@ -60,12 +60,9 @@ impl SignalDecayWorker {
         // We prune data older than retention_days
         let threshold_unix = (chrono::Utc::now() - chrono::Duration::days(self.retention_days as i64)).timestamp();
 
-        let query = format!(
-            "ALTER TABLE user_interactions DELETE WHERE created_at < {}",
-            threshold_unix
-        );
+        let query = "ALTER TABLE user_interactions DELETE WHERE created_at < ?";
 
-        self.clickhouse.query(&query).execute().await?;
+        self.clickhouse.query(query).bind(threshold_unix).execute().await?;
 
         info!(
             threshold_unix,

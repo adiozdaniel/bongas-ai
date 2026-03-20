@@ -228,7 +228,7 @@ impl BongasEngine {
                 SELECT 
                     scenario_slug,
                     countIf(interaction_type = 'click') / countIf(interaction_type = 'impression') as ctr
-                FROM user_interactions
+                FROM bongas.user_interactions
                 WHERE created_at > (toUnixTimestamp(now()) - 86400)
                 GROUP BY scenario_slug
                 HAVING ctr < 0.02

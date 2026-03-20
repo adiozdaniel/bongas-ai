@@ -169,7 +169,7 @@ impl EmbeddingManager {
         let ids = item_ids.to_vec();
         let rows: Vec<Row> = self.pool.execute(|pool| async move {
             sqlx::query_as::<_, Row>(
-                "SELECT item_id, embedding, tfidf_vector FROM item_features WHERE item_id = ANY($1)",
+                "SELECT item_id, embedding, tfidf_vector FROM bongas.item_features WHERE item_id = ANY($1)",
             )
             .bind(&ids)
             .fetch_all(&pool)
@@ -210,7 +210,7 @@ impl EmbeddingManager {
         let pid = profile_id.to_string();
         let row: Option<Row> = self.pool.execute(|pool| async move {
             sqlx::query_as::<_, Row>(
-                "SELECT embedding FROM profile_features WHERE profile_id = $1",
+                "SELECT embedding FROM bongas.profile_features WHERE profile_id = $1",
             )
             .bind(pid)
             .fetch_optional(&pool)

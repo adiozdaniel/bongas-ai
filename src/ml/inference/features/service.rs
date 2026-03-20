@@ -116,7 +116,7 @@ impl FeatureStore {
         
         let row: Option<JsonValue> = self.pool.execute(|pool| async move {
             sqlx::query_scalar(
-                "SELECT genre_affinity FROM visitor_features WHERE visitor_id = $1"
+                "SELECT genre_affinity FROM bongas.visitor_features WHERE visitor_id = $1"
             )
             .bind(visitor_id)
             .fetch_optional(&pool)
@@ -199,7 +199,7 @@ impl FeatureStore {
             sqlx::query_as::<_, Row>(
                 r#"
                 SELECT genre_affinity, embedding, total_watch_time_minutes, avg_completion_rate
-                FROM profile_features
+                FROM bongas.profile_features
                 WHERE profile_id = $1
                 "#,
             )
@@ -253,7 +253,7 @@ impl FeatureStore {
             sqlx::query_as::<_, Row>(
                 r#"
                 SELECT item_id, embedding, tfidf_vector, view_count, trending_score, completion_rate
-                FROM item_features
+                FROM bongas.item_features
                 WHERE item_id = ANY($1)
                 "#,
             )

@@ -32,9 +32,9 @@ impl BongasEngine {
                 SELECT 
                     rs.id, s.slug as scenario_slug, p.slug as suggested_pipeline,
                     rs.suggested_condition, rs.reasoning, rs.confidence_score, rs.status, rs.created_at
-                FROM rule_suggestions rs
-                JOIN scenarios s ON rs.scenario_id = s.id
-                JOIN pipelines p ON rs.suggested_pipeline_id = p.id
+                FROM bongas.rule_suggestions rs
+                JOIN bongas.scenarios s ON rs.scenario_id = s.id
+                JOIN bongas.pipelines p ON rs.suggested_pipeline_id = p.id
                 WHERE rs.status = 'pending'
                 ORDER BY rs.confidence_score DESC, rs.created_at DESC
                 "#
@@ -67,7 +67,7 @@ impl BongasEngine {
             let mut tx = pool.begin().await?;
 
             let suggestion: (i32, i32, serde_json::Value) = sqlx::query_as(
-                "SELECT scenario_id, suggested_pipeline_id, suggested_condition FROM rule_suggestions WHERE id = $1"
+                "SELECT scenario_id, suggested_pipeline_id, suggested_condition FROM bongas.rule_suggestions WHERE id = $1"
             )
             .bind(suggestion_id)
             .fetch_one(&mut *tx)
@@ -75,7 +75,7 @@ impl BongasEngine {
 
             sqlx::query(
                 r#"
-                INSERT INTO scenario_rules (scenario_id, pipeline_id, condition, priority, is_active, description)
+                INSERT INTO bongas.scenario_rules (scenario_id, pipeline_id, condition, priority, is_active, description)
                 VALUES ($1, $2, $3, 150, true, 'AI Suggested & Autonomous Promoted')
                 "#
             )
@@ -85,7 +85,7 @@ impl BongasEngine {
             .execute(&mut *tx)
             .await?;
 
-            sqlx::query("UPDATE rule_suggestions SET status = 'approved', applied_at = NOW() WHERE id = $1")
+            sqlx::query("UPDATE bongas.rule_suggestions SET status = 'approved', applied_at = NOW() WHERE id = $1")
                 .bind(suggestion_id)
                 .execute(&mut *tx)
                 .await?;
@@ -113,8 +113,6 @@ impl BongasEngine {
         let mut samples = 0;
 
         for comp in comparisons {
-            // Note: simulate_suggestion returns IDs, we need RecommendationItems for full drift analysis
-            // But for now, we'll implement a simplified ID-based version of drift confidence
             let control_ids: Vec<i32> = comp.get("control_ids").and_then(|v| v.as_array())
                 .map(|a| a.iter().filter_map(|v| v.as_i64().map(|i| i as i32)).collect())
                 .unwrap_or_default();
@@ -123,7 +121,6 @@ impl BongasEngine {
                 .map(|a| a.iter().filter_map(|v| v.as_i64().map(|i| i as i32)).collect())
                 .unwrap_or_default();
 
-            // Simplified RecommendationItems for the simulator
             let control_items: Vec<RecommendationItem> = control_ids.into_iter().map(|id| RecommendationItem {
                 item_id: id, score: 1.0, metadata: serde_json::Value::Null, reasoning: vec![]
             }).collect();
@@ -134,7 +131,6 @@ impl BongasEngine {
 
             let confidence = self.intelligence.simulator.calculate_drift_confidence(&control_items, &suggested_items);
             
-            // Integrity Check: Nano-validation of model outputs
             if !self.intelligence.simulator.validate_model_integrity(&suggested_items)? {
                 warn!(id = suggestion_id, "Autonomous Promotion REJECTED: Model integrity check failed (Structural Instability)");
                 return Ok(false);
@@ -165,8 +161,8 @@ impl BongasEngine {
             sqlx::query_as(
                 r#"
                 SELECT s.slug, rs.suggested_pipeline_id, rs.suggested_condition 
-                FROM rule_suggestions rs 
-                JOIN scenarios s ON rs.scenario_id = s.id 
+                FROM bongas.rule_suggestions rs 
+                JOIN bongas.scenarios s ON rs.scenario_id = s.id 
                 WHERE rs.id = $1
                 "#
             )
@@ -176,7 +172,7 @@ impl BongasEngine {
         }).await?;
 
         let p_def_json: serde_json::Value = self.governance.scenarios.scenario_factory.repo().pool().execute(move |pool| async move {
-            sqlx::query_scalar("SELECT definition FROM pipelines WHERE id = $1")
+            sqlx::query_scalar("SELECT definition FROM bongas.pipelines WHERE id = $1")
                 .bind(suggested_p_id)
                 .fetch_one(&pool)
                 .await
@@ -187,7 +183,7 @@ impl BongasEngine {
         let control_pipeline = self.governance.scenarios.linked_scenarios.load().get(&scenario_slug).cloned();
 
         let sample_users: Vec<i32> = self.governance.scenarios.scenario_factory.repo().pool().execute(|pool| async move {
-            sqlx::query_scalar::<_, i32>("SELECT DISTINCT user_id FROM user_interactions LIMIT 5")
+            sqlx::query_scalar::<_, i32>("SELECT DISTINCT user_id FROM bongas.user_interactions LIMIT 5")
                 .fetch_all(&pool)
                 .await
         }).await.unwrap_or_else(|_| vec![1, 2, 3]);
@@ -265,7 +261,7 @@ impl BongasEngine {
             let slugs: Vec<String> = self.list_scenarios().await;
             if slugs.contains(&"home_feed".to_string()) {
                 "home_feed".to_string()
-            } else if !slugs.is_empty() {
+            } else if ! slugs.is_empty() {
                 slugs[0].clone()
             } else {
                 return Err(anyhow::anyhow!("No active scenarios found for chatbot processing"));
@@ -283,7 +279,7 @@ impl BongasEngine {
             };
 
             sqlx::query_scalar::<_, String>(
-                "SELECT slug FROM pipelines WHERE slug LIKE $1 OR slug LIKE $2 LIMIT 1"
+                "SELECT slug FROM bongas.pipelines WHERE slug LIKE $1 OR slug LIKE $2 LIMIT 1"
             )
             .bind(format!("%{}%", target_slug))
             .bind("%v1%")
@@ -303,13 +299,13 @@ impl BongasEngine {
             async move {
                 sqlx::query_scalar(
                     r#"
-                    INSERT INTO rule_suggestions (
+                    INSERT INTO bongas.rule_suggestions (
                         scenario_id, suggested_pipeline_id, suggested_condition, 
                         reasoning, confidence_score, status
                     )
                     VALUES (
-                        (SELECT id FROM scenarios WHERE slug = $1 LIMIT 1),
-                        (SELECT id FROM pipelines WHERE slug = $2 LIMIT 1),
+                        (SELECT id FROM bongas.scenarios WHERE slug = $1 LIMIT 1),
+                        (SELECT id FROM bongas.pipelines WHERE slug = $2 LIMIT 1),
                         $3,
                         $4,
                         0.85,
@@ -333,7 +329,7 @@ impl BongasEngine {
     /// Reject a rule suggestion.
     pub async fn reject_suggestion(&self, suggestion_id: i32) -> Result<()> {
         self.governance.scenarios.scenario_factory.repo().pool().execute(move |pool| async move {
-            sqlx::query("UPDATE rule_suggestions SET status = 'rejected' WHERE id = $1")
+            sqlx::query("UPDATE bongas.rule_suggestions SET status = 'rejected' WHERE id = $1")
                 .bind(suggestion_id)
                 .execute(&pool)
                 .await

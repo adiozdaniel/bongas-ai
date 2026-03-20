@@ -99,7 +99,8 @@ impl TribeOrchestrator {
     async fn fetch_profiles(&self) -> Result<Vec<ProfileFeatures>> {
         self.db_pool.execute(|pool| async move {
             sqlx::query_as::<_, ProfileFeatures>(
-                "SELECT * FROM profile_features WHERE embedding IS NOT NULL"
+                "SELECT * FROM bongas.profile_features WHERE embedding IS NOT NULL"
+
             )
             .fetch_all(&pool)
             .await
@@ -195,7 +196,7 @@ impl TribeOrchestrator {
                 let tribes: Vec<i32> = tribes.iter().map(|&t| t as i32).collect();
                 async move {
                     sqlx::query(
-                        "UPDATE profile_features SET tribe_id = UNNEST($1::int[]), features_updated_at = NOW() FROM UNNEST($2::text[]) AS pid WHERE profile_features.profile_id = pid"
+                        "UPDATE bongas.profile_features SET tribe_id = UNNEST($1::int[]), features_updated_at = NOW() FROM UNNEST($2::text[]) AS pid WHERE bongas.profile_features.profile_id = pid"
                     )
                     .bind(&tribes)
                     .bind(&ids)

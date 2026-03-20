@@ -323,13 +323,13 @@ impl HiveMindConnector {
             async move {
                 sqlx::query_scalar(
                     r#"
-                    INSERT INTO rule_suggestions (
+                    INSERT INTO bongas.rule_suggestions (
                         scenario_id, suggested_pipeline_id, suggested_condition, 
                         reasoning, confidence_score, status
                     )
                     VALUES (
-                        (SELECT id FROM scenarios WHERE slug = $1 LIMIT 1),
-                        (SELECT id FROM pipelines WHERE slug = $2 LIMIT 1),
+                        (SELECT id FROM bongas.scenarios WHERE slug = $1 LIMIT 1),
+                        (SELECT id FROM bongas.pipelines WHERE slug = $2 LIMIT 1),
                         $3,
                         $4,
                         $5,

@@ -148,11 +148,9 @@ impl SovereignSightWorker {
 
     /// Internal logic for visual DNA and maturity forensic extraction.
     async fn perform_visual_audit(&self, external_id: i32) -> Result<SovereignSightLedger> {
-        // Step 3: DNA Extraction (Pillar 2)
         // Pull DNA vectors from ClickHouse (Private Interaction Ledger / Vision DNA)
-        // In production, this pulls from 'item_dna' table populated by heavy vision models
-        let dna_query = format!("SELECT dna_vector FROM item_dna WHERE item_id = {} LIMIT 1", external_id);
-        let dna_vector: Vec<f32> = match self.clickhouse.query(&dna_query).fetch_one::<Vec<f32>>().await {
+        let query = "SELECT dna_vector FROM item_dna WHERE item_id = ? LIMIT 1";
+        let dna_vector: Vec<f32> = match self.clickhouse.query(query).bind(external_id).fetch_one::<Vec<f32>>().await {
             Ok(v) => v,
             Err(_) => vec![0.0; 128], // Fallback if no DNA yet
         };
@@ -194,6 +192,7 @@ impl SovereignSightWorker {
                 .fetch_optional(&pool)
                 .await
         }).await?;
+
 
         if let Some(manual) = manual_rating {
             if forensic_rating == "17+" && manual == "GE" {

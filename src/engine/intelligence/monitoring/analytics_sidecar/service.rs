@@ -224,12 +224,12 @@ impl AnalyticsSidecar {
             async move {
                 sqlx::query_scalar(
                     r#"
-                    INSERT INTO rule_suggestions (
+                    INSERT INTO bongas.rule_suggestions (
                         scenario_id, suggested_pipeline_id, suggested_condition, 
                         reasoning, confidence_score, status
                     )
                     SELECT s.id, p.id, $2, $3, 0.85, 'pending'
-                    FROM scenarios s, pipelines p
+                    FROM bongas.scenarios s, bongas.pipelines p
                     WHERE s.slug = $1 
                       AND (p.slug LIKE '%retention%' OR p.slug = 'retention_v1')
                     LIMIT 1
@@ -255,12 +255,12 @@ impl AnalyticsSidecar {
             async move {
                 sqlx::query_scalar(
                     r#"
-                    INSERT INTO rule_suggestions (
+                    INSERT INTO bongas.rule_suggestions (
                         scenario_id, suggested_pipeline_id, suggested_condition, 
                         reasoning, confidence_score, status
                     )
                     SELECT s.id, p.id, '{}'::jsonb, $2, 0.9, 'pending'
-                    FROM scenarios s, pipelines p
+                    FROM bongas.scenarios s, bongas.pipelines p
                     WHERE s.slug = $1 
                       AND (p.slug LIKE '%discovery%' OR p.slug = 'discovery_v1')
                     LIMIT 1

@@ -67,11 +67,12 @@ impl GhostExecutionWorker {
 
     async fn handle_activity(&self, activity: UserActivity) -> Result<()> {
         let (profile_id, item_id) = match activity {
-            UserActivity::Playback { ref profile_id, item_id, .. } => (profile_id.clone(), item_id),
-            UserActivity::Reaction { ref profile_id, item_id, .. } => (profile_id.clone(), item_id),
-            UserActivity::Click { ref profile_id, item_id, .. } => (profile_id.clone(), item_id),
-            UserActivity::Impression { ref profile_id, item_id, .. } => (profile_id.clone(), item_id),
-            _ => return Ok(()),
+            UserActivity::Playback { ref profile_id, item_id, .. } => (profile_id.clone(), Some(item_id)),
+            UserActivity::Reaction { ref profile_id, item_id, .. } => (profile_id.clone(), Some(item_id)),
+            UserActivity::Click { ref profile_id, item_id, .. } => (profile_id.clone(), Some(item_id)),
+            UserActivity::Impression { ref profile_id, item_id, .. } => (profile_id.clone(), Some(item_id)),
+            UserActivity::ProfileUpdate { ref profile_id, .. } => (profile_id.clone(), None),
+            UserActivity::Notification { ref profile_id, .. } => (profile_id.clone(), None),
         };
 
         let profile_id = match profile_id {
@@ -80,6 +81,11 @@ impl GhostExecutionWorker {
                 debug!("Skipping ghost execution for anonymous activity");
                 return Ok(());
             }
+        };
+
+        let item_id = match item_id {
+            Some(id) => id,
+            None => return Ok(()), // No item to add to history
         };
 
         debug!(profile_id, item_id, "Processing ghost execution");
@@ -96,8 +102,6 @@ impl GhostExecutionWorker {
         }
 
         // 3. Run Reflex (The Micro-Model Inference)
-        // Note: In production, flow_head.onnx expects the history tensor.
-        // For this milestone, we use the OnnxInferenceEngine.
         let next_ids = self.predict_next_sequence(&history).await?;
 
         if !next_ids.is_empty() {

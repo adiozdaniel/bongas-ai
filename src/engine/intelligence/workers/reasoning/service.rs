@@ -74,7 +74,7 @@ impl ReasoningWorker {
         // 1. Find high-probability profile/item pairs from ClickHouse (Mocked Query)
         let query = r#"
             SELECT profile_id, item_id 
-            FROM user_interactions 
+            FROM bongas.user_interactions 
             WHERE interaction_type = 'click' 
             GROUP BY profile_id, item_id 
             HAVING count() > 2 
