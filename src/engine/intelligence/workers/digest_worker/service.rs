@@ -11,7 +11,7 @@ use anyhow::Result;
 use serde_json::json;
 
 use crate::engine::coordination::service::BongasEngine;
-use crate::engine::execution::core::execution_manager::service::ScenarioExecutionContext;
+use crate::engine::execution::core::execution_manager::ScenarioExecutionContext;
 use crate::notification::models::{NotificationIntent, EmailPayload};
 
 pub struct DigestWorker {
