@@ -3,7 +3,6 @@ use tokio::sync::broadcast;
 use tokio::time::{interval, Duration};
 use tracing::{info, error, debug};
 use anyhow::Result;
-use serde_json::Value as JsonValue;
 use tantivy::doc;
 
 use crate::engine::coordination::service::BongasEngine;
@@ -37,7 +36,7 @@ impl SearchSyncWorker {
             "Embedded Search Sync Worker started (M20)"
         );
 
-        // Phase 2.2: Auto-Repair Mode (Initial check for empty index)
+        // Phase 2.2: Auto-Repair Mode
         if let Err(e) = self.perform_integrity_check().await {
             error!(error = %e, "Search index integrity check failed");
         }
@@ -59,8 +58,6 @@ impl SearchSyncWorker {
         }
     }
 
-    /// Phase 2.2: Auto-Repair Logic
-    /// Checks if the index is empty or corrupted and triggers a full rebuild if necessary.
     async fn perform_integrity_check(&self) -> Result<()> {
         let searcher = self.search_manager.searcher();
         let num_docs = searcher.num_docs();
@@ -73,15 +70,9 @@ impl SearchSyncWorker {
         Ok(())
     }
 
-    /// Phase 2.2: Full Rebuild Mode
-    /// Designed to handle 100k items in under 5 seconds by streaming from Postgres.
     async fn trigger_full_rebuild(&self) -> Result<()> {
         debug!("Starting full search index rebuild...");
-        
-        // In a real implementation, we'd loop through all active items in Postgres.
-        // For this milestone, we'll run a single sync cycle with a large batch.
         self.run_sync_cycle().await?;
-        
         Ok(())
     }
 
@@ -96,8 +87,6 @@ impl SearchSyncWorker {
             None => return Ok(()),
         };
 
-        // 1. Fetch recently updated items from Postgres (Differential Indexer)
-        // For Phase 2.1, we fetch a batch of items.
         let items = engine.execution.item_feature_service.get_items_for_search_sync(500).await?;
         
         if items.is_empty() {
@@ -108,37 +97,34 @@ impl SearchSyncWorker {
 
         let schema = self.search_manager.schema();
 
-        // 2. Commit documents to Tantivy
         for item in items {
-            // Extract DNA if available (from ClickHouse in production)
+            // Fix DNA extraction: items.embedding is Option<Vec<f32>>
             let dna_bytes: Vec<u8> = match item.embedding {
-                Some(JsonValue::Array(arr)) => {
-                    let vec: Vec<f32> = arr.into_iter().filter_map(|v| v.as_f64().map(|f| f as f32)).collect();
-                    // Simple serialization for demo
+                Some(vec) => {
                     vec.iter().flat_map(|f| f.to_le_bytes().to_vec()).collect()
                 },
-                _ => vec![0u8; 128],
+                None => vec![0u8; 128],
             };
+
+            let metadata_json = serde_json::json!({
+                "content_type": item.content_type,
+                "release_year": item.release_year,
+                "popularity": item.popularity_score,
+            }).to_string();
 
             let doc = doc!(
                 schema.id => item.item_id as i64,
                 schema.title => item.title.unwrap_or_else(|| format!("Item {}", item.item_id)),
                 schema.description => item.description.unwrap_or_default(),
-                schema.spoken_content => "", // Will be filled by Sound Listener in Phase 3
+                schema.spoken_content => "", 
                 schema.vision_dna => dna_bytes,
-                schema.metadata => serde_json::json!({
-                    "content_type": item.content_type,
-                    "release_year": item.release_year,
-                    "popularity": item.popularity_score,
-                })
+                schema.metadata => metadata_json
             );
 
             self.search_manager.upsert_document(doc).await?;
         }
 
-        // 3. Atomic Commit
         self.search_manager.commit()?;
-
         info!("Embedded search index synchronized");
 
         Ok(())

@@ -49,6 +49,7 @@ use crate::engine::intelligence::workers::reasoning::service::ReasoningWorker;
 use crate::engine::intelligence::workers::digest_worker::service::DigestWorker;
 use crate::engine::intelligence::workers::sovereign_sight::service::SovereignSightWorker;
 use crate::engine::intelligence::workers::ghost_execution::service::GhostExecutionWorker;
+use crate::engine::intelligence::workers::sound_listener::service::SoundListenerWorker;
 use crate::search::EmbeddedSearchManager;
 use crate::engine::governance::orchestration::manager::service::PagesManager;
 use crate::engine::governance::strategy::resolver::service::StrategyResolver;
@@ -315,6 +316,13 @@ impl DiscoverySymphony {
             inference.onnx.clone(),
         ));
 
+        let sound_listener_worker = Arc::new(SoundListenerWorker::new(
+            resilient_pool.clone(),
+            Some(Arc::new(clickhouse_client.clone())),
+            search_manager.clone(),
+            std::time::Duration::from_secs(3600), // Hourly sync
+        ));
+
         let workers = Arc::new(WorkersManager::new()
             .with_tribe_orchestrator(tribe_orchestrator)
             .with_regional_pulse(regional_pulse_worker)
@@ -324,7 +332,8 @@ impl DiscoverySymphony {
             .with_search_sync(search_sync_worker)
             .with_signal_decay(signal_decay_worker)
             .with_sovereign_sight(sovereign_sight_worker)
-            .with_ghost_execution(ghost_execution_worker));
+            .with_ghost_execution(ghost_execution_worker)
+            .with_sound_listener(sound_listener_worker));
 
         let intelligence = Arc::new(IntelligencePillar::new(
             Arc::new(SuggestionsManager::new()),

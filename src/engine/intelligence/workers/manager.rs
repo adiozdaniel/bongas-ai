@@ -13,6 +13,7 @@ use crate::engine::intelligence::workers::search_sync::service::SearchSyncWorker
 use crate::engine::intelligence::workers::signal_decay::service::SignalDecayWorker;
 use crate::engine::intelligence::workers::sovereign_sight::service::SovereignSightWorker;
 use crate::engine::intelligence::workers::ghost_execution::service::GhostExecutionWorker;
+use crate::engine::intelligence::workers::sound_listener::service::SoundListenerWorker;
 
 /// 💓 Workers: Background maintenance and task orchestration.
 pub struct WorkersManager {
@@ -25,6 +26,7 @@ pub struct WorkersManager {
     signal_decay: Option<Arc<SignalDecayWorker>>,
     sovereign_sight: Option<Arc<SovereignSightWorker>>,
     ghost_execution: Option<Arc<GhostExecutionWorker>>,
+    sound_listener: Option<Arc<SoundListenerWorker>>,
 }
 
 impl Default for WorkersManager {
@@ -45,6 +47,7 @@ impl WorkersManager {
             signal_decay: None,
             sovereign_sight: None,
             ghost_execution: None,
+            sound_listener: None,
         }
     }
 
@@ -93,12 +96,20 @@ impl WorkersManager {
         self
     }
 
+    pub fn with_sound_listener(mut self, worker: Arc<SoundListenerWorker>) -> Self {
+        self.sound_listener = Some(worker);
+        self
+    }
+
     /// Propagate engine reference to workers that need it (like DigestWorker).
     pub fn set_engine(&self, engine: std::sync::Weak<BongasEngine>) {
         if let Some(ref worker) = self.digest {
             worker.set_engine(engine.clone());
         }
         if let Some(ref worker) = self.search_sync {
+            worker.set_engine(engine.clone());
+        }
+        if let Some(ref worker) = self.sound_listener {
             worker.set_engine(engine);
         }
     }
@@ -189,6 +200,15 @@ impl WorkersManager {
 
         // 9. Start Ghost Execution Worker (Pillar 4)
         if let Some(ref worker) = self.ghost_execution {
+            let worker = worker.clone();
+            let shutdown_rx = shutdown_tx.subscribe();
+            tokio::spawn(async move {
+                worker.start(shutdown_rx).await;
+            });
+        }
+
+        // 10. Start Sound Listener Worker (M20 Phase 3)
+        if let Some(ref worker) = self.sound_listener {
             let worker = worker.clone();
             let shutdown_rx = shutdown_tx.subscribe();
             tokio::spawn(async move {
