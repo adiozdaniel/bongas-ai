@@ -27,6 +27,7 @@ This document tracks the technical execution and strategic alignment of the Bong
 | **M17: Sovereign Sight** | Intelligence | ✅ **Done** | `sight-core` World Model for deep visual and forensic DNA. | **Section 6.1:** Achieves "Elite Intelligence" by understanding video natively. |
 | **M18: Sovereign Discovery** | Intelligence | ⏳ **Pending** | Blackbox On-Premise architecture with Cythonized `trainer.so` and offline batch processing. | **Section 8.2:** 100% Data Sovereignty and IP protection via frozen base models within the VPC. |
 | **M19: The Sequence** | Intelligence | ✅ **Done** | BERT4Rec flow-core integration for real-time session-aware predictions. | **Section 3.1:** Dynamic Experience Sequencing matching user flow states. |
+| **M20: Embedded Search** | Discovery | ⏳ **Pending** | Rust-native embedded search (Tantivy) with Deep-Content spoken word indexing. | **Section 1.0:** Delivers true "Sovereign Intelligence" by eliminating external search dependencies. |
 
 ---
 
@@ -137,3 +138,14 @@ This document tracks the technical execution and strategic alignment of the Bong
 | **Session Context** | Discovery | Real-time tracking of the immediate "next-click" path history. | ✅ **Done** | **Section 3.2:** "Goldilocks Effect" precision matching. |
 | **Flow Head** | Intelligence | On-premise training of the session-aware attention layer. | ✅ **Done** | **Section 8.2:** Sovereign data processing. |
 | **Sequential Ranker** | Discovery | Integration into the Rust pipeline via `MLInferenceBERT4RecStage`. | ✅ **Done** | **Section 5.2:** Zero-lag sequence evaluation. |
+
+---
+
+## 🔍 Detailed Breakdown: Milestone 20 (Embedded Search & Deep Content)
+
+| Component | Domain | Technical Impact | Status | Remarks on Client's Manifesto Fulfilment |
+| :--- | :--- | :--- | :--- | :--- |
+| **Tantivy Engine** | Discovery | Integration of the Rust-native Tantivy library for embedded full-text search. | ⏳ **Pending** | **Section 1.0:** Total infrastructure sovereignty (No sidecars). |
+| **Sound Listener** | Intelligence | Background ML worker extracting spoken words from video DNA into ClickHouse/Tantivy. | ⏳ **Pending** | **Section 3.1:** Deep Content understanding via spoken-word indexing. |
+| **Relevance Fusion** | Discovery | In-binary hybrid ranking merging BM25, Vision DNA, and User History. | ⏳ **Pending** | **Section 3.2:** High-precision, zero-latency personalized search. |
+| **Indestructible Index** | Infrastructure | WAL-based recovery and background "Auto-Repair" for index integrity. | ⏳ **Pending** | **Section 1.0:** "Blackbox" reliability; zero-maintenance search. |
