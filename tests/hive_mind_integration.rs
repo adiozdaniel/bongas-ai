@@ -82,3 +82,39 @@ async fn test_instant_forensic_interpretation() {
     let response = connector.process_admin_query(query).await.unwrap();
     assert_eq!(response.text, "18+");
 }
+
+#[tokio::test]
+async fn test_admin_query_forbidden_actions() {
+    let (tx, _) = broadcast::channel(1);
+    let connector = HiveMindConnector::new(
+        HiveMindConfig::default(),
+        None,
+        tx.subscribe()
+    );
+
+    let query = AdminQuery {
+        text: "delete this video immediately".to_string(),
+        context: json!({}),
+    };
+    let response = connector.process_admin_query(query).await.unwrap();
+    assert!(response.text.contains("not allowed to permanently delete"));
+    assert_eq!(response.action.unwrap().get("suggested_action").unwrap(), &json!("soft_delete_or_hide"));
+}
+
+#[tokio::test]
+async fn test_admin_query_technical_translation() {
+    let (tx, _) = broadcast::channel(1);
+    let connector = HiveMindConnector::new(
+        HiveMindConfig::default(),
+        None,
+        tx.subscribe()
+    );
+
+    let query = AdminQuery {
+        text: "can you boost the doubling weight for this item?".to_string(),
+        context: json!({}),
+    };
+    let response = connector.process_admin_query(query).await.unwrap();
+    assert!(response.text.contains("increase the availability"));
+    assert_eq!(response.action.unwrap().get("math_op").unwrap(), &json!("boost_weight"));
+}
