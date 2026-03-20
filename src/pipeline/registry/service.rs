@@ -16,6 +16,7 @@ use crate::pipeline::recovery::fetch_user_preferences::service::FetchUserPrefere
 use crate::pipeline::recovery::fetch_seasonal_content::service::FetchSeasonalContentStage;
 use crate::pipeline::recovery::fetch_behavioral_tribe::service::FetchBehavioralTribeStage;
 use crate::pipeline::recovery::fetch_search_results::service::FetchSearchResultsStage;
+use crate::pipeline::recovery::fetch_embedded_search::service::EmbeddedSearchStage;
 
 // Category 2: Processing (The Backstage)
 use crate::pipeline::processing::filter_already_watched::service::FilterAlreadyWatchedStage;
@@ -116,6 +117,7 @@ fn register_static_stages(registry: &mut HashMap<String, Arc<dyn PipelineStage>>
     registry.insert("fetch_seasonal_content".into(), Arc::new(FetchSeasonalContentStage));
     registry.insert("fetch_behavioral_tribe".into(), Arc::new(FetchBehavioralTribeStage));
     registry.insert("fetch_search_results".into(), Arc::new(FetchSearchResultsStage));
+    registry.insert("fetch_embedded_search".into(), Arc::new(EmbeddedSearchStage));
 
     // Processing
     registry.insert("filter_already_watched".into(), Arc::new(FilterAlreadyWatchedStage));

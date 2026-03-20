@@ -10,3 +10,4 @@ pub mod fetch_clickhouse_trending;
 pub mod fetch_recent_watches;
 pub mod fetch_behavioral_tribe;
 pub mod fetch_search_results;
+pub mod fetch_embedded_search;
