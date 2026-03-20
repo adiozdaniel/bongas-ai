@@ -39,6 +39,7 @@ graph LR
             Registry["Pipeline Registry"]
             SSE["SSE Fan-Out"]
             Ghost["Ghost Cache"]
+            SearchIndex["🔍 Embedded Index<br/>(Tantivy)"]
         end
         
         %% The Write/Async Path
@@ -46,7 +47,8 @@ graph LR
             Workers["WorkersManager"]
             
             TribeWorker["Tribe Orchestrator"]
-            SearchWorker["Search Sync"]
+            SearchSync["Index Sync"]
+            SoundWorker["Sound Listener"]
             PulseWorker["Regional Pulse"]
             ReasoningWorker["Reasoning Engine"]
             FatigueWorker["Fatigue Sync"]
@@ -61,7 +63,6 @@ graph LR
         PG[(PostgreSQL)]
         Redis[(Redis)]
         ClickHouse[(ClickHouse)]
-        Meili[(Meilisearch)]
         Kafka{"Kafka Topic"}
     end
 
@@ -83,16 +84,19 @@ graph LR
     Registry <--> Ghost
     Registry <--> Redis
     Registry <--> PG
-    Registry <--> Meili
+    Registry <--> SearchIndex
     Registry <--> ONNX
     Ghost <--> Redis
 
     %% --- INTELLIGENCE PATHS ---
-    Workers <--> SearchWorker
+    Workers <--> SearchSync
+    Workers <--> SoundWorker
     Workers <--> ReasoningWorker
     Workers <--> ExportWorker
-    SearchWorker <--> PG
-    SearchWorker <--> Meili
+    SearchSync <--> PG
+    SearchSync <--> SearchIndex
+    SoundWorker <--> ClickHouse
+    SoundWorker <--> SearchIndex
     ExportWorker <--> ClickHouse
     ReasoningWorker <--> HiveMind
     PulseWorker <--> HiveMind
@@ -118,44 +122,43 @@ Symphony 2.0 eliminates sequential bottlenecks. Using Rust's `futures` ecosystem
 - **Ordered Pipelining:** Uses `.buffered(5)` for SSE to maintain UI layout integrity.
 - **Unordered Ghosting:** Uses `.buffer_unordered(5)` for background pre-warming to maximize throughput.
 
-### 2. The OTLP Shield (High-Performance Observability)
+### 2. Sovereign Search & Deep Content (Milestone 20)
+
+Unlike standard engines that rely on external search servers, Bongas-AI embeds its search logic directly into the core binary using **Tantivy**.
+
+- **Embedded Indexing**: Zero network latency; search results are retrieved directly from memory-mapped disk files.
+- **Sound Listener Intelligence**: A specialized worker extracts spoken words from video DNA, enabling users to search for content by what was *said*, not just the title.
+- **Sheng-Native Analysis**: Customized linguistic tokenization using `jieba-rs` to correctly index and match Swahili and Sheng dialects.
+- **Relevance Fusion**: Hybrid ranking that fuses BM25 keyword matching with Vision DNA vector similarity and real-time user history.
+
+### 3. The OTLP Shield (High-Performance Observability)
 
 Every request is protected and tracked by a "Shield" of distributed tracing, optimized for high throughput.
 
 - **Trace ID Propagation**: Follows a request from the initial HTTP header, through the SSE fan-out, down to Postgres and Redis.
 - **Identity Enrichment**: Spans are automatically enriched with `visitor_id`, `device_hash`, and `profile_id`.
 - **Netflix-Scale Batching**: Telemetry is buffered and exported in configurable batches (`batch_size`, `max_queue_size`) to minimize the impact on the engine's performance.
-- **Standard Protocol Support**: Supports both gRPC and HTTP OTLP protocols with custom header injection.
 
 ### 4. Intelligence & Background Coordination (The Pulse)
 
 The engine's "Intelligence" is not just reactive; it is proactive. Background workers constantly refine the data used by the discovery pipeline.
 
 - **WorkersManager**: Centralized orchestration for all background maintenance tasks and intelligence workers.
-- **Behavioral Tribes (TribeOrchestrator)**: Periodically clusters user profiles into behavioral "tribes" using K-Means clustering on embeddings. This enables high-relevance discovery for cold-start users.
-- **Hyper-Local Semantic Pulse (RegionalPulseWorker)**: Scrapes regional news and events, classifying them via the HiveMind LLM to provide real-time semantic boosts for content relevant to the user's current location.
-- **Predictive Warming**: Anticipates high-traffic scenarios and pre-warms the cache tiers to ensure zero-latency delivery during peak loads.
+- **Behavioral Tribes (TribeOrchestrator)**: Periodically clusters user profiles into behavioral "tribes" using K-Means clustering on embeddings.
+- **Hyper-Local Semantic Pulse (RegionalPulseWorker)**: Scrapes regional news and events, classifying them via the HiveMind LLM to provide real-time semantic boosts.
+- **Predictive Warming**: Anticipates high-traffic scenarios and pre-warm the cache tiers to ensure zero-latency delivery during peak loads.
 
 ### 5. Server-Side Look-Ahead (Ghost Execution)
 
 We eliminate client-side complex pre-warming logic. The engine automatically anticipates the user's next scroll based on `prewarm_lookahead` configuration and executes the next batch of rows in the background, caching them in Redis for zero-latency fetch.
 
-### 6. Zero-Touch Contextual
+### 6. Zero-Touch Contextual Identity
 
-We recognize devices and users passively.
+We recognize devices and users passively to ensure privacy-first tracking.
 
 - **Device Hash:** Deterministic fingerprinting using IP and User-Agent.
 - **Visitor ID:** Transparent persistence via "Cookie-Lite" (Zero-Touch).
 - **Identity Stitching:** Automatic merging of anonymous behavior into authenticated profiles upon login.
-
-### 5. Decoupled Interface Standards (Netflix-Grade DTOs)
-
-To ensure long-term maintainability and architectural integrity, Symphony 2.0 enforces **Parameter Consolidation** through dedicated Data Transfer Objects (DTOs).
-
-- **Resilient Contracts**: Core methods no longer accept long lists of primitive arguments. Instead, they use specialized structs like `ScenarioExecutionContext` and `InteractionPayload`.
-- **Extensibility**: New context parameters (e.g., location, network speed, experiment flags) can be added to DTOs without breaking internal API contracts.
-- **Type Safety**: Deeply nested generic types are simplified via descriptive aliases (e.g., `PageLayoutCache`), reducing cognitive load for engineers.
-- **Idiomatic Alignment**: All core system types implement standard Rust traits (`Default`, `FromStr`) for seamless ecosystem integration.
 
 ### 7. Blackbox Sovereign Intelligence (Data Sovereignty vs IP)
 
@@ -163,7 +166,7 @@ To ensure **Data Sovereignty** without sacrificing **IP Protection**, Bongas-AI 
 
 - **Frozen Senses:** Massive foundation models (`sight-core`, `slm-base`) are deployed locally as read-only assets to extract semantic DNA without sending client content to the cloud.
 - **Local Cython Trainer:** An obfuscated Python backend (`trainer.so`) trains fast, lightweight "Student Heads" (`vision_head.onnx`, `slm_head.onnx`, `ranking.onnx`) directly on the client's private ClickHouse interaction data.
-- **Sidecar Execution:** The Rust engine uses background workers (e.g., `SovereignSightWorker`) to asynchronously run the heavy feature extraction off the main request thread, caching the results to ensure sub-millisecond API responsiveness.
+- **Sidecar Execution:** The Rust engine uses background workers (e.g., `SovereignSightWorker`, `SoundListenerWorker`) to asynchronously run heavy feature extraction, ensuring sub-millisecond API responsiveness.
 
 ---
 
@@ -173,6 +176,7 @@ To ensure **Data Sovereignty** without sacrificing **IP Protection**, Bongas-AI 
 - **[⚡ Velocity Orchestration](./ORCHESTRATION.md)**: Parallel pipelining and Ghost execution logic.
 - **[🎨 Page Composition](./PAGES.md)**: Smart layouts, SDUI metadata, and algorithmic ranking.
 - **[🛡️ Resilience & Scale](./SECURITY.md)**: Circuit breakers, high-limit pools, and OTLP.
+- **[🔍 Embedded Search](../../src/search/README.md)**: The internal mechanics of the Tantivy search pillar.
 
 ---
 

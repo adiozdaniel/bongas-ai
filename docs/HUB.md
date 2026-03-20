@@ -15,6 +15,7 @@ Bongas-AI is a **Server-Side Anticipatory Engine** designed for Netflix-grade sc
 | **🌍 THE STAGE** | Velocity Delivery | Concurrent SSE Pipelining, Ghost Execution, SDUI Orchestration. |
 | **🔐 THE BACKSTAGE** | Admin Control | Page Layouts, Discovery Configs, ML Strategy Reloading. |
 | **💓 THE PULSE** | Observability | OTLP Tracing, Resilience Metrics, ClickHouse Analytics. |
+| **🔍 SEARCH** | Deep Intelligence | Embedded Tantivy Index, Sound Listener, Sheng Analysis. |
 
 ---
 
@@ -23,6 +24,10 @@ Bongas-AI is a **Server-Side Anticipatory Engine** designed for Netflix-grade sc
 ### 1. 🏗️ [Core Architecture](./architecture/SYMPHONY.md)
 
 The high-level philosophy of Symphony 2.0. Understand the **Anticipatory Engine** model and the **OTLP Shield**.
+
+### 2. 🔍 [Embedded Search](../src/search/README.md)
+
+Deep dive into the **Sovereign Search Pillar**, featuring local Tantivy indexing, Sheng-native analysis, and **Deep Content** extraction.
 
 ### 2. ⚡ [Streaming & Velocity](./architecture/ORCHESTRATION.md)
 

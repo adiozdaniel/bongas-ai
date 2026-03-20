@@ -146,6 +146,7 @@ graph LR
             Registry["Pipeline Registry"]
             SSE["SSE Fan-Out"]
             Ghost["Ghost Cache"]
+            SearchIndex["🔍 Embedded Index<br/>(Tantivy)"]
         end
         
         %% The Write/Async Path
@@ -153,7 +154,8 @@ graph LR
             Workers["WorkersManager"]
             
             TribeWorker["Tribe Orchestrator"]
-            SearchWorker["Search Sync"]
+            SearchSync["Index Sync"]
+            SoundWorker["Sound Listener"]
             PulseWorker["Regional Pulse"]
             ReasoningWorker["Reasoning Engine"]
             FatigueWorker["Fatigue Sync"]
@@ -168,7 +170,6 @@ graph LR
         PG[(PostgreSQL)]
         Redis[(Redis)]
         ClickHouse[(ClickHouse)]
-        Meili[(Meilisearch)]
         Kafka{"Kafka Topic"}
     end
 
@@ -191,24 +192,27 @@ graph LR
     Registry <--> Ghost
     Registry <--> Redis
     Registry <--> PG
-    Registry <--> Meili
+    Registry <--> SearchIndex
     Registry <--> ONNX
     Ghost <--> Redis
 
     %% --- INTELLIGENCE PATHS (BLUE) ---
-    %% Indices 12 to 20
-    Workers <--> SearchWorker
+    %% Indices 12 to 23
+    Workers <--> SearchSync
+    Workers <--> SoundWorker
     Workers <--> ReasoningWorker
     Workers <--> ExportWorker
-    SearchWorker <--> PG
-    SearchWorker <--> Meili
+    SearchSync <--> PG
+    SearchSync <--> SearchIndex
+    SoundWorker <--> ClickHouse
+    SoundWorker <--> SearchIndex
     ExportWorker <--> ClickHouse
     ReasoningWorker <--> HiveMind
     PulseWorker <--> HiveMind
     OTLP -.- ClickHouse
 
     %% --- MANAGEMENT PATHS (ORANGE) ---
-    %% Indices 21 to 28
+    %% Indices 24 to 31
     Admin <--> BackstageAPI
     BackstageAPI <--> Resolver
     Workers <--> TribeWorker
@@ -223,8 +227,8 @@ graph LR
     
     %% Indices for LR layout links accurately mapped
     linkStyle 0,1,2,3,4,5,6,7,8,9,10,11 stroke:#00b894,stroke-width:3.5px,stroke-dasharray: 5 5;
-    linkStyle 12,13,14,15,16,17,18,19,20 stroke:#0984e3,stroke-width:2.5px,stroke-dasharray: 5 5;
-    linkStyle 21,22,23,24,25,26,27,28 stroke:#e17055,stroke-width:2.5px,stroke-dasharray: 5 5;
+    linkStyle 12,13,14,15,16,17,18,19,20,21,22,23 stroke:#0984e3,stroke-width:2.5px,stroke-dasharray: 5 5;
+    linkStyle 24,25,26,27,28,29,30,31 stroke:#e17055,stroke-width:2.5px,stroke-dasharray: 5 5;
             </div>
         </div>
     </div>
