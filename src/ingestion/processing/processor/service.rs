@@ -191,6 +191,9 @@ impl ActivityProcessor {
             }
         }
 
+        // 7. Notify Sequencing Intelligence (Pillar 4: Ghost Execution)
+        self.intelligence.notify_activity(activity);
+
         self.metrics.record_interaction_processed(start.elapsed()).await;
         Ok(())
     }

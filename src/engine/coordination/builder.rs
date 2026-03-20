@@ -48,6 +48,7 @@ use crate::engine::intelligence::workers::fatigue_sync::service::FatigueSynchron
 use crate::engine::intelligence::workers::reasoning::service::ReasoningWorker;
 use crate::engine::intelligence::workers::digest_worker::service::DigestWorker;
 use crate::engine::intelligence::workers::sovereign_sight::service::SovereignSightWorker;
+use crate::engine::intelligence::workers::ghost_execution::service::GhostExecutionWorker;
 use crate::engine::governance::orchestration::manager::service::PagesManager;
 use crate::engine::governance::strategy::resolver::service::StrategyResolver;
 use crate::engine::governance::factory::scenario_factory::service::ScenarioFactory;
@@ -195,7 +196,7 @@ impl DiscoverySymphony {
             Arc::new(MlWorkerQueue::new(&self.config.ml, Some(perf_stats.clone()))),
         ));
 
-        let ml_pillar = Arc::new(MlPillar::new(inference, training_pillar, assets));
+        let ml_pillar = Arc::new(MlPillar::new(inference.clone(), training_pillar, assets));
 
         // ─── 4. EXECUTION PILLAR ─────────────────────────────────────────────
         let pipeline_executor = Arc::new(PipelineExecutor::new(
@@ -313,6 +314,11 @@ impl DiscoverySymphony {
             std::time::Duration::from_secs(3600), // Hourly audit pulse
         ));
 
+        let ghost_execution_worker = Arc::new(GhostExecutionWorker::new(
+            cache_manager.clone(),
+            inference.onnx.clone(),
+        ));
+
         let workers = Arc::new(WorkersManager::new()
             .with_tribe_orchestrator(tribe_orchestrator)
             .with_regional_pulse(regional_pulse_worker)
@@ -321,7 +327,8 @@ impl DiscoverySymphony {
             .with_digest(digest_worker.clone())
             .with_search_sync(search_sync_worker)
             .with_signal_decay(signal_decay_worker)
-            .with_sovereign_sight(sovereign_sight_worker));
+            .with_sovereign_sight(sovereign_sight_worker)
+            .with_ghost_execution(ghost_execution_worker));
 
         let intelligence = Arc::new(IntelligencePillar::new(
             Arc::new(SuggestionsManager::new()),
