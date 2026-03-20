@@ -33,6 +33,8 @@ pub struct SecurityConfig {
     #[serde(default)]
     pub system_api_key: String,
     #[serde(default)]
+    pub internal_api_key: String,
+    #[serde(default)]
     pub jwt_secret_key: String,
 
     // Per-layer circuit breaker configuration
@@ -106,6 +108,7 @@ impl std::fmt::Debug for SecurityConfig {
             .field("web_api_key", &"***REDACTED***")
             .field("tv_api_key", &"***REDACTED***")
             .field("system_api_key", &"***REDACTED***")
+            .field("internal_api_key", &"***REDACTED***")
             .field("jwt_secret_key", &"***REDACTED***")
             .field("circuit_breaker_enabled", &self.circuit_breaker_enabled)
             .field("max_concurrent_validations", &self.max_concurrent_validations)
@@ -119,7 +122,7 @@ impl Default for SecurityConfig {
         Self {
             // Basic security settings
             license_key: "".to_string(),
-            license_server_url: "https://license.example.com".to_string(),
+            license_server_url: "".to_string(), // Purged default
             hardware_id_salt: "".to_string(),
             anti_debug_enabled: true,
             binary_protection_enabled: true,
@@ -130,6 +133,7 @@ impl Default for SecurityConfig {
             web_api_key: "".to_string(),
             tv_api_key: "".to_string(),
             system_api_key: "".to_string(),
+            internal_api_key: "".to_string(),
             jwt_secret_key: "".to_string(),
 
             // Per-layer circuit breaker configuration

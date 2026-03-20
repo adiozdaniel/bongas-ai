@@ -23,9 +23,9 @@ pub struct RedisConfig {
 impl Default for RedisConfig {
     fn default() -> Self {
         Self {
-            url: "redis://localhost:6379".to_string(),
+            url: "".to_string(),
             cluster_nodes: vec![],
-            pool_size: 50, // Increased for concurrent fan-out
+            pool_size: 50,
             connection_timeout: 5,
             request_timeout: 10,
             max_retries: 3,
@@ -39,9 +39,9 @@ impl RedisConfig {
     /// Get production-grade defaults (5x dev capacity)
     pub fn production() -> Self {
         Self {
-            url: "redis://localhost:6379".to_string(),
+            url: "".to_string(),
             cluster_nodes: vec![],
-            pool_size: 50, // 5x increase for production
+            pool_size: 50,
             connection_timeout: 5,
             request_timeout: 10,
             max_retries: 3,

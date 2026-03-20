@@ -72,6 +72,11 @@ impl ConfigLoader {
             config_map.get(key).cloned().unwrap_or_else(|| default.to_string())
         };
 
+        let require_val = |key: &str| -> ConfigResult<String> {
+            config_map.get(key).cloned()
+                .ok_or_else(|| ConfigError::Parse(format!("Mandatory configuration variable {} is missing", key)))
+        };
+
         let parse_u32 = |key: &str, default: u32| -> ConfigResult<u32> {
             let val = parse_val(key, &default.to_string());
             val.parse().map_err(|e| ConfigError::Parse(format!("Invalid u32 for {}: {}", key, e)))
@@ -105,9 +110,9 @@ impl ConfigLoader {
             keep_alive_timeout: parse_u64("server.keep_alive_timeout", 5)?,
         };
 
-        // Database
+        // Database (MANDATORY CORE)
         let database = DatabaseConfig {
-            url: config_map.get("database.url").cloned(),
+            url: Some(require_val("database.url")?),
             read_replicas: config_map.get("database.read_replicas")
                 .map(|s| s.split(',').map(|s| s.trim().to_string()).collect())
                 .unwrap_or_default(),
@@ -120,9 +125,9 @@ impl ConfigLoader {
             use_read_replicas: parse_bool("database.use_read_replicas", false)?,
         };
 
-        // Redis
+        // Redis (MANDATORY CORE)
         let redis = RedisConfig {
-            url: parse_val("redis.url", "redis://localhost:6379"),
+            url: require_val("redis.url")?,
             cluster_nodes: config_map.get("redis.cluster_nodes")
                 .map(|s| s.split(',').map(|s| s.trim().to_string()).collect())
                 .unwrap_or_default(),
@@ -134,22 +139,22 @@ impl ConfigLoader {
             cluster_mode: parse_bool("redis.cluster_mode", false)?,
         };
 
-        // ClickHouse
+        // ClickHouse (MANDATORY CORE)
         let clickhouse = ClickHouseConfig {
-            url: parse_val("clickhouse.url", "http://localhost:8123"),
-            user: parse_val("clickhouse.user", "default"),
+            url: require_val("clickhouse.url")?,
+            user: parse_val("clickhouse.user", ""),
             password: parse_val("clickhouse.password", ""),
-            database: parse_val("clickhouse.database", "baze_analytics"),
+            database: require_val("clickhouse.database")?,
             connection_timeout: parse_u64("clickhouse.connection_timeout", 10)?,
             request_timeout: parse_u64("clickhouse.request_timeout", 60)?,
             max_connections: parse_u32("clickhouse.max_connections", 10)?,
         };
 
-        // Ingestion
+        // Ingestion (OPTIONAL PLUGINS)
         let ingestion = IngestionConfig {
             kafka: KafkaConfig {
                 enabled: parse_bool("kafka.enabled", false)?,
-                brokers: parse_val("kafka.brokers", "localhost:9092"),
+                brokers: parse_val("kafka.brokers", ""), // No default
                 group_id: parse_val("kafka.group_id", "bongas-ai-consumers"),
                 profile_topic: parse_val("kafka.profile_topic", "profile.events"),
                 reaction_topic: parse_val("kafka.reaction_topic", "reaction.events"),
@@ -213,7 +218,7 @@ impl ConfigLoader {
             fallback_max_stale_age: Duration::from_secs(parse_u64("ml.fallback_max_stale_age_secs", 3600)?),
             analytics_enabled: parse_bool("ml.analytics_enabled", true)?,
             analytics_sample_rate: parse_f64("ml.analytics_sample_rate", 1.0)?,
-            central_server_url: parse_val("ml.central_server_url", "https://ml.bongas-ai.com"),
+            central_server_url: parse_val("ml.central_server_url", ""), // No default
             tribe_num_clusters: parse_u32("ml.tribe_num_clusters", 100)? as usize,
             tribe_clustering_interval: Duration::from_secs(parse_u64("ml.tribe_clustering_interval_secs", 14400)?),
             fatigue_enabled: parse_bool("ml.fatigue_enabled", true)?,
@@ -280,7 +285,7 @@ impl ConfigLoader {
             log_format: parse_val("logging.format", "text"),
             jaeger_endpoint: config_map.get("observability.jaeger_endpoint").cloned(),
             prometheus_endpoint: config_map.get("observability.prometheus_endpoint").cloned(),
-            otlp_endpoint: parse_val("tracing.otlp_endpoint", "http://localhost:4318/v1/traces"),
+            otlp_endpoint: parse_val("tracing.otlp_endpoint", ""), // No default
             otlp_protocol: parse_val("tracing.otlp_protocol", "http"),
             sampling_rate: parse_f64("tracing.sampling_rate", 1.0)?,
             batch_size: parse_u32("tracing.batch_size", 512)? as usize,
@@ -298,7 +303,7 @@ impl ConfigLoader {
                 .unwrap_or_else(|| default.to_string())
         };
 
-        // Security
+        // Security (NO DEFAULTS FOR API KEYS)
         let security = SecurityConfig {
             license_key: get_val("security.license_key", ""),
             license_server_url: get_val("security.license_server_url", ""),
@@ -310,6 +315,7 @@ impl ConfigLoader {
             web_api_key: get_val("security.web_api_key", ""),
             tv_api_key: get_val("security.tv_api_key", ""),
             system_api_key: get_val("security.system_api_key", ""),
+            internal_api_key: get_val("security.internal_api_key", ""),
             jwt_secret_key: get_val("security.jwt_secret_key", ""),
             ..SecurityConfig::default()
         };
@@ -411,7 +417,7 @@ impl ConfigLoader {
                     max_delay: match &error.retry_backoff_strategy {
                         BackoffStrategy::Exponential { max_delay, .. } => *max_delay,
                         BackoffStrategy::Fixed(d) => *d,
-                        BackoffStrategy::Linear { max_delay, .. } => *max_delay,
+                        BackoffStrategy::Linear { increment, .. } => *increment * 50,
                     },
                 },
                 timeout: error.retry_timeout,
@@ -422,7 +428,7 @@ impl ConfigLoader {
         // Hive Mind
         let hive_mind = HiveMindConfig {
             enabled: parse_bool("hive_mind.enabled", false)?,
-            url: parse_val("hive_mind.url", "https://api.bongas-ai/v1/hive-mind"),
+            url: parse_val("hive_mind.url", ""), // No default
             api_key: config_map.get("hive_mind.api_key").cloned(),
             poll_interval_seconds: parse_u64("hive_mind.poll_interval_seconds", 3600)?,
             auto_approve_safe_rules: parse_bool("hive_mind.auto_approve_safe_rules", false)?,
@@ -438,7 +444,7 @@ impl ConfigLoader {
             },
             resend: ResendConfig {
                 api_key: parse_val("notifications.resend.api_key", ""),
-                from_email: parse_val("notifications.resend.from_email", "noreply@bongas-ai.com"),
+                from_email: parse_val("notifications.resend.from_email", ""),
                 from_name: parse_val("notifications.resend.from_name", "Bongas-AI"),
             },
         };
@@ -446,7 +452,7 @@ impl ConfigLoader {
         // Search
         let search = SearchConfig {
             enabled: parse_bool("search.enabled", true)?,
-            index_path: parse_val("search.index_path", "data/search_index"),
+            index_path: require_val("search.index_path")?, // MANDATORY
             writer_memory_mb: parse_u32("search.writer_memory_mb", 50)? as usize,
             index_name: parse_val("search.index_name", "items"),
             timeout_ms: parse_u64("search.timeout_ms", 500)?,

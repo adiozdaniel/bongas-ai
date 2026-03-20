@@ -20,10 +20,10 @@ pub struct ClickHouseConfig {
 impl Default for ClickHouseConfig {
     fn default() -> Self {
         Self {
-            url: "http://localhost:8123".to_string(),
-            user: "default".to_string(),
+            url: "".to_string(),
+            user: "".to_string(),
             password: "".to_string(),
-            database: "baze_analytics".to_string(),
+            database: "".to_string(),
             connection_timeout: 10,
             request_timeout: 60,
             max_connections: 10,

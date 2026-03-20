@@ -4,22 +4,22 @@ port = 8080
 environment = "development"
 
 [database]
-url = "postgresql://postgres:password@localhost:5432/baze_catalog"
+url = ""
 max_connections = 100
 
 [redis]
-url = "redis://localhost:6379"
+url = ""
 pool_size = 50
 
 [clickhouse]
-url = "localhost:8123/baze_reports?socket_timeout=60000&connection_timeout=30000&max_execution_time=60&retry_on_failure=2&failover=3"
-user = "default"
-password = "default"
-database = "baze_reports"
+url = ""
+user = ""
+password = ""
+database = ""
 
 [kafka]
 enabled = false
-brokers = "localhost:9092"
+brokers = ""
 group_id = "bongas-ai-consumers"
 profile_topic = "profile.events"
 reaction_topic = "reaction.events"
@@ -28,17 +28,17 @@ playback_topic = "playback.events"
 
 [security]
 license_key = ""
-license_server_url = "https://license.example.com"
+license_server_url = ""
 hardware_id_salt = ""
-mobile_api_key = "example.AQCgwMoKSL74XErUhGRRcEPmpHUgNjOi"
-web_api_key = "example.AQB6yIpbUufNPdoXj5ZTHtuSBC+Gr9m6Rx6"
-tv_api_key = "example.AQBc6/fsiuXinBvMRLlY9UV1dcouxgQCSLt5"
-system_api_key = "example.AQC5DashChLVmDh2a4aEOE5y9b2BxuQU"
-jwt_secret_key = "example.AQAnudV+IfZzOHjN2tBJ3FCyoEXxOnIZ"
+mobile_api_key = ""
+web_api_key = ""
+tv_api_key = ""
+system_api_key = ""
+jwt_secret_key = ""
 
 [spring_cloud]
 enabled = false
-url = "http://localhost:8888"
+url = ""
 app_name = "bongas-ai"
 profile = "production"
 
@@ -71,8 +71,9 @@ enabled = false
 assignment_method = "random"
 
 [search]
-host = "http://localhost:7700"
-api_key = "masterKey"
+enabled = true
+index_path = "data/search_index"
+writer_memory_mb = 50
 index_name = "items"
 timeout_ms = 500
 max_hits = 100

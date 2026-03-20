@@ -29,13 +29,16 @@ SSE connections are protected against high-frequency reconnect attacks. We use a
 - **Adaptive Rate Limiting**: Throttles requests based on `Visitor_ID` or `User_ID`.
 - **Heartbeat Validation**: Ensures that only valid, persistent connections consume server resources.
 
-### 4. Platform Security Shield (API Gatekeeper)
+### 4. Platform Security Shield (The Chameleon Rule)
 
-Bongas-AI enforces strict platform-level access control via middleware.
+Bongas-AI implements a flexible, configuration-driven access control system for different platform tiers (Mobile, Web, TV, System, Internal).
 
-- **Header Validation**: Every request must provide `X-Platform` (e.g., `mobile`, `web`, `tv`) and a corresponding `X-Platform-Key`.
-- **Dynamic Key Mapping**: Keys are loaded from the `SecurityConfig` and validated in the middleware layer before reaching the business logic.
-- **Zero-Trust for "MASTER_KEY"**: We have explicitly eliminated backdoor access. All credentials, including system-level access, must be configured and validated against the secure key store.
+- **The Chameleon Rule:** Security is enforced based on presence.
+- **Provided:** If an API Key is defined in the environment configuration for a specific platform, it is **Strictly Enforced**. All requests from that platform must provide a matching `X-Platform-Key`.
+- **Not Provided:** If the key is left empty in the configuration, security for that platform is **Skipped**. This allows for open access or internal backend-to-backend communication without credential overhead.
+- **Header Validation:** Every request must provide an `X-Platform` header.
+- **Internal Tier:** A specialized `internal` platform tier is available for secure, zero-latency communication within the backend ecosystem.
+- **Zero-Trust for "MASTER_KEY":** We have explicitly eliminated backdoor access. All credentials must be explicitly configured.
 
 ### 5. License & Anti-Debug (The 8-Layer Shield)
 
