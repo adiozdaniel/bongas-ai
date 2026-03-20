@@ -16,6 +16,7 @@ use crate::db::ItemFeatureService;
 use crate::ml::assets::loader::service::ModelLoader;
 use crate::ml::inference::features::service::FeatureStore;
 use crate::ml::inference::embeddings::service::EmbeddingManager;
+use crate::search::EmbeddedSearchManager;
 
 /// Execution context passed to all pipeline stages.
 ///
@@ -45,8 +46,8 @@ pub struct ExecutionContext {
     /// ClickHouse client for analytics-heavy retrieval stages.
     pub clickhouse_client: Option<Arc<clickhouse::Client>>,
 
-    /// Meilisearch client for keyword-based search recovery stages.
-    pub search_client: Option<Arc<meilisearch_sdk::client::Client>>,
+    /// Embedded search manager for keyword-based search and re-ranking.
+    pub search_manager: Option<Arc<EmbeddedSearchManager>>,
 
     // ── ML infrastructure (resilient) ───────────────────────────────────
     pub feature_store: Arc<FeatureStore>,
@@ -97,7 +98,7 @@ impl ExecutionContext {
             hot_registry: None,
             item_feature_service,
             clickhouse_client: None,
-            search_client: None,
+            search_manager: None,
             feature_store,
             embedding_manager: None,
             analytics: None,
@@ -188,8 +189,8 @@ impl ExecutionContext {
         self
     }
 
-    pub fn with_search_client(mut self, client: Arc<meilisearch_sdk::client::Client>) -> Self {
-        self.search_client = Some(client);
+    pub fn with_search_manager(mut self, manager: Arc<EmbeddedSearchManager>) -> Self {
+        self.search_manager = Some(manager);
         self
     }
 
@@ -212,8 +213,6 @@ impl ExecutionContext {
         self.location = Some(location);
         self
     }
-
-
 
     pub fn with_embedding_manager(mut self, embedding_manager: Arc<EmbeddingManager>) -> Self {
         self.embedding_manager = Some(embedding_manager);
