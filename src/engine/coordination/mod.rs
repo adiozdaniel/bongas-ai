@@ -3,5 +3,5 @@
 pub mod service;
 pub mod builder;
 
-pub use service::BongasEngine;
+pub use service::{BongasEngine, EngineComponents, ScenarioDefinition, ScenarioExecutionStats, RecommendationItem};
 pub use builder::DiscoverySymphony;

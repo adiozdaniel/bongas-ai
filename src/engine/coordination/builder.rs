@@ -26,8 +26,6 @@ use crate::ml::inference::embeddings::service::EmbeddingManager;
 use crate::ml::inference::onnx::service::OnnxInferenceEngine;
 use crate::ml::training::pillar::service::TrainingPillar;
 use crate::ml::training::online::service::OnlineLearningManager;
-use crate::ml::training::orchestration::service::TrainingOrchestrator;
-use crate::ml::training::workers::service::MlWorkerQueue;
 use crate::ml::coordination::service::MlPillar;
 
 use crate::pipeline::executor::service::PipelineExecutor;
@@ -82,6 +80,7 @@ impl DiscoverySymphony {
         let circuit_breaker_registry = Arc::new(CircuitBreakerRegistry::new());
         let resilience_metrics_config = ResilienceMetricsConfig::default();
         let resilience_metrics = Arc::new(ResilienceMetricsCollector::new(Arc::new(MetricsRegistry::new(resilience_metrics_config))));
+        let system_health = Arc::new(crate::resilience::collector::SystemHealthCollector::new());
 
         // ─── 1. CORE DATABASE PILLAR ─────────────────────────────────────────
         let pool_config = ResilientPoolConfig {
@@ -159,7 +158,7 @@ impl DiscoverySymphony {
             feature_store.clone(),
         ));
 
-        let security_manager = Arc::new(crate::security::SecurityManager::new(
+        let _security_manager = Arc::new(crate::security::SecurityManager::new(
             self.config.security.clone(),
             &self.config.server.environment,
             circuit_breaker_registry.clone(),
@@ -178,21 +177,31 @@ impl DiscoverySymphony {
 
         let online_learning = Arc::new(OnlineLearningManager::new(
             &self.config.ml,
-            resilience_metrics.clone(),
+            resilient_pool.clone(), // FeedbackWriter
             Some(perf_stats.clone()),
         ));
 
-        let training_orchestrator = Arc::new(TrainingOrchestrator::new(
-            self.config.ml.clone(),
-            clickhouse_client.clone(),
-            security_manager.clone(),
-            model_loader.clone(),
+        let training_breaker = Arc::new(crate::ml::training::pillar::ResourceCircuitBreaker::new(
+            crate::circuit_breaker::observer::CircuitBreakerId::new("ml.training.sovereign"),
+            system_health.clone(),
+            crate::ml::training::pillar::ResourceBreakerConfig::default(),
+            Arc::new(crate::circuit_breaker::CircuitBreaker::new(
+                crate::circuit_breaker::observer::CircuitBreakerId::new("ml.training.sovereign.base"),
+                crate::circuit_breaker::CircuitBreakerConfig::default(),
+                resilience_metrics.clone(),
+            )),
+        ));
+
+        let training_state = Arc::new(crate::ml::training::pillar::TrainingState::new("data/models/heads"));
+        let sovereign_training = Arc::new(crate::ml::training::pillar::SovereignTrainingPillar::new(
+            training_breaker,
+            training_state.clone(),
         ));
 
         let training_pillar = Arc::new(TrainingPillar::new(
             online_learning,
-            training_orchestrator,
-            Arc::new(MlWorkerQueue::new(&self.config.ml, Some(perf_stats.clone()))),
+            sovereign_training,
+            training_state,
         ));
 
         let ml_pillar = Arc::new(MlPillar::new(inference.clone(), training_pillar, assets));
@@ -213,28 +222,26 @@ impl DiscoverySymphony {
 
         let item_feature_service = Arc::new(ItemFeatureService::new(resilient_pool.clone(), resilience_metrics.clone()));
 
-        let experiment_coordinator = Arc::new(ExperimentCoordinator::new());
+        let _experiment_coordinator = Arc::new(ExperimentCoordinator::new());
 
         let scenarios = Arc::new(RwLock::new(HashMap::new()));
         let linked_scenarios = Arc::new(ArcSwap::from_pointee(HashMap::new()));
 
         let execution_manager = Arc::new(ExecutionManager::new(
-            pipeline_executor.clone(),
-            Arc::new(StrategyResolver::new()),
-            staging_manager.clone(),
-            cache_manager.clone(),
-            model_loader.clone(),
-            item_feature_service.clone(),
-            feature_store.clone(),
-            Arc::new(self.config.ml.clone()),
-            perf_stats.clone(),
-            experiment_coordinator,
-            Arc::new(crate::middlewares::MetricsCollector::default()),
-            Some(Arc::new(clickhouse_client.clone())),
-            Some(search_manager.clone()),
-            hot_registry.clone(),
-            scenarios.clone(),
-            linked_scenarios.clone(),
+            crate::engine::execution::core::execution_manager::service::ExecutionManagerComponents {
+                pipeline_executor: pipeline_executor.clone(),
+                strategy_resolver: Arc::new(StrategyResolver::new()),
+                staging_manager: staging_manager.clone(),
+                cache_manager: cache_manager.clone(),
+                model_loader: model_loader.clone(),
+                item_feature_service: item_feature_service.clone(),
+                feature_store: feature_store.clone(),
+                clickhouse: Some(Arc::new(clickhouse_client.clone())),
+                search_manager: Some(search_manager.clone()),
+                hot_registry: hot_registry.clone(),
+                scenarios: scenarios.clone(),
+                linked_scenarios: linked_scenarios.clone(),
+            }
         ));
 
         let warmer = Arc::new(PredictiveWarmer::new(vec![], shutdown_tx.subscribe()));
@@ -308,6 +315,7 @@ impl DiscoverySymphony {
             clickhouse_client.clone(),
             cache_manager.clone(),
             resilience_metrics.clone(),
+            inference.onnx.clone(),
             std::time::Duration::from_secs(3600), // Hourly audit pulse
         ));
 
@@ -396,7 +404,7 @@ impl DiscoverySymphony {
         ));
 
         // ─── 9. FINAL ENGINE ASSEMBLY ───────────────────────────────────────
-        let engine = BongasEngine::new(crate::engine::coordination::service::EngineComponents {
+        let engine = BongasEngine::new(crate::engine::coordination::EngineComponents {
             config: self.config.clone(),
             execution,
             governance,
@@ -406,6 +414,7 @@ impl DiscoverySymphony {
             cache: cache_manager,
             shutdown_tx,
             resilience_metrics,
+            system_health,
         }).await?;
 
         let engine_arc = Arc::new(engine);
