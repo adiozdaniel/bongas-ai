@@ -51,7 +51,7 @@ pub async fn execute_and_map(
     // 2. Execute First Window (Instant-On)
     let (items, _stats) = engine_ref
         .execute_scenario_with_stats_contextual(
-            crate::engine::execution::core::execution_manager::service::ScenarioExecutionContext {
+            crate::engine::execution::core::execution_manager::ScenarioExecutionContext {
                 scenario_slug: req.scenario_slug.clone(),
                 user_id: req.user_id,
                 profile_id: profile_id.clone(),
