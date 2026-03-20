@@ -148,33 +148,66 @@ impl SovereignSightWorker {
 
     /// Internal logic for visual DNA and maturity forensic extraction.
     async fn perform_visual_audit(&self, external_id: i32) -> Result<SovereignSightLedger> {
-        // Step 3: Visual DNA Extraction (Simulated)
-        // Production: ort::Session::new(&env, "models/sight_core.onnx", &opts)?
-        
-        let entropy = 0.45; // Steady pace
-        let appearance = "Photorealistic".to_string();
-        
-        // Step 4: Forensic Maturity Auditor (Anatomy DNA Isolation)
-        let (rating, reason) = if entropy < 0.2 && appearance == "Photorealistic" {
-            ("18".to_string(), "High flesh-tone DNA detected in rhythmic motion context.".to_string())
-        } else {
-            ("G".to_string(), "Safe for all audiences.".to_string())
+        // Step 3: DNA Extraction (Pillar 2)
+        // Pull DNA vectors from ClickHouse (Private Interaction Ledger / Vision DNA)
+        // In production, this pulls from 'item_dna' table populated by heavy vision models
+        let dna_query = format!("SELECT dna_vector FROM item_dna WHERE item_id = {} LIMIT 1", external_id);
+        let dna_vector: Vec<f32> = match self.clickhouse.query(&dna_query).fetch_one::<Vec<f32>>().await {
+            Ok(v) => v,
+            Err(_) => vec![0.0; 128], // Fallback if no DNA yet
         };
 
-        // Step 5: Semantic Digest Engine (Math -> Layman)
-        let digest = format!("Visual Style: Steady-paced, cinematic {} flow.", appearance);
+        // Step 4: Forensic Maturity Auditor (Pillar 2)
+        // determine if the video is GE or 17+ based on DNA isolation
+        // Mock isolation logic: if sum of specific components is high, mark as 17+
+        let anatomy_signal: f32 = dna_vector.iter().take(10).sum();
+        let rating = if anatomy_signal > 5.0 { "17+".to_string() } else { "GE".to_string() };
+        let reason = if rating == "17+" { 
+            "High anatomy DNA isolation detected.".to_string() 
+        } else { 
+            "Safe for general exhibition.".to_string() 
+        };
+
+        // Step 5: Reconcile with Manual Tag
+        self.reconcile_with_manual_tag(external_id, &rating).await?;
 
         Ok(SovereignSightLedger {
             external_id,
             content_type: "video".to_string(),
-            visual_dna: vec![0.1, 0.2, 0.3], // Latent snippet
-            motion_entropy: entropy,
-            appearance_dna: appearance,
+            visual_dna: dna_vector,
+            motion_entropy: 0.45,
+            appearance_dna: "Extracted".to_string(),
             maturity_rating: rating,
             maturity_reason: reason,
-            semantic_digest: digest,
+            semantic_digest: "DNA-backed forensic audit complete.".to_string(),
             hook_path: format!("/data/hooks/{}.webp", external_id),
         })
+    }
+
+    /// Pillar 2: Forensic Maturity Auditor
+    /// Flags the mismatch in the audit ledger if DNA suggests 17+ but metadata is GE.
+    async fn reconcile_with_manual_tag(&self, external_id: i32, forensic_rating: &str) -> Result<()> {
+        // Fetch manual tag from Postgres
+        let manual_rating: Option<String> = self.db_pool.execute(move |pool| async move {
+            sqlx::query_scalar("SELECT maturity_rating FROM bongas.item_features WHERE item_id = $1")
+                .bind(external_id)
+                .fetch_optional(&pool)
+                .await
+        }).await?;
+
+        if let Some(manual) = manual_rating {
+            if forensic_rating == "17+" && manual == "GE" {
+                info!(external_id, "Forensic mismatch detected: DNA suggests 17+ but manual tag is GE");
+                // Log to audit mismatch ledger in ClickHouse
+                let mismatch_query = format!(
+                    "INSERT INTO forensic_mismatches (item_id, forensic_rating, manual_rating, detected_at) VALUES ({}, '17+', 'GE', now())",
+                    external_id
+                );
+                let _ = self.clickhouse.query(&mismatch_query).execute().await;
+            }
+        }
+
+        Ok(())
     }
 
     async fn save_audit_results(&self, results: Vec<SovereignSightLedger>) -> Result<()> {

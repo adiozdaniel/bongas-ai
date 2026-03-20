@@ -12,6 +12,7 @@ use crate::engine::intelligence::workers::digest_worker::service::DigestWorker;
 use crate::engine::intelligence::workers::search_sync::service::SearchSyncWorker;
 use crate::engine::intelligence::workers::signal_decay::service::SignalDecayWorker;
 use crate::engine::intelligence::workers::sovereign_sight::service::SovereignSightWorker;
+use crate::engine::intelligence::workers::ghost_execution::service::GhostExecutionWorker;
 
 /// 💓 Workers: Background maintenance and task orchestration.
 pub struct WorkersManager {
@@ -23,6 +24,7 @@ pub struct WorkersManager {
     search_sync: Option<Arc<SearchSyncWorker>>,
     signal_decay: Option<Arc<SignalDecayWorker>>,
     sovereign_sight: Option<Arc<SovereignSightWorker>>,
+    ghost_execution: Option<Arc<GhostExecutionWorker>>,
 }
 
 impl Default for WorkersManager {
@@ -42,6 +44,7 @@ impl WorkersManager {
             search_sync: None,
             signal_decay: None,
             sovereign_sight: None,
+            ghost_execution: None,
         }
     }
 
@@ -85,6 +88,11 @@ impl WorkersManager {
         self
     }
 
+    pub fn with_ghost_execution(mut self, worker: Arc<GhostExecutionWorker>) -> Self {
+        self.ghost_execution = Some(worker);
+        self
+    }
+
     /// Propagate engine reference to workers that need it (like DigestWorker).
     pub fn set_engine(&self, engine: std::sync::Weak<BongasEngine>) {
         if let Some(ref worker) = self.digest {
@@ -92,6 +100,14 @@ impl WorkersManager {
         }
         if let Some(ref worker) = self.search_sync {
             worker.set_engine(engine);
+        }
+    }
+
+    /// Notify the ghost execution worker of a user event.
+    pub fn notify_ghost_execution(&self, activity: crate::ingestion::UserActivity) {
+        if let Some(ref worker) = self.ghost_execution {
+            let tx = worker.get_notifier();
+            let _ = tx.try_send(activity);
         }
     }
 
@@ -164,6 +180,15 @@ impl WorkersManager {
 
         // 8. Start Sovereign Sight Worker (Milestone 17)
         if let Some(ref worker) = self.sovereign_sight {
+            let worker = worker.clone();
+            let shutdown_rx = shutdown_tx.subscribe();
+            tokio::spawn(async move {
+                worker.start(shutdown_rx).await;
+            });
+        }
+
+        // 9. Start Ghost Execution Worker (Pillar 4)
+        if let Some(ref worker) = self.ghost_execution {
             let worker = worker.clone();
             let shutdown_rx = shutdown_tx.subscribe();
             tokio::spawn(async move {

@@ -9,5 +9,6 @@ pub mod digest_worker;
 pub mod search_sync;
 pub mod signal_decay;
 pub mod sovereign_sight;
+pub mod ghost_execution;
 
 pub use manager::WorkersManager;

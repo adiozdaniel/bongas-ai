@@ -49,6 +49,11 @@ impl IntelligencePillar {
         self.monitoring.record_event(event).await;
     }
 
+    /// Notify workers of user activity for background prediction (Pillar 4).
+    pub fn notify_activity(&self, activity: crate::ingestion::UserActivity) {
+        self.workers.notify_ghost_execution(activity);
+    }
+
     /// Provide public access to the ClickHouse client.
     pub fn clickhouse_client(&self) -> Option<clickhouse::Client> {
         self.monitoring.clickhouse_client()

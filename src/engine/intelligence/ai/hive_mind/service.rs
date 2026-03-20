@@ -173,24 +173,24 @@ impl HiveMindConnector {
         }
 
         // 3. Forensic Reconciliation & Skepticism (Pillar 3, Point 9)
-        if text.contains("it is ge") || text.contains("ni ge") {
-            if query.context.get("forensic_flag").and_then(|v| v.as_str()) == Some("17+") {
-                return Ok(AdminResponse {
-                    text: "uko sure wewe? forensics inasema hii ni 17+".to_string(),
-                    action: Some(serde_json::json!({"requires_confirmation": true})),
-                    confidence: 0.99,
-                });
-            }
+        if (text.contains("it is ge") || text.contains("ni ge"))
+            && query.context.get("forensic_flag").and_then(|v| v.as_str()) == Some("17+")
+        {
+            return Ok(AdminResponse {
+                text: "uko sure wewe? forensics inasema hii ni 17+".to_string(),
+                action: Some(serde_json::json!({"requires_confirmation": true})),
+                confidence: 0.99,
+            });
         }
 
-        if text.contains("yes") || text.contains("ndio") || text.contains("i am sure") {
-            if query.context.get("pending_override").and_then(|v| v.as_bool()) == Some(true) {
-                return Ok(AdminResponse {
-                    text: "ni sawa basi. nime update metadata.".to_string(),
-                    action: Some(serde_json::json!({"operation": "manual_override", "status": "committed"})),
-                    confidence: 1.0,
-                });
-            }
+        if (text.contains("yes") || text.contains("ndio") || text.contains("i am sure"))
+            && query.context.get("pending_override").and_then(|v| v.as_bool()) == Some(true)
+        {
+            return Ok(AdminResponse {
+                text: "ni sawa basi. nime update metadata.".to_string(),
+                action: Some(serde_json::json!({"operation": "manual_override", "status": "committed"})),
+                confidence: 1.0,
+            });
         }
 
         // 4. Context Shielding (Pillar 3, Point 1)
@@ -199,6 +199,24 @@ impl HiveMindConnector {
                 text: "Sawa, lakini wacha tu focus kwenye system orchestration na analytics kwa sasa.".to_string(),
                 action: None,
                 confidence: 1.0,
+            });
+        }
+
+        // 5. Forbidden Actions (Pillar 3, Point 4)
+        if text.contains("delete") || text.contains("futa") {
+            return Ok(AdminResponse {
+                text: "I can only hide it from appearing to users, but I am not allowed to permanently delete records.".to_string(),
+                action: Some(serde_json::json!({"suggested_action": "soft_delete_or_hide"})),
+                confidence: 1.0,
+            });
+        }
+
+        // 6. Technical Translation (Pillar 3, Point 5)
+        if text.contains("doubling weight") || text.contains("boost") || text.contains("similarity score") {
+            return Ok(AdminResponse {
+                text: "This will increase the availability of this content in the feeds.".to_string(),
+                action: Some(serde_json::json!({"math_op": "boost_weight"})),
+                confidence: 0.98,
             });
         }
 
