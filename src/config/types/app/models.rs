@@ -81,8 +81,8 @@ impl AppConfig {
             services.push("hive_mind");
         }
 
-        if !self.search.host.is_empty() {
-            services.push("search:meilisearch");
+        if self.search.enabled {
+            services.push("search:embedded");
         }
 
         services

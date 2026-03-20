@@ -445,8 +445,9 @@ impl ConfigLoader {
 
         // Search
         let search = SearchConfig {
-            host: parse_val("search.host", "http://localhost:7700"),
-            api_key: parse_val("search.api_key", ""),
+            enabled: parse_bool("search.enabled", true)?,
+            index_path: parse_val("search.index_path", "data/search_index"),
+            writer_memory_mb: parse_u32("search.writer_memory_mb", 50)? as usize,
             index_name: parse_val("search.index_name", "items"),
             timeout_ms: parse_u64("search.timeout_ms", 500)?,
             max_hits: parse_u32("search.max_hits", 100)? as usize,
