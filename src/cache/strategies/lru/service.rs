@@ -118,6 +118,68 @@
           Ok(())
       }
 
+      async fn push_to_list(&self, key: &str, value: String, max_len: usize) -> Result<()> {
+          let mut list = self.get_list(key).await?;
+          list.insert(0, value);
+          list.truncate(max_len);
+          
+          let shard_idx = self.get_shard_index(key);
+          let mut cache = self.shards[shard_idx].write().await;
+          
+          let serialized = bincode::serialize(&list)?;
+          let entry = CacheEntry {
+              value: serialized,
+              expires_at: Instant::now() + Duration::from_secs(3600), // Default 1h for lists in L1
+          };
+          
+          cache.put(key.to_string(), entry);
+          Ok(())
+      }
+
+      async fn get_list(&self, key: &str) -> Result<Vec<String>> {
+          let shard_idx = self.get_shard_index(key);
+          let mut cache = self.shards[shard_idx].write().await;
+          
+          if let Some(entry) = cache.get(key) {
+              if !entry.is_expired() {
+                  let list: Vec<String> = bincode::deserialize(&entry.value).unwrap_or_default();
+                  return Ok(list);
+              } else {
+                  cache.pop(key);
+              }
+          }
+          
+          Ok(Vec::new())
+      }
+
+      async fn set_raw(&self, key: &str, value: String, ttl: Duration) -> Result<()> {
+          let shard_idx = self.get_shard_index(key);
+          let mut cache = self.shards[shard_idx].write().await;
+          
+          let entry = CacheEntry {
+              value: value.into_bytes(),
+              expires_at: Instant::now() + ttl,
+          };
+          
+          cache.put(key.to_string(), entry);
+          Ok(())
+      }
+
+      async fn get_raw(&self, key: &str) -> Result<Option<String>> {
+          let shard_idx = self.get_shard_index(key);
+          let mut cache = self.shards[shard_idx].write().await;
+          
+          if let Some(entry) = cache.get(key) {
+              if !entry.is_expired() {
+                  return Ok(Some(String::from_utf8_lossy(&entry.value).to_string()));
+              } else {
+                  cache.pop(key);
+              }
+          }
+          
+          Ok(None)
+      }
+
       async fn delete(&self, key: &str) -> Result<()> {
           let shard_idx = self.get_shard_index(key);
           let mut cache = self.shards[shard_idx].write().await;

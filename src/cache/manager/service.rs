@@ -126,6 +126,55 @@ impl CacheManager {
         Ok(())
     }
 
+    /// Push a value to the L1 (LRU) + L2 (Redis) list.
+    pub async fn push_to_list(&self, key: &str, value: String, max_len: usize) -> Result<()> {
+        if let Some(ref l1) = self.l1 {
+            let _ = l1.push_to_list(key, value.clone(), max_len).await;
+        }
+        if let Some(ref l2) = self.l2 {
+            let _ = l2.push_to_list(key, value, max_len).await;
+        }
+        Ok(())
+    }
+
+    /// Get a list from L1 (LRU) or L2 (Redis).
+    pub async fn get_list(&self, key: &str) -> Result<Vec<String>> {
+        if let Some(ref l1) = self.l1 {
+            let list = l1.get_list(key).await?;
+            if !list.is_empty() {
+                return Ok(list);
+            }
+        }
+        if let Some(ref l2) = self.l2 {
+            return l2.get_list(key).await;
+        }
+        Ok(Vec::new())
+    }
+
+    /// Set a raw string in L1 (LRU) + L2 (Redis).
+    pub async fn set_raw(&self, key: &str, value: String, ttl: std::time::Duration) -> Result<()> {
+        if let Some(ref l1) = self.l1 {
+            let _ = l1.set_raw(key, value.clone(), ttl).await;
+        }
+        if let Some(ref l2) = self.l2 {
+            let _ = l2.set_raw(key, value, ttl).await;
+        }
+        Ok(())
+    }
+
+    /// Get a raw string from L1 (LRU) or L2 (Redis).
+    pub async fn get_raw(&self, key: &str) -> Result<Option<String>> {
+        if let Some(ref l1) = self.l1 {
+            if let Some(val) = l1.get_raw(key).await? {
+                return Ok(Some(val));
+            }
+        }
+        if let Some(ref l2) = self.l2 {
+            return l2.get_raw(key).await;
+        }
+        Ok(None)
+    }
+
     /// High-level API: Get-or-Compute with multi-tier backfill.
     pub async fn get_or_set<T, F, Fut>(
         &self, 

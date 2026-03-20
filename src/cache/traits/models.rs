@@ -25,6 +25,18 @@
       where
           T: Serialize + Send + Sync;
 
+      /// Push a value to a list (for user history/Ghost Cache).
+      async fn push_to_list(&self, key: &str, value: String, max_len: usize) -> Result<()>;
+
+      /// Get all values from a list (for user history/Ghost Cache).
+      async fn get_list(&self, key: &str) -> Result<Vec<String>>;
+
+      /// Set a raw string value (bypass bincode).
+      async fn set_raw(&self, key: &str, value: String, ttl: Duration) -> Result<()>;
+
+      /// Get a raw string value (bypass bincode).
+      async fn get_raw(&self, key: &str) -> Result<Option<String>>;
+
       /// Delete a value from cache.
       async fn delete(&self, key: &str) -> Result<()>;
 

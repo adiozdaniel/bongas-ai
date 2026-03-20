@@ -37,6 +37,22 @@
           Ok(())
       }
 
+      async fn push_to_list(&self, _key: &str, _value: String, _max_len: usize) -> Result<()> {
+          Ok(())
+      }
+
+      async fn get_list(&self, _key: &str) -> Result<Vec<String>> {
+          Ok(Vec::new())
+      }
+
+      async fn set_raw(&self, _key: &str, _value: String, _ttl: Duration) -> Result<()> {
+          Ok(())
+      }
+
+      async fn get_raw(&self, _key: &str) -> Result<Option<String>> {
+          Ok(None)
+      }
+
       async fn delete(&self, _key: &str) -> Result<()> {
           Ok(())
       }

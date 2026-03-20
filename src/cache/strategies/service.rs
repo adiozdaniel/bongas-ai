@@ -37,6 +37,34 @@ impl CacheStrategy for CacheLayer {
         }
     }
 
+    async fn push_to_list(&self, key: &str, value: String, max_len: usize) -> Result<()> {
+        match self {
+            CacheLayer::Lru(cache) => cache.push_to_list(key, value, max_len).await,
+            CacheLayer::Redis(cache) => cache.push_to_list(key, value, max_len).await,
+        }
+    }
+
+    async fn get_list(&self, key: &str) -> Result<Vec<String>> {
+        match self {
+            CacheLayer::Lru(cache) => cache.get_list(key).await,
+            CacheLayer::Redis(cache) => cache.get_list(key).await,
+        }
+    }
+
+    async fn set_raw(&self, key: &str, value: String, ttl: Duration) -> Result<()> {
+        match self {
+            CacheLayer::Lru(cache) => cache.set_raw(key, value, ttl).await,
+            CacheLayer::Redis(cache) => cache.set_raw(key, value, ttl).await,
+        }
+    }
+
+    async fn get_raw(&self, key: &str) -> Result<Option<String>> {
+        match self {
+            CacheLayer::Lru(cache) => cache.get_raw(key).await,
+            CacheLayer::Redis(cache) => cache.get_raw(key).await,
+        }
+    }
+
     async fn delete(&self, key: &str) -> Result<()> {
         match self {
             CacheLayer::Lru(cache) => cache.delete(key).await,

@@ -115,6 +115,40 @@ impl CacheStrategy for RedisCache {
         Ok(())
     }
 
+    async fn push_to_list(&self, key: &str, value: String, max_len: usize) -> Result<()> {
+        let mut conn = self.client.clone();
+        let key_owned = self.prefixed_key(key);
+        
+        let _: () = conn.lpush(&key_owned, &value).await?;
+        let _: () = conn.ltrim(&key_owned, 0, (max_len - 1) as isize).await?;
+        
+        Ok(())
+    }
+
+    async fn get_list(&self, key: &str) -> Result<Vec<String>> {
+        let mut conn = self.client.clone();
+        let key_owned = self.prefixed_key(key);
+        
+        let values: Vec<String> = conn.lrange(&key_owned, 0, -1).await?;
+        Ok(values)
+    }
+
+    async fn set_raw(&self, key: &str, value: String, ttl: Duration) -> Result<()> {
+        let mut conn = self.client.clone();
+        let key_owned = self.prefixed_key(key);
+        
+        let _: () = conn.set_ex(&key_owned, value, ttl.as_secs()).await?;
+        Ok(())
+    }
+
+    async fn get_raw(&self, key: &str) -> Result<Option<String>> {
+        let mut conn = self.client.clone();
+        let key_owned = self.prefixed_key(key);
+        
+        let value: Option<String> = conn.get(&key_owned).await?;
+        Ok(value)
+    }
+
     async fn delete(&self, key: &str) -> Result<()> {
         let mut conn = self.client.clone();
         let key_owned = self.prefixed_key(key);
