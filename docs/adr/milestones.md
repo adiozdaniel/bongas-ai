@@ -80,6 +80,106 @@ This document tracks the technical execution and strategic alignment of the Bong
 
 ---
 
+```mermaid
+   graph LR
+       %% External Actors & Central Control
+       subgraph ClientSpace ["External Actors & Central Command"]
+           UI["Clients (Web/Mobile/TV)<br/>SDUI Canvas"]
+           Admin["Admin Strategy Control"]
+           CentralServer["🛰️ Bongas-Server (Cloud)<br/>Keys | Hyperparams | Binary Updates"]
+       end
+
+       %% The Trojan Horse: Heavy Orchestrator
+       subgraph SovereignOrchestrator ["🛡️ Blackbox Orchestrator (trainer.so)"]
+           direction TB
+           Heartbeat["Nightly Heartbeat<br/>(Runtime Decryption Keys)"]
+           Guard["Binary Guard & Silent Updater<br/>(SIGUSR2 / Hash Verification)"]
+           
+           subgraph TrainingLoop ["Heavy Training Loop"]
+               VisionBase["Foundation Vision Fine-Tuner<br/>(1.3B+ Params)"]
+               TribeRanker["Tribe Conductor Head<br/>(Ranking / Matrix Factorization)"]
+               DNAIngestion["Interaction DNA Ingestion<br/>(ClickHouse / PII Pruning)"]
+           end
+           
+           GraphOptimization["ONNX Graph Exporter<br/>(Static Weight Folding)"]
+       end
+
+       %% Bongas-AI Application (Historical State)
+       subgraph BongasAI ["Bongas-AI Core Engine (Heavy Rust)"]
+           
+           subgraph APIGateway ["Symphony Gateway (Pre-Refactor)"]
+               StageAPI["🌍 THE STAGE"]
+               BackstageAPI["🔐 THE BACKSTAGE"]
+           end
+
+           Resolver["Symphony Resolver<br/>(Ambiguous / Monolithic Pipelines)"]
+
+           subgraph RuntimePlane ["Runtime Execution Layer"]
+               InferenceEngine["⚡ ONNX Inference Engine<br/>(Multi-Head Inference)"]
+               TantivyIndex["Embedded Index<br/>(Local Metadata)"]
+               GhostCache["Ghost Cache<br/>(L1 In-Memory / L2 Redis)"]
+           end
+           
+           subgraph WorkerPlane ["Heavy Workers (Sidecar Tasks)"]
+               SearchSync["Index Sync Worker"]
+               AnalyticsWorker["Telemetry Batcher"]
+               LegacyNotify["Notification Connector<br/>(External Hook)"]
+           end
+       end
+
+       %% External Clusters (Legacy Residue)
+       subgraph ExternalClusters ["External Cluster Services"]
+           Meili["Meilisearch Cluster<br/>(Global Search Context)"]
+           NotifySystem["Separate Notification System<br/>(SMS/Push/Email)"]
+       end
+
+       %% Data Storage Layer
+       subgraph DataLayer ["Sovereign Infrastructure"]
+           PG[(PostgreSQL)]
+           Redis[(Redis)]
+           ClickHouse[(ClickHouse Interaction DNA)]
+       end
+
+       %% ML / Intelligence Integration
+       subgraph IntelligenceLayer ["Heavy ML Assets"]
+           RawWeights["📦 Raw Safetensors<br/>(10GB+ Base Models / Encrypted)"]
+           ONNXHeads["🧠 Optimized Student Heads<br/>(Safety / Vibe / Ranking)"]
+       end
+
+       %% --- CONNECTIONS ---
+       
+       %% Orchestration & Security
+       CentralServer <--> Heartbeat
+       CentralServer -- "Binary Update Patch" --> Guard
+       Guard -- "Silent Hot-Swap" --> BongasAI
+       Heartbeat -- "Fetch Keys" --> RawWeights
+       
+       %% Training Flow
+       ClickHouse -- "Raw Interaction Stream" --> DNAIngestion
+       RawWeights -- "Base Model Weights" --> VisionBase
+       VisionBase & TribeRanker --> GraphOptimization
+       GraphOptimization --> ONNXHeads
+       ONNXHeads --> InferenceEngine
+       
+       %% Discovery & Search
+       UI <--> StageAPI
+       StageAPI <--> Resolver
+       Resolver <--> InferenceEngine
+       Resolver <--> Meili
+       Resolver <--> TantivyIndex
+       
+       %% Data & Workers
+       SearchSync <--> Meili
+       SearchSync <--> PG
+       LegacyNotify <--> NotifySystem
+       NotifySystem --> UI
+       
+       %% Cache Path
+       InferenceEngine <--> GhostCache
+```
+
+---
+
 ## 🔍 Detailed Breakdown: Milestone 15 (Symphony Conductor)
 
 | Component | Domain | Technical Impact | Status | Remarks on Client's Manifesto Fulfilment |
