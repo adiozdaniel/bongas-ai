@@ -33,13 +33,24 @@ impl TrainingPillar {
 
     /// Start the background training orchestration.
     pub async fn start(&self) {
-        // Start System Health Polling (M21.1)
+        // 1. Pre-load available Student Head weights from disk (M21.5)
+        let state = self.state.clone();
+        tokio::spawn(async move {
+            if let Err(e) = state.load_checkpoint("vision").await {
+                tracing::warn!(error = %e, "Failed to load initial vision student head weights");
+            }
+            if let Err(e) = state.load_checkpoint("ranking").await {
+                tracing::debug!(error = %e, "No ranking student head weights found in local storage");
+            }
+        });
+
+        // 2. Start System Health Polling (M21.1)
         let health = self.sovereign.circuit.health.clone();
         tokio::spawn(async move {
             health.start_polling(std::time::Duration::from_secs(1)).await;
         });
 
-        // Start Sovereign Training Pillar (M21.5)
+        // 3. Start Sovereign Training Pillar (M21.5)
         let sovereign = self.sovereign.clone();
         tokio::spawn(async move {
             sovereign.start().await;

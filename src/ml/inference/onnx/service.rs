@@ -151,10 +151,10 @@ impl OnnxInferenceEngine {
             debug!(item_id = %item_id, "Hybrid Inference: Using pre-extracted DNA + Live Student Head");
             
             // Fetch latest weights for the student head
-            let weights = state.active_weights.read().await;
-            if let Some(_head_weights) = weights.get(&self.model_name) {
+            let active = state.active_weights.read().await;
+            if let Some(_tensors) = active.get(&self.model_name) {
                 // TODO: Execute the Candle forward pass using the live weights (M21.5)
-                // For now, we simulate the sub-ms calculation
+                // We will need the specific architecture (e.g. VisionAuditorHead) to run this.
                 let score = 0.85; 
                 
                 let latency = start.elapsed();
