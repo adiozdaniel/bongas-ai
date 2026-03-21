@@ -1,30 +1,43 @@
 //! Native Rust Ranking Head architecture using Candle.
+//! Implements the Tribe Conductor for persona-based ranking.
 
 use candle_core::{Result, Tensor};
-use candle_nn::{Linear, Module, VarBuilder};
+use candle_nn::{Linear, LayerNorm, Module, VarBuilder};
 
-/// A 3-layer MLP for ranking adaptation (The Student Head).
-/// It learns to map pre-extracted content DNA to user engagement scores.
+/// The Local Student Head for Persona-Based Ranking.
+/// Learns aggregate affinities between Behavioral Tribes and Content DNA.
 pub struct StudentRankingHead {
     ln1: Linear,
+    norm1: LayerNorm,
     ln2: Linear,
-    output: Linear,
+    ln3: Linear,
 }
 
 impl StudentRankingHead {
-    /// Create a new ranking head with the specified dimensions.
+    /// Create a new ranking head with specified dimensions.
+    /// Matches the architecture defined in the 'bongas-ml' trainer.
     pub fn new(vs: VarBuilder) -> Result<Self> {
-        let ln1 = candle_nn::linear(512, 256, vs.pp("ln1"))?;
-        let ln2 = candle_nn::linear(256, 128, vs.pp("ln2"))?;
-        let output = candle_nn::linear(128, 1, vs.pp("output"))?;
+        let ln1 = candle_nn::linear(64 + 1024, 128, vs.pp("mlp.0"))?;
+        let norm1 = candle_nn::layer_norm(128, 1e-5, vs.pp("mlp.1"))?;
+        let ln2 = candle_nn::linear(128, 64, vs.pp("mlp.4"))?;
+        let ln3 = candle_nn::linear(64, 1, vs.pp("mlp.6"))?;
         
-        Ok(Self { ln1, ln2, output })
+        Ok(Self { ln1, norm1, ln2, ln3 })
     }
 
-    /// Forward pass through the head.
-    pub fn forward(&self, x: &Tensor) -> Result<Tensor> {
-        let x = self.ln1.forward(x)?.relu()?;
-        let x = self.ln2.forward(&x)?.relu()?;
-        self.output.forward(&x)
+    /// Forward pass through the head (Early Fusion).
+    pub fn forward(&self, tribe_embedding: &Tensor, item_dna: &Tensor) -> Result<Tensor> {
+        let combined = Tensor::cat(&[tribe_embedding, item_dna], 1)?;
+        
+        let x = self.ln1.forward(&combined)?;
+        let x = self.norm1.forward(&x)?;
+        let x = x.relu()?;
+        
+        let x = self.ln2.forward(&x)?;
+        let x = x.relu()?;
+        
+        let x = self.ln3.forward(&x)?;
+        candle_nn::ops::sigmoid(&x)
     }
 }
+

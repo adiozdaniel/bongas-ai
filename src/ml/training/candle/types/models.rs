@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TrainingSample {
     pub dna_vector: Vec<f32>,
+    pub tribe_vector: Vec<f32>,
     pub target: f32,
 }
 

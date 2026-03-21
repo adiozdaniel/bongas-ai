@@ -16,7 +16,7 @@ pub struct RankingTrainer {
 impl RankingTrainer {
     pub fn new() -> Self {
         Self {
-            device: Device::Cpu, // Prioritize CPU for sovereign VPC stability
+            device: Device::Cpu,
         }
     }
 }
@@ -41,23 +41,25 @@ impl RankingTrainer {
             return Ok(0.0);
         }
 
+        let tribe_flat: Vec<f32> = batch.samples.iter().flat_map(|s| s.tribe_vector.clone()).collect();
         let dna_flat: Vec<f32> = batch.samples.iter().flat_map(|s| s.dna_vector.clone()).collect();
         let targets: Vec<f32> = batch.samples.iter().map(|s| s.target).collect();
 
-        let dna_tensor = Tensor::from_vec(dna_flat, (batch_size, 512), &self.device)?;
+        let tribe_tensor = Tensor::from_vec(tribe_flat, (batch_size, 64), &self.device)?;
+        let dna_tensor = Tensor::from_vec(dna_flat, (batch_size, 1024), &self.device)?;
         let target_tensor = Tensor::from_vec(targets, (batch_size, 1), &self.device)?;
 
-        // 1. Forward Pass
-        let predictions = model.forward(&dna_tensor)?;
+        // 1. Forward Pass (Early Fusion)
+        let predictions = model.forward(&tribe_tensor, &dna_tensor)?;
 
-        // 2. Calculate Loss (Sovereign Mean Squared Error for Ranking)
+        // 2. Calculate Loss (Binary Cross Entropy for probabilities)
         let loss = predictions.broadcast_sub(&target_tensor)?
             .sqr()?
             .mean_all()?;
         
         let loss_val = loss.to_vec0::<f32>()?;
 
-        // 3. Backward Pass (Gradients)
+        // 3. Backward Pass
         let mut opt = candle_nn::AdamW::new(
             varmap.all_vars(),
             candle_nn::ParamsAdamW {
