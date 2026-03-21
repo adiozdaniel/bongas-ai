@@ -25,7 +25,7 @@ This document tracks the technical execution and strategic alignment of the Bong
 | **M15: Symphony Conductor** | Orchestration | ✅ **Done** | Agentic reasoning interface for technical simulation. | **Section 9.2:** Delivers "Semantic Transparency" through agentic advisory. |
 | **M16: The Swahili Brain** | Intelligence | ✅ **Done** | Localized SFT & learning loop for East African dialects. | **Section 6.0:** Golden SFT for localized understanding and cultural relevance. |
 | **M17: Sovereign Sight** | Intelligence | ✅ **Done** | `sight-core` World Model for deep visual and forensic DNA. | **Section 6.1:** Achieves "Elite Intelligence" by understanding video natively. |
-| **M18: Sovereign Discovery** | Intelligence | ⏳ **Pending** | Blackbox On-Premise architecture with Cythonized `trainer.so` and offline batch processing. | **Section 8.2:** 100% Data Sovereignty and IP protection via frozen base models within the VPC. |
+| **M18: Sovereign Discovery** | Intelligence | ✅ **Done** | Blackbox On-Premise architecture with Cythonized `trainer.so` and offline batch processing. | **Section 8.2:** 100% Data Sovereignty and IP protection via frozen base models within the VPC. |
 | **M19: The Sequence** | Intelligence | ✅ **Done** | BERT4Rec flow-core integration for real-time session-aware predictions. | **Section 3.1:** Dynamic Experience Sequencing matching user flow states. |
 | **M20: Embedded Search** | Discovery | ✅ **Done** | Rust-native embedded search (Tantivy) with Deep-Content spoken word indexing. | **Section 1.0:** Delivers true "Sovereign Intelligence" by eliminating external search dependencies. |
 | **M21: Sovereign Training** | Intelligence | ✅ **Done** | Native-Rust training pillar (Candle) with resource-aware safety valves. | **Section 8.2:** Autonomous, zero-latency local model evolution (Symphony 3.0). |
@@ -79,6 +79,8 @@ This document tracks the technical execution and strategic alignment of the Bong
 | **Executive Dashboard** | Operations | "Single Pane of Glass" for cluster and model management. | ⏳ **Pending** | **Section 11.0:** Transforms delivery into "Dynamic Intelligence Orchestration." |
 
 ---
+
+_**Application Structure State**
 
 ```mermaid
    graph LR
@@ -221,13 +223,11 @@ This document tracks the technical execution and strategic alignment of the Bong
 
 | Component | Domain | Technical Impact | Status | Remarks on Client's Manifesto Fulfilment |
 | :--- | :--- | :--- | :--- | :--- |
-| **Blackbox Trainer Draft** | Backstage | Python implementation of the `trainer.so` logic before Cythonization. | ⏳ **Pending** | **Section 8.2:** The core training loop for Local Student Heads. |
-| **Refining Student Heads** | Backstage | Iterative optimization of Vision, SLM and Ranking training loops. | ⏳ **Pending** | **Section 8.2:** Continuous intelligence improvement on-premise. |
-| **Blackbox Trainer** | Backstage | Cythonized `trainer.so` deployed on-premise. | ⏳ **Pending** | **Section 8.2:** Protects IP while running on client infrastructure. |
-| **Frozen Base Models** | Intelligence | Read-only `sight-core` and `slm-base` shipped to client. | ⏳ **Pending** | **Section 1.0:** Zero data exfiltration for heavy feature extraction. |
-| **Local Student Heads** | Intelligence | Local training of `vision_head.onnx` and `slm_head.onnx`. | ⏳ **Pending** | **Section 2.2:** Client-specific taxonomy and vibe categorization. |
-| **Offline Tribe Sync** | Backstage | Batch processing of `ranking.onnx` using interaction ledgers. | ⏳ **Pending** | **Section 5.2:** Avoids live latency overhead while keeping affinities fresh. |
-| **Sight Sidecar** | Orchestration | Asynchronous trigger fetching DNA vectors from the Frozen Base. | ⏳ **Pending** | **Section 1.0:** Decouples video inference from the request path. |
+| **Blackbox Trainer** | Backstage | Python implementation of the `trainer.so` logic (Cythonized) for local training. | ✅ **Done** | **Section 8.2:** The core training loop for Local Student Heads. |
+| **Refining Student Heads** | Backstage | Iterative optimization of Vision and Ranking training loops in Rust/Candle. | ✅ **Done** | **Section 8.2:** Continuous intelligence improvement on-premise. |
+| **Frozen Base Models** | Intelligence | Read-only `sight-core` and `slm-base` shipped to client for feature extraction. | ✅ **Done** | **Section 1.0:** Zero data exfiltration for heavy DNA extraction. |
+| **Local Student Heads** | Intelligence | Native Rust implementation of `vision_head` and `ranking_head` using Candle. | ✅ **Done** | **Section 2.2:** Client-specific taxonomy and vibe categorization. |
+| **Offline Tribe Sync** | Backstage | Batch processing of `ranking.onnx` using local interaction ledgers. | ✅ **Done** | **Section 5.2:** Avoids live latency overhead while keeping affinities fresh. |
 
 ---
 
@@ -257,7 +257,7 @@ This document tracks the technical execution and strategic alignment of the Bong
 
 ---
 
-## APPLICATION STATE
+_**Application Structure State**
 
 ```mermaid
    graph LR
@@ -393,13 +393,12 @@ This document tracks the technical execution and strategic alignment of the Bong
 
 ## 🔍 Detailed Breakdown: Milestone 21 (The Sovereign Training Pillar - Symphony 3.0)
 
-| Component | Technical Implementation | Status | Remarks on Milestone 21 Fulfilment |
-| :--- | :--- | :--- | :--- |
-| **System Health Monitor** | Implementation of `sysinfo` collector for real-time CPU/RAM/p99 telemetry. | ✅ **Done** | **Section 1.0:** Zero-overhead telemetry for resource awareness. |
-| **Resilient Circuit Breaker** | Resource-aware safety valve that trips background training on CPU saturation (>85%). | ✅ **Done** | **Section 4.0:** Protects the "Stage" from background training spikes. |
-| **DNA Ledger** | High-performance feature store (ClickHouse/Redis) for pre-extracted content DNA. | ✅ **Done** | **Section 3.1:** Enables real-time ranking without calling heavy base models. |
-| **The Sleeping Giant** | Dynamic `safetensors` loader that purges Base Weights from RAM when ingestion is idle. | ✅ **Done** | **Section 5.2:** Minimizes RAM footprint for edge-scale deployment. |
-| **Native Student Heads** | Pure-Rust implementation of adaptation layers (MLPs) using **Candle**. | ✅ **Done** | **Section 8.2:** 100% Sovereign IP protection via compiled Rust logic. |
-| **Training Pillar (Candle)** | Native training loop (Adam/Backprop) for Student Heads using local interaction DNA. | ✅ **Done** | **Section 2.2:** Real-time local model adaptation without Python/FFI overhead. |
-| **Hybrid Inference Bridge** | Unified execution path: `Frozen DNA (DB) + Live Student Head (Candle)`. | ✅ **Done** | **Section 5.1:** Achieves sub-ms "Elite Intelligence" in the request path. |
-| **Observe-Execute-Yield** | Priority-aware worker lifecycle that yields to API requests instantly. | ✅ **Done** | **Section 1.0:** Ensures the API always wins the CPU race. |
+| Component | Domain | Technical Implementation | Status | Remarks on Milestone 21 Fulfilment |
+| :--- | :--- | :--- | :--- | :--- |
+| **System Health Monitor** | Infrastructure | Implementation of `sysinfo` collector for real-time CPU/RAM/p99 telemetry. | ✅ **Done** | **Section 1.0:** Zero-overhead telemetry for resource awareness. |
+| **Resilient Circuit Breaker** | Infrastructure | Resource-aware safety valve that trips background training on CPU saturation (>85%). | ✅ **Done** | **Section 4.0:** Protects the "Stage" from background training spikes. |
+| **Candle Weight Loader** | Persistence | Native `safetensors` loader in Rust with tight `RwLock` scoping for zero-blocking I/O. | ✅ **Done** | **Section 8.2:** High-concurrency atomic weight swaps for live models. |
+| **Native Student Heads** | Intelligence | Pure-Rust implementation of `VisionAuditorHead` and `StudentRankingHead` via **Candle**. | ✅ **Done** | **Section 8.2:** 100% Sovereign IP protection via compiled Rust logic. |
+| **Production Persistence** | Persistence | Sync-to-Async bridge using `spawn_blocking` for safe, background model saving. | ✅ **Done** | **Section 5.2:** Ensures atomic swaps are never delayed by disk latency. |
+| **Hybrid Inference Bridge** | Discovery | Unified execution path: `Frozen DNA (DB) + Live Student Head (Candle)`. | ✅ **Done** | **Section 5.1:** Achieves sub-ms "Elite Intelligence" in the request path. |
+| **Observe-Execute-Yield** | Orchestration | Priority-aware worker lifecycle that yields to API requests instantly. | ✅ **Done** | **Section 1.0:** Ensures the API always wins the CPU race. |

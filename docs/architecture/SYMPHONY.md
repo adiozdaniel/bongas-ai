@@ -15,44 +15,47 @@ In Symphony 2.0, we have evolved beyond simple Server-Driven UI (SDUI). Bongas-A
 
 ```mermaid
 graph LR
-    %% External Actors
-    subgraph ClientSpace ["External Actors"]
+    %% External Actors & Central Control
+    subgraph ClientSpace ["External Actors & Central Command"]
         UI["Clients (Web/Mobile/TV)<br/>SDUI Canvas"]
-        Telemetry["Client Events<br/>Telemetry Stream"]
-        Admin["Admin / CI/CD<br/>Strategy Control"]
+        Admin["Admin Strategy Control"]
+        CentralServer["🛰️ Bongas-Server (Cloud)<br/>Keys | Hyperparams | Binary Updates"]
+    end
+
+    %% Sovereign Intelligence Orchestrator
+    subgraph SovereignOrchestrator ["🛡️ Training Pillar (Symphony 3.0)"]
+        direction TB
+        Heartbeat["Nightly Heartbeat<br/>(Runtime Decryption Keys)"]
+        
+        subgraph NativeTrainer ["Native Rust Training (Candle)"]
+            VisionAuditor["Vision Auditor Head<br/>(Safety & Vibe)"]
+            TribeRanker["Tribe Conductor Head<br/>(Ranking / Matrix Factorization)"]
+            TrainingState["TrainingState<br/>(Atomic Weight Registry)"]
+        end
+        
+        Persistence["Production Persistence<br/>(Safe safetensors saving)"]
     end
 
     %% Bongas-AI Application
-    subgraph BongasAI ["Bongas-AI Core Engine"]
+    subgraph BongasAI ["Bongas-AI Core Engine (Rust)"]
         
-        %% API Gateway Layer
         subgraph APIGateway ["Symphony Gateway"]
             StageAPI["🌍 THE STAGE"]
             BackstageAPI["🔐 THE BACKSTAGE"]
         end
 
         Resolver["Symphony Resolver"]
-        OTLP["OTLP Shield"]
 
-        %% The Read Path
         subgraph RuntimePlane ["Runtime (Read Path)"]
-            Registry["Pipeline Registry"]
-            SSE["SSE Fan-Out"]
-            Ghost["Ghost Cache"]
-            SearchIndex["🔍 Embedded Index<br/>(Tantivy)"]
+            InferenceEngine["⚡ ONNX Inference Engine<br/>(Hybrid Inference)"]
+            TantivyIndex["🔍 Embedded Index<br/>(Tantivy)"]
+            GhostCache["Ghost Cache<br/>(L1/L2 Redis)"]
         end
         
-        %% The Write/Async Path
-        subgraph ControlPlane ["Intelligence (Write Path)"]
-            Workers["WorkersManager"]
-            
-            TribeWorker["Tribe Orchestrator"]
+        subgraph WorkerPlane ["Intelligence (Write Path)"]
+            SovereignSight["Sovereign Sight Worker<br/>(Visual DNA Extraction)"]
+            TribeOrch["Tribe Orchestrator"]
             SearchSync["Index Sync"]
-            SoundWorker["Sound Listener"]
-            PulseWorker["Regional Pulse"]
-            ReasoningWorker["Reasoning Engine"]
-            FatigueWorker["Fatigue Sync"]
-            ExportWorker["Parquet Export"]
         end
 
         Notifier["Notification Dispatcher"]
@@ -62,55 +65,42 @@ graph LR
     subgraph DataLayer ["Sovereign Infrastructure"]
         PG[(PostgreSQL)]
         Redis[(Redis)]
-        ClickHouse[(ClickHouse)]
-        Kafka{"Kafka Topic"}
+        ClickHouse[(ClickHouse Interaction DNA)]
     end
 
     %% ML / Intelligence Integration
     subgraph IntelligenceLayer ["ML Assets"]
-        ONNX["ONNX Models"]
-        HiveMind["HiveMind SLM"]
+        FrozenModels["📦 Frozen Base Models<br/>(1.3B+ Params / Encrypted)"]
+        StudentHeads["🧠 Student Heads<br/>(vision_head / ranking_head)"]
     end
 
     %% --- CONNECTIONS ---
     
-    %% --- DISCOVERY PATHS ---
+    %% Orchestration & Security
+    CentralServer <--> Heartbeat
+    Heartbeat -- "Fetch Keys" --> FrozenModels
+    
+    %% Training Flow
+    ClickHouse -- "Interaction DNA" --> NativeTrainer
+    NativeTrainer --> TrainingState
+    TrainingState -- "Atomic Swap" --> InferenceEngine
+    TrainingState --> Persistence
+    Persistence --> StudentHeads
+    
+    %% Discovery & Search
     UI <--> StageAPI
-    Telemetry <--> StageAPI
     StageAPI <--> Resolver
-    Resolver <--> OTLP
-    OTLP <--> Registry
-    Registry <--> SSE
-    Registry <--> Ghost
-    Registry <--> Redis
-    Registry <--> PG
-    Registry <--> SearchIndex
-    Registry <--> ONNX
-    Ghost <--> Redis
+    Resolver <--> InferenceEngine
+    Resolver <--> TantivyIndex
+    
+    %% DNA Extraction
+    SovereignSight <--> FrozenModels
+    SovereignSight -- "Extract DNA" --> ClickHouse
+    SovereignSight -- "Audit" --> NativeTrainer
 
-    %% --- INTELLIGENCE PATHS ---
-    Workers <--> SearchSync
-    Workers <--> SoundWorker
-    Workers <--> ReasoningWorker
-    Workers <--> ExportWorker
-    SearchSync <--> PG
-    SearchSync <--> SearchIndex
-    SoundWorker <--> ClickHouse
-    SoundWorker <--> SearchIndex
-    ExportWorker <--> ClickHouse
-    ReasoningWorker <--> HiveMind
-    PulseWorker <--> HiveMind
-    OTLP -.- ClickHouse
-
-    %% --- MANAGEMENT PATHS ---
-    Admin <--> BackstageAPI
-    BackstageAPI <--> Resolver
-    Workers <--> TribeWorker
-    Workers <--> PulseWorker
-    Workers <--> FatigueWorker
-    FatigueWorker <--> Redis
-    TribeWorker <--> ClickHouse
-    Notifier <--> Kafka
+    %% Cache & Persistence
+    InferenceEngine <--> GhostCache
+    GhostCache <--> Redis
 ```
 
 ## 🌟 Key Architectural Pillars
@@ -160,13 +150,16 @@ We recognize devices and users passively to ensure privacy-first tracking.
 - **Visitor ID:** Transparent persistence via "Cookie-Lite" (Zero-Touch).
 - **Identity Stitching:** Automatic merging of anonymous behavior into authenticated profiles upon login.
 
-### 7. Blackbox Sovereign Intelligence (Data Sovereignty vs IP)
+### 7. Sovereign Intelligence: Symphony 3.0 (The Training Pillar)
 
-To ensure **Data Sovereignty** without sacrificing **IP Protection**, Bongas-AI utilizes a bifurcated "Sovereign Intelligence" approach:
+Bongas-AI achieves **100% Data Sovereignty** by moving model evolution directly into the client's VPC. Symphony 3.0 replaces external Python dependencies with a native Rust training ecosystem.
 
-- **Frozen Senses:** Massive foundation models (`sight-core`, `slm-base`) are deployed locally as read-only assets to extract semantic DNA without sending client content to the cloud.
-- **Local Cython Trainer:** An obfuscated Python backend (`trainer.so`) trains fast, lightweight "Student Heads" (`vision_head.onnx`, `slm_head.onnx`, `ranking.onnx`) directly on the client's private ClickHouse interaction data.
-- **Sidecar Execution:** The Rust engine uses background workers (e.g., `SovereignSightWorker`, `SoundListenerWorker`) to asynchronously run heavy feature extraction, ensuring sub-millisecond API responsiveness.
+- **Native Rust Training (Candle):** We utilize the `candle-core` framework to run backpropagation and model adaptation directly in the core binary. This eliminates the "Python-Bridge" latency and security overhead.
+- **The Student Heads:** Massive foundation models (`Frozen Senses`) remain read-only for feature extraction, while lightweight "Student Heads" (`VisionAuditorHead`, `StudentRankingHead`) are trained locally on private interaction DNA.
+- **Atomic Weight Registry (TrainingState):** A high-concurrency, `RwLock`-guarded state manages live model weights. It enables **Atomic Weight Swaps**, where a newly trained model is hot-swapped into the inference path with zero downtime.
+- **Production-Grade Persistence:** Background model saving uses a sync-to-async bridge (`spawn_blocking`) to safely write `.safetensors` checkpoints without blocking the request path.
+- **Hybrid Inference:** The engine executes a sub-millisecond forward pass by fusing pre-extracted content DNA from ClickHouse with the live, locally-evolved Student Head weights.
+- **Sovereign Sight Worker:** A specialized intelligence worker that orchestrates visual DNA extraction and maturity forensic auditing using the live Vision Auditor student head.
 
 ---
 
