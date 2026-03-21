@@ -8,9 +8,9 @@ The Training pillar manages the heavy-lifting logic for model refinement, contin
 
 | Module | Description |
 | :--- | :--- |
+| [**🏛️ Training Pillar**](./pillar/README.md) | High-level orchestration, state management, and weight swaps. |
+| [**🕯️ Candle Engine**](./candle/README.md) | Native Rust training implementation and Student Head architectures. |
 | [**📈 Online Learning**](./online/README.md) | Incremental model updates from real-time feedback loops. |
-| [**🎼 Orchestration**](./orchestration/README.md) | Management of training and export pipelines. |
-| [**🧵 Workers**](./workers/README.md) | Asynchronous heavy-compute worker queues. |
 
 ---
 

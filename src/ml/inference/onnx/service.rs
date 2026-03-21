@@ -147,15 +147,33 @@ impl OnnxInferenceEngine {
         let start = Instant::now();
         
         // 1. Check for Pre-Extracted DNA and Live Student Head
-        if let (Some(_dna), Some(ref state)) = (pre_extracted_dna, &self.training_state) {
+        if let (Some(dna), Some(ref state)) = (pre_extracted_dna, &self.training_state) {
             debug!(item_id = %item_id, "Hybrid Inference: Using pre-extracted DNA + Live Student Head");
             
-            // Fetch latest weights for the student head
-            let active = state.active_weights.read().await;
-            if let Some(_tensors) = active.get(&self.model_name) {
-                // TODO: Execute the Candle forward pass using the live weights (M21.5)
-                // We will need the specific architecture (e.g. VisionAuditorHead) to run this.
-                let score = 0.85; 
+            // Tightly scope the read guard
+            let tensors = {
+                let active = state.active_weights.read().await;
+                active.get(&self.model_name).cloned()
+            };
+
+            if let Some(tensors) = tensors {
+                // Initialize the Student Head architecture with the live weights
+                let vb = candle_nn::VarBuilder::from_tensors(tensors, candle_core::DType::F32, &candle_core::Device::Cpu);
+                let model = crate::ml::training::candle::architectures::ranking::StudentRankingHead::new(vb)
+                    .map_err(|e| ModelError::InferenceFailed(format!("head init: {e}")))?;
+
+                // Convert inputs to Candle Tensors (CPU for low-latency inference)
+                let tribe_tensor = candle_core::Tensor::from_vec(user_features, (1, 64), &candle_core::Device::Cpu)
+                    .map_err(|e| ModelError::InferenceFailed(format!("tribe tensor: {e}")))?;
+                let dna_tensor = candle_core::Tensor::from_vec(dna, (1, 1024), &candle_core::Device::Cpu)
+                    .map_err(|e| ModelError::InferenceFailed(format!("dna tensor: {e}")))?;
+
+                // Execute the forward pass
+                let prediction = model.forward(&tribe_tensor, &dna_tensor)
+                    .map_err(|e| ModelError::InferenceFailed(format!("forward pass: {e}")))?;
+                
+                let score = prediction.to_vec1::<f32>()
+                    .map_err(|e| ModelError::InferenceFailed(format!("extract result: {e}")))? [0];
                 
                 let latency = start.elapsed();
                 if let Some(ref analytics) = self.analytics {
