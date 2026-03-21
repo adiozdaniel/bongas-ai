@@ -201,7 +201,7 @@ impl DiscoverySymphony {
         let training_pillar = Arc::new(TrainingPillar::new(
             online_learning,
             sovereign_training,
-            training_state,
+            training_state.clone(),
         ));
 
         let ml_pillar = Arc::new(MlPillar::new(inference.clone(), training_pillar, assets));
@@ -315,7 +315,7 @@ impl DiscoverySymphony {
             clickhouse_client.clone(),
             cache_manager.clone(),
             resilience_metrics.clone(),
-            inference.onnx.clone(),
+            training_state.clone(),
             std::time::Duration::from_secs(3600), // Hourly audit pulse
         ));
 

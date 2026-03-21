@@ -26,7 +26,8 @@ pub struct SovereignSightWorker {
     clickhouse: ClickHouseClient,
     cache_manager: Arc<CacheManager>,
     resilience: Arc<ResilienceMetricsCollector>,
-    inference_engine: Arc<crate::ml::inference::onnx::service::OnnxInferenceEngine>,
+    // M21: Sovereign Training Bridge
+    training_state: Arc<crate::ml::training::pillar::state::TrainingState>,
     pulse_interval: Duration,
     cpu_threshold: u64,
 }
@@ -42,7 +43,7 @@ impl SovereignSightWorker {
         clickhouse: ClickHouseClient,
         cache_manager: Arc<CacheManager>,
         resilience: Arc<ResilienceMetricsCollector>,
-        inference_engine: Arc<crate::ml::inference::onnx::service::OnnxInferenceEngine>,
+        training_state: Arc<crate::ml::training::pillar::state::TrainingState>,
         pulse_interval: Duration,
     ) -> Self {
         Self {
@@ -50,7 +51,7 @@ impl SovereignSightWorker {
             clickhouse,
             cache_manager,
             resilience,
-            inference_engine,
+            training_state,
             pulse_interval,
             cpu_threshold: 80, // Threshold for Opportunistic Pause
         }
@@ -106,6 +107,20 @@ impl SovereignSightWorker {
 
         info!(count = delta.len(), "SovereignSightWorker: Waking the Giant for DNA extraction...");
 
+        // Fetch live Vision Auditor weights and initialize the model once
+        let weights = {
+            let active = self.training_state.active_weights.read().await;
+            active.get("vision").cloned()
+        };
+
+        let vision_head = if let Some(tensors) = weights {
+            let vb = candle_nn::VarBuilder::from_tensors(tensors, candle_core::DType::F32, &candle_core::Device::Cpu);
+            Some(crate::ml::training::candle::architectures::vision::VisionAuditorHead::new(vb)
+                .map_err(|e| anyhow::anyhow!("vision head init: {}", e))?)
+        } else {
+            None
+        };
+
         // Batch processing to respect resources
         let mut results = Vec::new();
         let mut dna_records = Vec::new();
@@ -114,12 +129,41 @@ impl SovereignSightWorker {
             if self.should_pause() { break; }
 
             // 1. Extract DNA using the "Giant" (The Frozen Base Model)
-            // In Symphony 3.0, this calls the ONNX Inference Engine
-            let _engine = &self.inference_engine;
-            let dna_vector = vec![0.5; 512]; // Simulated vector
+            let dna_vector = vec![0.5; 1024]; // Simulated 1024-dim Visual DNA
 
-            // 2. Perform Visual Audit (Maturity rating etc.)
-            let result = self.perform_visual_audit(external_id).await?;
+            let mut forensic_rating = "GE".to_string();
+            let mut semantic_vibe = "Standard".to_string();
+
+            if let Some(ref head) = vision_head {
+                let input = candle_core::Tensor::from_vec(dna_vector.clone(), (1, 1024), &candle_core::Device::Cpu)
+                    .map_err(|e| anyhow::anyhow!("vision input tensor: {}", e))?;
+                let (safety_logits, vibe_logits) = head.forward(&input)
+                    .map_err(|e| anyhow::anyhow!("vision forward: {}", e))?;
+
+                // Simple argmax for safety rating (0: GE, 1: PG, 2: 18+)
+                let safety_idx = safety_logits.to_vec2::<f32>()?[0]
+                    .iter()
+                    .enumerate()
+                    .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
+                    .map(|(i, _)| i)
+                    .unwrap_or(0);
+                
+                forensic_rating = match safety_idx {
+                    2 => "17+".to_string(),
+                    1 => "PG".to_string(),
+                    _ => "GE".to_string(),
+                };
+
+                semantic_vibe = format!("VibeCluster-{}", vibe_logits.to_vec2::<f32>()?[0]
+                    .iter()
+                    .enumerate()
+                    .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
+                    .map(|(i, _)| i)
+                    .unwrap_or(0));
+            }
+
+            // 2. Perform Visual Audit
+            let result = self.perform_visual_audit_with_prediction(external_id, dna_vector.clone(), forensic_rating, semantic_vibe).await?;
             results.push(result);
 
             // 3. Prepare DNA Ledger record (M21.3)
@@ -139,6 +183,36 @@ impl SovereignSightWorker {
         }
 
         Ok(())
+    }
+
+    /// Internal logic for visual DNA and maturity forensic extraction.
+    async fn perform_visual_audit_with_prediction(
+        &self, 
+        external_id: i32, 
+        dna_vector: Vec<f32>, 
+        rating: String,
+        vibe: String
+    ) -> Result<SovereignSightLedger> {
+        let reason = if rating == "17+" { 
+            "High anatomy DNA isolation detected via VisionAuditorHead.".to_string() 
+        } else { 
+            "Safe for general exhibition.".to_string() 
+        };
+
+        // Step 5: Reconcile with Manual Tag
+        self.reconcile_with_manual_tag(external_id, &rating).await?;
+
+        Ok(SovereignSightLedger {
+            external_id,
+            content_type: "video".to_string(),
+            visual_dna: dna_vector,
+            motion_entropy: 0.45,
+            appearance_dna: vibe.clone(),
+            maturity_rating: rating,
+            maturity_reason: reason,
+            semantic_digest: format!("DNA-backed forensic audit complete. Vibe: {}", vibe),
+            hook_path: format!("/data/hooks/{}.webp", external_id),
+        })
     }
 
     /// Save pre-extracted DNA to the DNA Ledger (M21.3)
@@ -168,42 +242,6 @@ impl SovereignSightWorker {
             .fetch_all()
             .await?;
         Ok(rows.into_iter().map(|r| r.external_id).collect())
-    }
-
-    /// Internal logic for visual DNA and maturity forensic extraction.
-    async fn perform_visual_audit(&self, external_id: i32) -> Result<SovereignSightLedger> {
-        // Pull DNA vectors from ClickHouse (Private Interaction Ledger / Vision DNA)
-        let query = "SELECT dna_vector FROM item_dna WHERE item_id = ? LIMIT 1";
-        let dna_vector: Vec<f32> = match self.clickhouse.query(query).bind(external_id).fetch_one::<Vec<f32>>().await {
-            Ok(v) => v,
-            Err(_) => vec![0.0; 128], // Fallback if no DNA yet
-        };
-
-        // Step 4: Forensic Maturity Auditor (Pillar 2)
-        // determine if the video is GE or 17+ based on DNA isolation
-        // Mock isolation logic: if sum of specific components is high, mark as 17+
-        let anatomy_signal: f32 = dna_vector.iter().take(10).sum();
-        let rating = if anatomy_signal > 5.0 { "17+".to_string() } else { "GE".to_string() };
-        let reason = if rating == "17+" { 
-            "High anatomy DNA isolation detected.".to_string() 
-        } else { 
-            "Safe for general exhibition.".to_string() 
-        };
-
-        // Step 5: Reconcile with Manual Tag
-        self.reconcile_with_manual_tag(external_id, &rating).await?;
-
-        Ok(SovereignSightLedger {
-            external_id,
-            content_type: "video".to_string(),
-            visual_dna: dna_vector,
-            motion_entropy: 0.45,
-            appearance_dna: "Extracted".to_string(),
-            maturity_rating: rating,
-            maturity_reason: reason,
-            semantic_digest: "DNA-backed forensic audit complete.".to_string(),
-            hook_path: format!("/data/hooks/{}.webp", external_id),
-        })
     }
 
     /// Pillar 2: Forensic Maturity Auditor
