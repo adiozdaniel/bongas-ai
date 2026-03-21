@@ -54,6 +54,243 @@ This document tracks the technical execution and strategic alignment of the Bong
 
 ---
 
+## 🔍 Detailed Breakdown: Milestone 13 (Sovereign Binary Security & Anti-Tamper)
+
+| Component | Domain | Technical Impact | Status | Remarks on Client's Manifesto Fulfilment |
+| :--- | :--- | :--- | :--- | :--- |
+| **Anti-RE Shield** | Security | Implement code obfuscation and symbol stripping during release. | ⏳ **Pending** | **Section 8.2:** Protects "Sovereign Intelligence" from being extracted or stolen. |
+| **Anti-Debug Logic** | Security | Detect and crash the binary if a debugger (gdb/lldb) is attached. | ⏳ **Pending** | **Section 1.0:** Ensures the "Intelligence Pillar" remains a secure black-box. |
+| **Hardware ID Binding** | Security | Generate unique fingerprints based on CPU/NIC/BIOS metadata. | ⏳ **Pending** | **Section 2.3:** Prevents unauthorized scaling; runs only on purchased "Fixed Infrastructure." |
+| **License Guardian** | Operations | Periodic RSA-signed license heartbeats against the control plane. | ⏳ **Pending** | **Section 8.1:** Replaces variable SaaS OpEx with a secure, managed subscription. |
+| **TEE Validation** | Security | Validator logic to ensure execution within a verified TEE. | ⏳ **Pending** | **Section 10.2:** Guarantees "Compliance by Design"—no leaks outside the perimeter. |
+| **Encrypted State** | Persistence | Zero-copy, encrypted serialization using `bytecheck` and `rkyv`. | ⏳ **Pending** | **Section 1.0:** Ensures "Sovereign Data Security"—even if Redis is compromised. |
+
+---
+
+## 🔍 Detailed Breakdown: Milestone 14 (Remote Orchestration & Control Plane)
+
+| Component | Domain | Technical Impact | Status | Remarks on Client's Manifesto Fulfilment |
+| :--- | :--- | :--- | :--- | :--- |
+| **Command Channel** | Operations | Secure gRPC pipe between binary and Control Plane. | ⏳ **Pending** | **Section 8.2:** Provides "Managed Support" while respecting boundaries. |
+| **Health Heartbeat** | Operations | Sub-second telemetry (CPU, Latency, Cache Hit Rate). | ⏳ **Pending** | **Section 7.3:** Feeds the "Executive Command Center" for real-time visibility. |
+| **Config Overrider** | Operations | Remote "Hot-Swap" logic for Scenarios and Pages without restart. | ⏳ **Pending** | **Section 6.2:** Delivers "Zero-Downtime Logic Pivots." |
+| **Atomic Updater** | Operations | Signed binary updates with automated Blue/Green rollouts. | ⏳ **Pending** | **Section 4.0:** Eliminates "Developer Sprint" via automated delivery. |
+| **Remote Log Stream** | Operations | Scoped error-trace streaming for troubleshooting. | ⏳ **Pending** | **Section 1.0:** Ensures "Resilience & Scale" via preemptive fixes. |
+| **Executive Dashboard** | Operations | "Single Pane of Glass" for cluster and model management. | ⏳ **Pending** | **Section 11.0:** Transforms delivery into "Dynamic Intelligence Orchestration." |
+
+---
+
+## 🔍 Detailed Breakdown: Milestone 15 (Symphony Conductor)
+
+| Component | Domain | Technical Impact | Status | Remarks on Client's Manifesto Fulfilment |
+| :--- | :--- | :--- | :--- | :--- |
+| **Sovereign SLM** | Intelligence | Local, quantized Phi-3/Mistral (ONNX) sidecar logic. | ✅ **Done** | **Section 2.2:** Persona-Based Intelligence without cloud dependency. |
+| **ReAct Logic** | Intelligence | Implementation of "Reason + Act" for logical technical advisory. | ✅ **Done** | **Section 9.2:** Delivers "Semantic Transparency" through reasoning. |
+| **Function Bridge** | Operations | Tool-registry for safe `simulate_impact` and `update_config` calls. | ✅ **Done** | **Section 4.0:** Enables "Operational Agility" via natural language. |
+| **Simulation Guard** | Operations | Mandatory "Propose -> Approve" flow with impact reports. | ✅ **Done** | **Section 10.2:** Ensures "Compliance by Design" for strategy pivots. |
+| **Layman Translator** | Intelligence | Mapping latent math/scores into human-readable narratives. | ✅ **Done** | **Section 9.0:** Provides "Semantic Transparency" for non-tech admins. |
+
+---
+
+## 🔍 Detailed Breakdown: Milestone 16 (The Swahili Brain)
+
+| Component | Domain | Technical Impact | Status | Remarks on Client's Manifesto Fulfilment |
+| :--- | :--- | :--- | :--- | :--- |
+| **Golden SFT** | Intelligence | Supervised Fine-Tuning of SLM using technical Swahili datasets. | ✅ **Done** | **Section 6.0:** Ready-to-reason in regional dialects on Day 1. |
+| **Continuous Forge** | Backstage | Weekly local fine-tuning loop using client metadata in their VPC. | ⏳ **In Progress** | **Section 5.2:** Zero-Lag Intelligence evolution. |
+| **Dialect Adaptor** | Intelligence | Code-switching logic supporting Swahili, Sheng, and Technical English. | ✅ **Done** | **Section 1.0:** Strategic Moat via cultural intelligence. |
+| **Regional Pulse Sync** | Intelligence | Correlating SLM reasoning with the real-time Regional Pulse (M6). | ✅ **Done** | **Section 6.1:** Aligns discovery with local cultural "Zeitgeist." |
+| **LoRA Syncer** | Backstage | Efficient Low-Rank Adaptation for VPC-local model updates. | ⏳ **Pending** | **Section 2.2:** Persona-Based Intelligence in the VPC. |
+
+---
+
+## 🔍 Detailed Breakdown: Milestone 17 (Sovereign Sight)
+
+| Component | Domain | Technical Impact | Status | Remarks on Client's Manifesto Fulfilment |
+| :--- | :--- | :--- | :--- | :--- |
+| **Sight Sidecar** | Intelligence | Isolated `sight-core` (1.2B) worker with opportunistic "Pause" logic. | ✅ **Done** | **Section 1.0:** Background video scanning without impacting API speed. |
+| **Differential Census** | Backstage | ID-delta tracking between client DB and Bongas Ledger (No migrations). | ✅ **Done** | **Section 8.2:** Zero-friction integration with existing catalogs. |
+| **Visual DNA Architect** | Intelligence | Extraction of "Visual DNA" (e.g., (Gospel, Luhya, Slow)). | ✅ **Done** | **Section 3.1:** Automated categorization via rhythmic/cultural DNA. |
+| **Forensic Auditor** | Security | Automated maturity/age rating with "Human-in-the-Loop" override. | ✅ **Done** | **Section 10.2:** Enforced 18+ isolation for "High-Flesh-Tone" DNA. |
+| **Neural Persona Drift** | Discovery | Updating Tribe Weights (M5) based on `sight-core` visual engagement. | ✅ **Done** | **Section 2.2:** Real-time persona shifts based on "Visual Vibe" matches. |
+| **Hook Factory** | Engagement | Automated extraction of high-entropy `.webp` teasers for notifications. | ✅ **Done** | **Section 10.0:** Feeds the "Engagement Pulse" (M9) with visual hooks. |
+
+---
+
+## 🔍 Detailed Breakdown: Milestone 18 (Sovereign Discovery)
+
+| Component | Domain | Technical Impact | Status | Remarks on Client's Manifesto Fulfilment |
+| :--- | :--- | :--- | :--- | :--- |
+| **Blackbox Trainer Draft** | Backstage | Python implementation of the `trainer.so` logic before Cythonization. | ⏳ **Pending** | **Section 8.2:** The core training loop for Local Student Heads. |
+| **Refining Student Heads** | Backstage | Iterative optimization of Vision, SLM and Ranking training loops. | ⏳ **Pending** | **Section 8.2:** Continuous intelligence improvement on-premise. |
+| **Blackbox Trainer** | Backstage | Cythonized `trainer.so` deployed on-premise. | ⏳ **Pending** | **Section 8.2:** Protects IP while running on client infrastructure. |
+| **Frozen Base Models** | Intelligence | Read-only `sight-core` and `slm-base` shipped to client. | ⏳ **Pending** | **Section 1.0:** Zero data exfiltration for heavy feature extraction. |
+| **Local Student Heads** | Intelligence | Local training of `vision_head.onnx` and `slm_head.onnx`. | ⏳ **Pending** | **Section 2.2:** Client-specific taxonomy and vibe categorization. |
+| **Offline Tribe Sync** | Backstage | Batch processing of `ranking.onnx` using interaction ledgers. | ⏳ **Pending** | **Section 5.2:** Avoids live latency overhead while keeping affinities fresh. |
+| **Sight Sidecar** | Orchestration | Asynchronous trigger fetching DNA vectors from the Frozen Base. | ⏳ **Pending** | **Section 1.0:** Decouples video inference from the request path. |
+
+---
+
+## 🔍 Detailed Breakdown: Milestone 19 (The Sequence)
+
+| Component | Domain | Technical Impact | Status | Remarks on Client's Manifesto Fulfilment |
+| :--- | :--- | :--- | :--- | :--- |
+| **Flow Core Base** | Intelligence | Frozen BERT4Rec foundation model deployed via `.onnx`. | ✅ **Done** | **Section 3.1:** Pre-trained sequence logic ready for local adaptation. |
+| **Session Context** | Discovery | Real-time tracking of the immediate "next-click" path history. | ✅ **Done** | **Section 3.2:** "Goldilocks Effect" precision matching. |
+| **Flow Head** | Intelligence | On-premise training of the session-aware attention layer. | ✅ **Done** | **Section 8.2:** Sovereign data processing. |
+| **Sequential Ranker** | Discovery | Integration into the Rust pipeline via `MLInferenceBERT4RecStage`. | ✅ **Done** | **Section 5.2:** Zero-lag sequence evaluation. |
+
+---
+
+## 🔍 Detailed Breakdown: Milestone 20 (Embedded Search & Deep Content)
+
+| Component | Domain | Technical Impact | Status | Remarks on Client's Manifesto Fulfilment |
+| :--- | :--- | :--- | :--- | :--- |
+| **Embedded Foundation** | Infrastructure | Purge Meilisearch; Implement Tantivy Lifecycle Manager. | ✅ **Done** | **Section 1.0:** Total infrastructure sovereignty (No sidecars). |
+| **Search Schema v1** | Discovery | Define multi-modal schema (Keyword + DNA + Spoken Text). | ✅ **Done** | **Section 3.1:** Hybrid understanding of content. |
+| **Indestructible WAL** | Infrastructure | Write-Ahead Log & Atomic commits for zero-loss recovery. | ✅ **Done** | **Section 1.0:** "Blackbox" reliability. |
+| **Auto-Repair Mode** | Infrastructure | Background full re-indexing from Postgres/ClickHouse. | ✅ **Done** | **Section 5.2:** Zero-lag data synchronization. |
+| **Sound Listener** | Intelligence | ML worker for audio-to-text extraction into Tantivy. | ✅ **Done** | **Section 6.0:** Localized understanding via spoken word. |
+| **Sheng-Native Search** | Intelligence | Specialized tokenizers for Swahili/Sheng dialects. | ✅ **Done** | **Section 6.1:** Cultural relevance at the search bar. |
+| **Relevance Fusion** | Discovery | Hybrid Ranking: BM25 + DNA Proximity + History. | ✅ **Done** | **Section 3.2:** High-precision precision matching. |
+| **Ghost Search** | Orchestration | Pre-warm search results during active keystrokes. | ✅ **Done** | **Section 4.0:** Perceived zero-latency search. |
+
+---
+
+## APPLICATION STATE
+
+```mermaid
+   graph LR
+       %% External Actors
+       subgraph ClientSpace ["External Actors / Central Control"]
+           UI["Clients (Web/Mobile/TV)<br/>SDUI Canvas"]
+           Telemetry["Client Events<br/>Telemetry Stream"]
+           Admin["Admin / CI/CD<br/>Strategy Control"]
+           CentralServer["🛰️ Bongas-Server (Cloud)<br/>Keys | Hyperparams | Binary Updates"]
+       end
+
+       %% Sovereign Intelligence Orchestrator
+       subgraph SovereignOrchestrator ["Sovereign Orchestrator (trainer.so)"]
+           direction TB
+           Heartbeat["Nightly Heartbeat<br/>(Key Retrieval)"]
+           Guard["Binary Guard<br/>(Tamper Check & Silent Update)"]
+           
+           subgraph BlackboxTrainer ["Blackbox Training Loop"]
+               VisionTrainer["Vision Auditor Head<br/>(Safety & Vibe)"]
+               TribeTrainer["Tribe Conductor Head<br/>(Ranking/Affinities)"]
+               SLMTrainer["SLM Fine-Tuner<br/>(Local Context)"]
+           end
+           
+           Exporter["ONNX Exporter<br/>(Graph Optimization)"]
+       end
+
+       %% Bongas-AI Application
+       subgraph BongasAI ["Bongas-AI Core Engine (Rust)"]
+           
+           %% API Gateway Layer
+           subgraph APIGateway ["Symphony Gateway"]
+               StageAPI["🌍 THE STAGE"]
+               BackstageAPI["🔐 THE BACKSTAGE"]
+           end
+
+           Resolver["Symphony Resolver"]
+           OTLP["OTLP Shield"]
+
+           %% The Read Path
+           subgraph RuntimePlane ["Runtime (Read Path)"]
+               Registry["Pipeline Registry"]
+               SSE["SSE Fan-Out"]
+               Ghost["Ghost Cache"]
+               SearchIndex["🔍 Embedded Index<br/>(Tantivy)"]
+               InferenceEngine["⚡ ONNX Inference Engine<br/>(Sub-ms Execution)"]
+           end
+           
+           %% The Write/Async Path
+           subgraph ControlPlane ["Intelligence (Write Path)"]
+               Workers["WorkersManager"]
+               
+               TribeWorker["Tribe Orchestrator"]
+               SearchSync["Index Sync"]
+               SoundWorker["Sound Listener"]
+               PulseWorker["Regional Pulse"]
+               ReasoningWorker["Reasoning Engine"]
+               FatigueWorker["Fatigue Sync"]
+               ExportWorker["Parquet Export"]
+           end
+
+           Notifier["Notification Dispatcher"]
+       end
+
+       %% Data Storage Layer
+       subgraph DataLayer ["Sovereign Infrastructure"]
+           PG[(PostgreSQL)]
+           Redis[(Redis)]
+           ClickHouse[(ClickHouse)]
+           Kafka{"Kafka Topic"}
+       end
+
+       %% ML / Intelligence Integration
+       subgraph IntelligenceLayer ["ML Assets"]
+           FrozenModels["📦 Frozen Base Models<br/>(1.3B+ Params / Encrypted)"]
+           StudentHeads["🧠 ONNX Student Heads<br/>(vision_head.onnx / ranking.onnx)"]
+           HiveMind["HiveMind SLM"]
+       end
+
+       %% --- CONNECTIONS ---
+       
+       %% --- ORCHESTRATION PATHS ---
+       CentralServer <--> Heartbeat
+       CentralServer -- "Binary Hash/Update" --> Guard
+       Guard -- "Silent Update (SIGUSR2)" --> BongasAI
+       
+       ClickHouse -- "Interaction Data / DNA" --> BlackboxTrainer
+       FrozenModels -- "Base Weights" --> BlackboxTrainer
+       
+       BlackboxTrainer --> Exporter
+       Exporter --> StudentHeads
+       StudentHeads --> InferenceEngine
+       
+       %% --- DISCOVERY PATHS ---
+       UI <--> StageAPI
+       Telemetry <--> StageAPI
+       StageAPI <--> Resolver
+       Resolver <--> OTLP
+       OTLP <--> Registry
+       Registry <--> SSE
+       Registry <--> Ghost
+       Registry <--> Redis
+       Registry <--> PG
+       Registry <--> SearchIndex
+       Registry <--> InferenceEngine
+       InferenceEngine <--> StudentHeads
+       Ghost <--> Redis
+
+       %% --- INTELLIGENCE PATHS ---
+       Workers <--> SearchSync
+       Workers <--> SoundWorker
+       Workers <--> ReasoningWorker
+       Workers <--> ExportWorker
+       SearchSync <--> PG
+       SearchSync <--> SearchIndex
+       SoundWorker <--> ClickHouse
+       SoundWorker <--> SearchIndex
+       ExportWorker <--> ClickHouse
+       ReasoningWorker <--> HiveMind
+       PulseWorker <--> HiveMind
+       OTLP -.- ClickHouse
+
+       %% --- MANAGEMENT PATHS ---
+       Admin <--> BackstageAPI
+       BackstageAPI <--> Resolver
+       Workers <--> TribeWorker
+       Workers <--> PulseWorker
+       Workers <--> FatigueWorker
+       FatigueWorker <--> Redis
+       TribeWorker <--> ClickHouse
+```
+
+---
+
 ## 🔍 Detailed Breakdown: Milestone 21 (The Sovereign Training Pillar - Symphony 3.0)
 
 | Component | Technical Implementation | Status | Remarks on Milestone 21 Fulfilment |
