@@ -172,8 +172,8 @@ impl OnnxInferenceEngine {
                 let prediction = model.forward(&tribe_tensor, &dna_tensor)
                     .map_err(|e| ModelError::InferenceFailed(format!("forward pass: {e}")))?;
                 
-                let score = prediction.to_vec1::<f32>()
-                    .map_err(|e| ModelError::InferenceFailed(format!("extract result: {e}")))? [0];
+                let score = prediction.to_vec2::<f32>()
+                    .map_err(|e| ModelError::InferenceFailed(format!("extract result: {e}")))? [0][0];
                 
                 let latency = start.elapsed();
                 if let Some(ref analytics) = self.analytics {
