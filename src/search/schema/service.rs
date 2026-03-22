@@ -12,7 +12,8 @@ pub struct SearchSchema {
     pub id: Field,
     pub title: Field,
     pub description: Field,
-    pub spoken_content: Field,
+    pub spoken_native: Field,
+    pub spoken_translated: Field,
     pub vision_dna: Field,
     pub metadata: Field,
 }
@@ -35,8 +36,9 @@ impl SearchSchema {
         let title = schema_builder.add_text_field("title", text_options.clone());
         let description = schema_builder.add_text_field("description", text_options.clone());
 
-        // 3. Deep Content: Spoken Words (Sheng-Native)
-        let spoken_content = schema_builder.add_text_field("spoken_content", text_options);
+        // 3. Deep Content: Spoken Words (Separated for Boosting)
+        let spoken_native = schema_builder.add_text_field("spoken_native", text_options.clone());
+        let spoken_translated = schema_builder.add_text_field("spoken_translated", text_options);
 
         // 4. Vision DNA: Vector Storage (Stored as bytes)
         let vision_dna = schema_builder.add_bytes_field("vision_dna", STORED);
@@ -49,7 +51,8 @@ impl SearchSchema {
             id,
             title,
             description,
-            spoken_content,
+            spoken_native,
+            spoken_translated,
             vision_dna,
             metadata,
         }
