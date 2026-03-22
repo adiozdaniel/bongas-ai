@@ -116,7 +116,7 @@ impl SearchSyncWorker {
                 schema.id => item.item_id as i64,
                 schema.title => item.title.unwrap_or_else(|| format!("Item {}", item.item_id)),
                 schema.description => item.description.unwrap_or_default(),
-                schema.spoken_content => "", 
+                schema.spoken_native => "", 
                 schema.vision_dna => dna_bytes,
                 schema.metadata => metadata_json
             );

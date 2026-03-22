@@ -1,5 +1,6 @@
 //! Engine pulse workers and background maintenance tasks.
 
+use crate::engine::intelligence::workers::linguistic::LinguisticWorker;
 use std::sync::Arc;
 use tokio::sync::broadcast;
 use tracing::{info, warn};
@@ -27,6 +28,7 @@ pub struct WorkersManager {
     sovereign_sight: Option<Arc<SovereignSightWorker>>,
     ghost_execution: Option<Arc<GhostExecutionWorker>>,
     sound_listener: Option<Arc<SoundListenerWorker>>,
+    linguistic: Option<Arc<LinguisticWorker>>,
 }
 
 impl Default for WorkersManager {
@@ -48,6 +50,7 @@ impl WorkersManager {
             sovereign_sight: None,
             ghost_execution: None,
             sound_listener: None,
+            linguistic: None,
         }
     }
 
@@ -98,6 +101,11 @@ impl WorkersManager {
 
     pub fn with_sound_listener(mut self, worker: Arc<SoundListenerWorker>) -> Self {
         self.sound_listener = Some(worker);
+        self
+    }
+
+    pub fn with_linguistic(mut self, worker: Arc<LinguisticWorker>) -> Self {
+        self.linguistic = Some(worker);
         self
     }
 
@@ -209,6 +217,15 @@ impl WorkersManager {
 
         // 10. Start Sound Listener Worker (M20 Phase 3)
         if let Some(ref worker) = self.sound_listener {
+            let worker = worker.clone();
+            let shutdown_rx = shutdown_tx.subscribe();
+            tokio::spawn(async move {
+                worker.start(shutdown_rx).await;
+            });
+        }
+
+        // 11. Start Linguistic Worker (Polyglot Ear Stage 2)
+        if let Some(ref worker) = self.linguistic {
             let worker = worker.clone();
             let shutdown_rx = shutdown_tx.subscribe();
             tokio::spawn(async move {

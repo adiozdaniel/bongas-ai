@@ -141,6 +141,28 @@ impl HiveMindConnector {
         Ok("Recommended based on your viewing patterns".to_string())
     }
 
+    /// Perform multi-lingual translation and dialect mapping via the Hive Mind.
+    pub async fn translate(&self, text: &str, source_lang: &str) -> Result<String> {
+        debug!(text, source_lang, "Translating text via Hive Mind");
+
+        // In production, this would call a specialized translation LLM 
+        // (e.g. NLLB-200 or a fine-tuned Swahili Brain model) via the central server.
+        
+        if source_lang == "en" {
+            return Ok(text.to_string());
+        }
+
+        // Mock translation logic for cultural intelligence testing
+        let translation = match source_lang {
+            "sw" => format!("[Swahili to English] {}", text),
+            "fr" => format!("[French to English] {}", text),
+            "sheng" => format!("[Sheng to English] {}", text),
+            _ => format!("[{} to English] {}", source_lang, text),
+        };
+
+        Ok(translation)
+    }
+
     /// The Symphony Conductor (Admin ReAct Interface)
     /// 
     /// Implements behavioral rails:
