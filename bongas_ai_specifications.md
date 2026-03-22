@@ -59,22 +59,22 @@ Bongas-AI uses a highly modular `PipelineRegistry` that allows administrators to
 * **Mechanism:** A background `ReasoningWorker` proactively identifies high-probability profile/item matches and uses the HiveMind LLM to generate human-readable explanations.
 * **Execution:** Surfaces trust-building reasons (e.g., "Because you enjoy cyberpunk documentaries") to build user trust. It falls back to high-speed heuristic matching of profile affinities to item tags if a pre-computed reason isn't available.
 
-### Domain C: Blackbox Sovereign Intelligence (On-Premise)
+### Domain C: Sovereign Intelligence (Native Rust)
 
-To balance **Data Sovereignty** with **IP Protection**, Bongas-AI utilizes a bifurcated on-premise training architecture:
+Bongas-AI delivers true "Sovereign Intelligence" by executing all model evolution and security logic natively within the Rust binary.
 
 #### **5. Frozen Base Models (The Senses)**
 
 * **Mechanism:** Massive pre-trained models (e.g., `sight-core` for visual DNA, `slm-base` for natural language) are shipped to the client's environment as read-only, optimized `.safetensors` assets. They perform heavy feature extraction without data exfiltration.
 
-#### **6. Cythonized Local Trainer (`trainer.so`)**
+#### **6. Sovereign Training Pillar (Native Rust)**
 
-* **Mechanism:** An obfuscated, compiled Python worker runs locally on the client's infrastructure. It accesses the client's private ClickHouse ledgers and uses the Frozen Base Models to asynchronously train three lightweight "Student Heads":
-
+* **Mechanism:** Utilizing the **Candle** framework, the engine performs on-premise training and fine-tuning directly against the client's private ClickHouse ledgers. This eliminates all external Python dependencies and `trainer.so` sidecars.
+* **Architecture:** Asynchronously trains lightweight "Student Heads" to adapt the global foundation models to local context:
 * **`vision_head.safetensors` (The Auditor):** Maps raw visual DNA to specific safety ceilings (18+, Kids) and semantic vibes.
 * **`slm_head.safetensors` (The Librarian):** Generates natural language summaries and taxonomy tags.
 * **`ranking.safetensors` (The Conductor):** Learns aggregate Tribe-level content affinities.
-* **Execution:** These specialized Candle models are hot-reloaded into the Rust *Stage* for sub-millisecond real-time execution, ensuring the core ranking path never blocks on heavy ML training.
+* **Execution:** Newly trained weights are hot-swapped via an **Atomic Weight Registry**, ensuring the core discovery path never blocks on heavy ML training.
 
 ---
 
@@ -96,21 +96,21 @@ Automated workers continuously scan user arrival patterns to identify dormant pr
 
 ---
 
-## 4. Future Horizons: The Symphony 3.0 Roadmap
+## 4. Current Milestone Achievement: Symphony 3.0
 
-The architecture is designed for continuous evolution, focusing on production-grade engagement, Algolia-scale search, and deep agentic intelligence.
+The platform has achieved its primary "Sovereign Singularity" goals:
 
-### 4.1 🔍 Elastic Hybrid Search
+### 4.1 🔍 Embedded Hybrid Search
 
-Breaking the discovery barrier with full-text keyword matching at sub-10ms speeds using **Meilisearch**. Results will be dynamically re-ranked via our existing **Semantic Vector Similarity** pipelines.
+Breaking the discovery barrier with full-text keyword matching at sub-10ms speeds using **Tantivy** embedded directly in the binary. Results are dynamically re-ranked via our existing **Semantic Vector Similarity** pipelines.
 
 ### 4.2 🧠 The Symphony Conductor (Agentic Reasoning)
 
-A natural-language "Executive Assistant" powered by a local, quantized Small Language Model (SLM). It can reason about system performance, simulate impact of setting changes, and propose safe configuration updates.
+A natural-language "Executive Assistant" powered by a local, quantized Small Language Model (SLM) running natively via **Candle**. It can reason about system performance, simulate impact of setting changes, and propose safe configuration updates.
 
 ### 4.3 🌍 The Swahili Brain (Golden Bootstrap)
 
-Ensuring cultural intelligence by pre-training the Conductor on technical and conversational East African dialects. Continuous fine-tuning (LoRA) will happen locally within the client VPC to keep the model synchronized with local catalog trends.
+Ensuring cultural intelligence by pre-training the Conductor on technical and conversational East African dialects. Continuous fine-tuning (LoRA) happens locally within the client VPC using native Rust training loops.
 
 ---
 

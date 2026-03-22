@@ -80,7 +80,7 @@ This document tracks the technical execution and strategic alignment of the Bong
 
 ---
 
-_**Application Structure State**
+_**Application Structure State At This Point**
 
 ```mermaid
    graph LR
@@ -231,6 +231,110 @@ _**Application Structure State**
 
 ---
 
+_**Application Structure State At This Point**
+
+```mermaid
+graph LR
+    %% External Actors
+    subgraph ClientSpace ["External Actors"]
+        UI["Clients (Web/Mobile/TV)<br/>SDUI Canvas"]
+        Telemetry["Client Events<br/>Telemetry Stream"]
+        Admin["Admin / CI/CD<br/>Strategy Control"]
+    end
+
+    %% Bongas-AI Application
+    subgraph BongasAI ["Bongas-AI Core Engine"]
+        
+        %% API Gateway Layer
+        subgraph APIGateway ["Symphony Gateway"]
+            StageAPI["🌍 THE STAGE"]
+            BackstageAPI["🔐 THE BACKSTAGE"]
+        end
+
+        Resolver["Symphony Resolver"]
+        OTLP["OTLP Shield"]
+
+        %% The Read Path
+        subgraph RuntimePlane ["Runtime (Read Path)"]
+            Registry["Pipeline Registry"]
+            SSE["SSE Fan-Out"]
+            Ghost["Ghost Cache"]
+            SearchIndex["🔍 Embedded Index<br/>(Tantivy)"]
+        end
+        
+        %% The Write/Async Path
+        subgraph ControlPlane ["Intelligence (Write Path)"]
+            Workers["WorkersManager"]
+            
+            TribeWorker["Tribe Orchestrator"]
+            SearchSync["Index Sync"]
+            SoundWorker["Sound Listener"]
+            PulseWorker["Regional Pulse"]
+            ReasoningWorker["Reasoning Engine"]
+            FatigueWorker["Fatigue Sync"]
+            ExportWorker["Parquet Export"]
+        end
+
+        Notifier["Notification Dispatcher"]
+    end
+
+    %% Data Storage Layer
+    subgraph DataLayer ["Sovereign Infrastructure"]
+        PG[(PostgreSQL)]
+        Redis[(Redis)]
+        ClickHouse[(ClickHouse)]
+        Kafka{"Kafka Topic"}
+    end
+
+    %% ML / Intelligence Integration
+    subgraph IntelligenceLayer ["ML Assets"]
+        ONNX["ONNX Models"]
+        HiveMind["HiveMind SLM"]
+    end
+
+    %% --- CONNECTIONS ---
+    
+    %% --- DISCOVERY PATHS ---
+    UI <--> StageAPI
+    Telemetry <--> StageAPI
+    StageAPI <--> Resolver
+    Resolver <--> OTLP
+    OTLP <--> Registry
+    Registry <--> SSE
+    Registry <--> Ghost
+    Registry <--> Redis
+    Registry <--> PG
+    Registry <--> SearchIndex
+    Registry <--> ONNX
+    Ghost <--> Redis
+
+    %% --- INTELLIGENCE PATHS ---
+    Workers <--> SearchSync
+    Workers <--> SoundWorker
+    Workers <--> ReasoningWorker
+    Workers <--> ExportWorker
+    SearchSync <--> PG
+    SearchSync <--> SearchIndex
+    SoundWorker <--> ClickHouse
+    SoundWorker <--> SearchIndex
+    ExportWorker <--> ClickHouse
+    ReasoningWorker <--> HiveMind
+    PulseWorker <--> HiveMind
+    OTLP -.- ClickHouse
+
+    %% --- MANAGEMENT PATHS ---
+    Admin <--> BackstageAPI
+    BackstageAPI <--> Resolver
+    Workers <--> TribeWorker
+    Workers <--> PulseWorker
+    Workers <--> FatigueWorker
+    FatigueWorker <--> Redis
+    TribeWorker <--> ClickHouse
+    Notifier <--> Kafka
+```
+
+---
+
 ## 🔍 Detailed Breakdown: Milestone 19 (The Sequence)
 
 | Component | Domain | Technical Impact | Status | Remarks on Client's Manifesto Fulfilment |
@@ -257,7 +361,7 @@ _**Application Structure State**
 
 ---
 
-_**Application Structure State**
+_**Application Structure State At This Point**
 
 ```mermaid
    graph LR
@@ -402,3 +506,107 @@ _**Application Structure State**
 | **Production Persistence** | Persistence | Sync-to-Async bridge using `spawn_blocking` for safe, background model saving. | ✅ **Done** | **Section 5.2:** Ensures atomic swaps are never delayed by disk latency. |
 | **Hybrid Inference Bridge** | Discovery | Unified execution path: `Frozen DNA (DB) + Live Student Head (Candle)`. | ✅ **Done** | **Section 5.1:** Achieves sub-ms "Elite Intelligence" in the request path. |
 | **Observe-Execute-Yield** | Orchestration | Priority-aware worker lifecycle that yields to API requests instantly. | ✅ **Done** | **Section 1.0:** Ensures the API always wins the CPU race. |
+
+---
+
+_**Application Structure State At This Point**
+
+```mermaid
+graph TD
+    %% 1. Command & Control (Security Layer)
+    subgraph Control["🛡️ Sovereign Control"]
+        Server["🛰️ Central Server"] <---> Guard["🛡️ Sovereign Guard (Native Rust)"]
+    end
+
+    %% 2. User Interface
+    subgraph UI_Space["User Interface"]
+        direction LR
+        UI["📱 Clients (Web/Mobile/TV)"]
+        Admin["🔐 Admin Portal (Strategy Control)"]
+    end
+    UI_Space <---> Gateway["🌍 Stage API (Symphony Gateway)"]
+
+    %% 3. Unified Engine Core (Rust)
+    subgraph BongasAI["Bongas-AI Unified Engine (Rust)"]
+        Gateway <---> Resolver["🎼 Symphony Resolver"]
+        
+        %% Security & Heartbeat
+        Guard <---> Heartbeat["💓 Sovereign Heartbeat"]
+        Guard --- Updater["🔄 Silent Updater"]
+
+        %% Ingestion (Sensory)
+        Ingestion["📥 Ingestion Processor"]
+
+        %% Pillar grouping
+        subgraph ReadPath["🎯 THE STAGE (Read Path)"]
+            direction TB
+            Inference["⚡ Candle Engine"]
+            Cache["Ghost Cache"]
+            Search["🔍 Tantivy Search"]
+        end
+
+        subgraph LearnPath["🏗️ THE BACKSTAGE (Learning Path)"]
+            direction TB
+            NativeTrainer["Native Rust Trainer"]
+            TrainingState["TrainingState"]
+        end
+
+        subgraph Workers["Intelligence Workers (The Pulse)"]
+            direction TB
+            Sight["👁️ Sovereign Sight (Vision DNA)"]
+            Tribe["👥 Tribe Orch (Clustering)"]
+            Ghost["👻 Ghost Exec (Look-Ahead)"]
+            Pulse["🌍 Regional Pulse (Hive Mind)"]
+            SearchSync["🔄 Search Sync (Tantivy)"]
+            Sound["👂 Sound Listener"]
+            Decay["📉 Signal Decay"]
+            Fatigue["🥱 Fatigue Sync"]
+            Reasoning["🧠 Reasoning"]
+            Digest["📝 Digest Worker"]
+        end
+    end
+
+    %% 4. Sovereign Infrastructure (Horizontal)
+    subgraph Infra["💾 Sovereign Infrastructure"]
+        direction LR
+        PG[(PostgreSQL)] --- RD[(Redis)] --- CH[(ClickHouse DNA)]
+    end
+
+    %% --- DATA & PROCESS FLOW ---
+    
+    %% 1. Synchronous Read Path (User Request)
+    UI_Space -- "1. Request" --> Gateway
+    Gateway -- "2. Orchestrate" --> Resolver
+    Resolver -- "3. Query" --> Search
+    Resolver -- "4. Fetch" --> Cache
+    
+    %% 2. Live Inference Flow
+    TrainingState -- "5. Live Weights" --> Inference
+    Resolver -- "6. Predict" --> Inference
+    
+    %% 3. The Pulse: Asynchronous Data Generation (Workers)
+    SearchSync -- "Pulls Catalog" --> PG
+    SearchSync -- "Updates Index" --> Search
+    
+    Ghost -- "Look-Ahead Data" --> RD
+    Pulse -- "Semantic Vectors" --> RD
+    Tribe -- "Cluster IDs" --> RD
+    
+    %% 4. The Sovereign Learning Loop (Secure Ingestion)
+    %% a) Data Collection via Secure Gateway
+    UI_Space -- "Telemetry & Clicks" --> Gateway
+    Gateway -- "Buffer & Validate" --> Ingestion
+    Ingestion -- "Sanitized Interactions" --> CH
+    
+    %% b) DNA Extraction
+    TrainingState -- "Vision Weights" --> Sight
+    Sight -- "Visual DNA & Audits" --> CH
+    
+    %% c) On-Premise Training
+    CH -- "Interaction + Vision DNA" --> NativeTrainer
+    NativeTrainer -- "Atomic Checkpoints" --> TrainingState
+
+    %% Security & Management
+    Guard -- "Silent Hot-Swap" --> BongasAI
+    Cache <---> RD
+```
