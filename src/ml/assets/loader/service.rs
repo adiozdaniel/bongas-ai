@@ -21,11 +21,11 @@ use crate::config::MlConfig;
 use crate::db::ModelRegistry;
 use crate::db::ModelRepository;
 use crate::error::ModelError;
-use crate::ml::inference::onnx::service::OnnxInferenceEngine;
+use crate::ml::inference::candle::service::CandleInferenceEngine;
 
 /// Metadata about a cached model for staleness tracking.
 struct CachedModel {
-    engine: Arc<OnnxInferenceEngine>,
+    engine: Arc<CandleInferenceEngine>,
     loaded_at: Instant,
 }
 
@@ -57,11 +57,11 @@ impl ModelLoader {
         }
     }
 
-    /// Load all deployed ONNX models from database with retry.
+    /// Load all deployed Candle models from database with retry.
     pub async fn load_all_models(&self) -> Result<usize> {
-        info!("Loading all deployed ONNX models...");
+        info!("Loading all deployed Candle models...");
 
-        let deployed_models = self.model_repo.get_deployed_onnx_models().await?;
+        let deployed_models = self.model_repo.get_deployed_candle_models().await?;
         let mut count = 0;
 
         for model_entry in deployed_models {
@@ -71,7 +71,7 @@ impl ModelLoader {
                     info!(
                         model = %model_entry.model_name,
                         version = %model_entry.version,
-                        "Loaded ONNX model"
+                        "Loaded Candle model"
                     );
                 }
                 Err(e) => {
@@ -79,7 +79,7 @@ impl ModelLoader {
                         model = %model_entry.model_name,
                         version = %model_entry.version,
                         error = %e,
-                        "Failed to load ONNX model after retries"
+                        "Failed to load Candle model after retries"
                     );
                 }
             }
@@ -91,7 +91,7 @@ impl ModelLoader {
             analytics.increment_throughput("ml.model_loader.load_all");
         }
 
-        info!(count = count, "ONNX models loaded");
+        info!(count = count, "Candle models loaded");
         Ok(count)
     }
 
@@ -99,7 +99,7 @@ impl ModelLoader {
     async fn load_model_with_retry(
         &self,
         model_entry: &ModelRegistry,
-    ) -> Result<Arc<OnnxInferenceEngine>, ModelError> {
+    ) -> Result<Arc<CandleInferenceEngine>, ModelError> {
         let max_retries = self.config.model_load_max_retries;
         let base_backoff = self.config.model_load_base_backoff;
         let max_backoff = self.config.model_load_max_backoff;
@@ -150,33 +150,49 @@ impl ModelLoader {
         }))
     }
 
-    /// Load a single ONNX model (one attempt, no retry).
+    /// Load a single Candle model (one attempt, no retry).
     async fn load_model(
         &self,
         model_entry: &ModelRegistry,
-    ) -> Result<Arc<OnnxInferenceEngine>, ModelError> {
+    ) -> Result<Arc<CandleInferenceEngine>, ModelError> {
         let start = Instant::now();
         let metric_key = format!("ml.model_loader.load.{}", model_entry.model_name);
 
-        let model_path = if let Some(onnx_path) = &model_entry.onnx_model_path {
-            self.model_dir.join(onnx_path)
+        let model_path = if let Some(path) = &model_entry.safetensors_path {
+            self.model_dir.join(path)
         } else {
             return Err(ModelError::NotFound(format!(
-                "ONNX model path not set for {}",
+                "Model path not set for {}",
                 model_entry.model_name
             )));
         };
 
         if !model_path.exists() {
+            // Support .safetensors extension fallback
+            let safetensors_path = model_path.with_extension("safetensors");
+            if safetensors_path.exists() {
+                return self.load_candle_engine(&safetensors_path, model_entry, start, &metric_key).await;
+            }
+
             return Err(ModelError::NotFound(format!(
-                "ONNX model file not found: {:?}",
+                "Model file not found: {:?}",
                 model_path
             )));
         }
 
+        self.load_candle_engine(&model_path, model_entry, start, &metric_key).await
+    }
+
+    async fn load_candle_engine(
+        &self,
+        model_path: &Path,
+        model_entry: &ModelRegistry,
+        start: Instant,
+        metric_key: &str,
+    ) -> Result<Arc<CandleInferenceEngine>, ModelError> {
         let model_key = format!("{}:{}", model_entry.model_name, model_entry.version);
-        let engine = OnnxInferenceEngine::new(
-            &model_path,
+        let engine = CandleInferenceEngine::new(
+            model_path,
             model_key.clone(),
             &self.config,
             self.observer.clone(),
@@ -188,8 +204,8 @@ impl ModelLoader {
 
         // Analytics
         if let Some(ref analytics) = self.analytics {
-            analytics.record_response_time(&metric_key, latency.as_millis() as u64);
-            analytics.increment_throughput(&metric_key);
+            analytics.record_response_time(metric_key, latency.as_millis() as u64);
+            analytics.increment_throughput(metric_key);
         }
 
         // Cache in memory
@@ -202,7 +218,7 @@ impl ModelLoader {
     }
 
     /// Get a stale model from cache if within max stale age.
-    async fn get_stale_model(&self, model_key: &str) -> Option<Arc<OnnxInferenceEngine>> {
+    async fn get_stale_model(&self, model_key: &str) -> Option<Arc<CandleInferenceEngine>> {
         let models = self.models.read().await;
         if let Some(cached) = models.get(model_key) {
             if cached.loaded_at.elapsed() <= self.config.fallback_max_stale_age {
@@ -217,7 +233,7 @@ impl ModelLoader {
     pub async fn get_model(
         &self,
         model_name: &str,
-    ) -> Result<Arc<OnnxInferenceEngine>> {
+    ) -> Result<Arc<CandleInferenceEngine>> {
         self.get_latest_model(model_name).await
     }
 
@@ -226,7 +242,7 @@ impl ModelLoader {
         &self,
         model_name: &str,
         version: &str,
-    ) -> Result<Arc<OnnxInferenceEngine>> {
+    ) -> Result<Arc<CandleInferenceEngine>> {
         let model_key = format!("{}:{}", model_name, version);
 
         // Analytics: track cache hit/miss
@@ -249,11 +265,11 @@ impl ModelLoader {
 
         // Load from database if not cached
         let model_entry = self.model_repo
-            .get_onnx_model(model_name, version)
+            .get_candle_model(model_name, version)
             .await?
             .context(format!("Model not found: {}", model_key))?;
 
-        let engine: Arc<OnnxInferenceEngine> = self.load_model_with_retry(&model_entry).await
+        let engine: Arc<CandleInferenceEngine> = self.load_model_with_retry(&model_entry).await
             .map_err(|e| anyhow::anyhow!("{}", e))?;
         Ok(engine)
     }
@@ -262,7 +278,7 @@ impl ModelLoader {
     pub async fn get_latest_model(
         &self,
         model_name: &str,
-    ) -> Result<Arc<OnnxInferenceEngine>> {
+    ) -> Result<Arc<CandleInferenceEngine>> {
         let model_entry = self.model_repo
             .get_latest_deployed(model_name)
             .await?
@@ -278,14 +294,14 @@ impl ModelLoader {
             }
         }
 
-        let engine: Arc<OnnxInferenceEngine> = self.load_model_with_retry(&model_entry).await
+        let engine: Arc<CandleInferenceEngine> = self.load_model_with_retry(&model_entry).await
             .map_err(|e| anyhow::anyhow!("{}", e))?;
         Ok(engine)
     }
 
     /// Reload all models (hot-reload) with fallback to stale on failure.
     pub async fn reload_all(&self) -> Result<usize> {
-        info!("Reloading all ONNX models...");
+        info!("Reloading all models...");
 
         // Keep stale models around for fallback
         let old_count = self.models.read().await.len();

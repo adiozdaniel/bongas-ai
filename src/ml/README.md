@@ -14,7 +14,7 @@ graph TD
     
     subgraph Execution [🎯 THE STAGE]
         Conductor --> Inference[Inference Pillar]
-        Inference --> ONNX[ONNX: Real-time]
+        Inference --> Candle[Candle: Pure-Rust]
         Inference --> Vector[Embeddings: Vector Search]
         Inference --> Features[Feature Store: Retrieval]
     end
@@ -41,7 +41,7 @@ graph TD
 
 The latency-sensitive fast path for real-time model execution and feature retrieval.
 
-- **ONNX**: Real-time runtime with hardware acceleration.
+- **Candle**: Pure-Rust inference engine with native performance.
 - **Embeddings**: High-performance vector resolution and lookups.
 - **Features**: Low-latency feature store fetching.
 
