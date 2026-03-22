@@ -78,6 +78,8 @@ candle-core = "0.8"
 candle-nn = "0.8"
 candle-transformers = "0.8"
 safetensors = "0.5"
+tokenizers = "0.21"
+hf-hub = "0.4"
 
 # Background Parallelism (Milestone 21)
 rayon = "1.10"
@@ -87,6 +89,7 @@ uuid = { version = "1", features = ["v4", "serde"] }
 url = "2.5"
 tantivy = "0.22"
 jieba-rs = "0.6"
+symphonia = { version = "0.5", features = ["all"] }
 lazy_static = "1.4"
 dashmap = "6"
 rand = "0.8"
