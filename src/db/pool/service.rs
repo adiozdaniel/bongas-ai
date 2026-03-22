@@ -127,16 +127,15 @@ impl ResilientPool {
         config: ResilientPoolConfig,
         circuit_breaker_registry: Arc<CircuitBreakerRegistry>,
     ) -> Result<Self> {
-        // Create the underlying sqlx pool
+        // Create the underlying sqlx pool lazily to avoid blocking bootstrap
         let pool = PgPoolOptions::new()
             .max_connections(config.max_connections)
             .min_connections(config.min_connections)
             .acquire_timeout(config.acquire_timeout)
             .idle_timeout(config.idle_timeout)
             .max_lifetime(config.max_lifetime)
-            .connect(&config.url)
-            .await
-            .context("Failed to create database pool")?;
+            .connect_lazy(&config.url)
+            .context("Failed to create lazy database pool")?;
 
         // Get or create circuit breaker from registry
         let cb_config = CircuitBreakerConfig::builder()

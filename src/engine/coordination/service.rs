@@ -69,6 +69,7 @@ pub struct EngineComponents {
     pub shutdown_tx: broadcast::Sender<()>,
     pub resilience_metrics: Arc<ResilienceMetricsCollector>,
     pub system_health: Arc<crate::resilience::collector::SystemHealthCollector>,
+    pub is_ready: Arc<RwLock<bool>>,
 }
 
 /// 🎼 THE CONDUCTOR: The Grand Coordinator for BONGAS-AI.
@@ -87,12 +88,11 @@ pub struct BongasEngine {
     pub ingestion: Arc<RwLock<IngestionManager>>,
 
     pub shutdown_tx: broadcast::Sender<()>,
+    pub is_ready: Arc<RwLock<bool>>,
 }
 
 impl BongasEngine {
     pub async fn new(components: EngineComponents) -> anyhow::Result<Self> {
-        components.execution.cache_repo.pool().run_migrations().await?;
-
         let security = Arc::new(SecurityManager::new(
             components.config.security.clone(),
             &components.config.server.environment,
@@ -126,17 +126,42 @@ impl BongasEngine {
             cache: components.cache,
             ingestion: Arc::new(RwLock::new(ingestion_mgr)),
             shutdown_tx: components.shutdown_tx,
+            is_ready: components.is_ready,
         })
     }
 
     pub async fn start(&self) {
         info!("🎼 Starting Bongas-AI background orchestration...");
+        
+        // ─── BACKGROUND INFRASTRUCTURE INITIALIZATION ───────────────────────
+        let pool = self.execution.cache_repo.pool();
+        let is_ready = self.is_ready.clone();
+        let shutdown_tx = self.shutdown_tx.clone();
+        
+        tokio::spawn(async move {
+            info!("⏳ Running database migrations in background...");
+            match pool.run_migrations().await {
+                Ok(_) => {
+                    info!("✅ Database migrations complete. Marking engine as READY.");
+                    let mut ready = is_ready.write().await;
+                    *ready = true;
+                }
+                Err(e) => {
+                    tracing::error!("❌ CRITICAL: Database migrations failed: {}. Initiating graceful shutdown.", e);
+                    let _ = shutdown_tx.send(());
+                    // Small delay to allow log to flush before process exit if needed
+                    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                    std::process::exit(1);
+                }
+            }
+        });
+
         self.ml_pillar.training.start().await;
 
-        let shutdown_tx = self.shutdown_tx.clone();
+        let shutdown_tx_workers = self.shutdown_tx.clone();
         let workers = self.intelligence.workers.clone();
         tokio::spawn(async move {
-            workers.start(shutdown_tx).await;
+            workers.start(shutdown_tx_workers).await;
         });
     }
 

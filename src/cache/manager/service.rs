@@ -11,6 +11,8 @@ use crate::config::RedisConfig;
 use crate::db::CacheRepository;
 use redis::aio::ConnectionManager;
 
+use tokio::sync::RwLock;
+
 /// Netflix-grade cache manager with multi-tier caching.
 ///
 /// Architecture:
@@ -20,7 +22,7 @@ use redis::aio::ConnectionManager;
 pub struct CacheManager {
     l1: Option<CacheLayer>,
     l2: Option<CacheLayer>,
-    l3: Option<Arc<CacheRepository>>,
+    l3: Arc<RwLock<Option<Arc<CacheRepository>>>>,
     config: CacheConfig,
     metrics: Arc<CacheMetrics>,
 }
@@ -58,7 +60,7 @@ impl CacheManager {
         Ok(Self {
             l1,
             l2,
-            l3: l3_repo,
+            l3: Arc::new(RwLock::new(l3_repo)),
             config,
             metrics,
         })
@@ -77,18 +79,21 @@ impl CacheManager {
         T: Serialize + Send + Sync,
     {
         // Set in L3 (Postgres) first - System of Record
-        if let Some(ref l3) = self.l3 {
-            let json_val = serde_json::to_value(value)?;
-            let pid = profile_id.map(|s| s.to_string());
-            let _ = l3.set(crate::db::repositories::cache_repository::service::CacheEntryPayload {
-                cache_key: key.to_string(),
-                scenario_slug: scenario.to_string(),
-                user_id,
-                profile_id: pid,
-                context_hash: None,
-                recommendations: json_val,
-                ttl_seconds: self.config.l2_ttl.as_secs() as i32 * 12,
-            }).await;
+        {
+            let l3_guard = self.l3.read().await;
+            if let Some(ref l3) = *l3_guard {
+                let json_val = serde_json::to_value(value)?;
+                let pid = profile_id.map(|s| s.to_string());
+                let _ = l3.set(crate::db::repositories::cache_repository::service::CacheEntryPayload {
+                    cache_key: key.to_string(),
+                    scenario_slug: scenario.to_string(),
+                    user_id,
+                    profile_id: pid,
+                    context_hash: None,
+                    recommendations: json_val,
+                    ttl_seconds: self.config.l2_ttl.as_secs() as i32 * 12,
+                }).await;
+            }
         }
 
         // Set in L2 (Redis)
@@ -206,15 +211,18 @@ impl CacheManager {
         }
 
         // Try L3
-        if let Some(ref l3) = self.l3 {
-            if let Ok(Some(entry)) = l3.get(key).await {
-                let value: T = serde_json::from_value(entry.recommendations)
-                    .context("Failed to deserialize L3 cache entry")?;
-                
-                // Backfill L2 & L1
-                let _ = self.set_with_ttl(key, &value, self.config.l2_ttl, scenario, user_id, profile_id).await;
-                let _ = self.set_with_ttl(key, &value, self.config.l1_ttl, scenario, user_id, profile_id).await;
-                return Ok(value);
+        {
+            let l3_guard = self.l3.read().await;
+            if let Some(ref l3) = *l3_guard {
+                if let Ok(Some(entry)) = l3.get(key).await {
+                    let value: T = serde_json::from_value(entry.recommendations)
+                        .context("Failed to deserialize L3 cache entry")?;
+                    
+                    // Backfill L2 & L1
+                    let _ = self.set_with_ttl(key, &value, self.config.l2_ttl, scenario, user_id, profile_id).await;
+                    let _ = self.set_with_ttl(key, &value, self.config.l1_ttl, scenario, user_id, profile_id).await;
+                    return Ok(value);
+                }
             }
         }
 
@@ -255,14 +263,17 @@ impl CacheManager {
         }
 
         // Try L3
-        if let Some(ref l3) = self.l3 {
-            if let Ok(Some(entry)) = l3.get(key).await {
-                let value: T = serde_json::from_value(entry.recommendations)?;
-                
-                // Backfill L2 & L1
-                let _ = self.set_with_ttl(key, &value, self.config.l2_ttl, scenario, user_id, profile_id).await;
-                let _ = self.set_with_ttl(key, &value, self.config.l1_ttl, scenario, user_id, profile_id).await;
-                return Ok(Some(value));
+        {
+            let l3_guard = self.l3.read().await;
+            if let Some(ref l3) = *l3_guard {
+                if let Ok(Some(entry)) = l3.get(key).await {
+                    let value: T = serde_json::from_value(entry.recommendations)?;
+                    
+                    // Backfill L2 & L1
+                    let _ = self.set_with_ttl(key, &value, self.config.l2_ttl, scenario, user_id, profile_id).await;
+                    let _ = self.set_with_ttl(key, &value, self.config.l1_ttl, scenario, user_id, profile_id).await;
+                    return Ok(Some(value));
+                }
             }
         }
 
@@ -277,8 +288,11 @@ impl CacheManager {
         if let Some(ref l2) = self.l2 {
             let _ = l2.delete(key).await;
         }
-        if let Some(ref l3) = self.l3 {
-            let _ = l3.delete(key).await;
+        {
+            let l3_guard = self.l3.read().await;
+            if let Some(ref l3) = *l3_guard {
+                let _ = l3.delete(key).await;
+            }
         }
         Ok(())
     }
@@ -323,8 +337,11 @@ impl CacheManager {
         self.metrics.record_invalidation();
 
         // 2. Mark L3 cache as stale
-        if let Some(ref l3) = self.l3 {
-            let _ = l3.mark_stale(user_id, profile_id, scenario_slug, reason).await;
+        {
+            let l3_guard = self.l3.read().await;
+            if let Some(ref l3) = *l3_guard {
+                let _ = l3.mark_stale(user_id, profile_id, scenario_slug, reason).await;
+            }
         }
 
         Ok(())
@@ -338,8 +355,11 @@ impl CacheManager {
         if let Some(ref l2) = self.l2 {
             let _ = l2.clear().await;
         }
-        if let Some(ref l3) = self.l3 {
-            let _ = l3.clear().await;
+        {
+            let l3_guard = self.l3.read().await;
+            if let Some(ref l3) = *l3_guard {
+                let _ = l3.clear().await;
+            }
         }
         Ok(())
     }
@@ -365,7 +385,13 @@ impl CacheManager {
         }
     }
 
-    /// Get public access to metrics.
+    /// Set the L3 (Postgres) repository after initialization.
+    pub async fn set_repository(&self, repo: Arc<CacheRepository>) {
+        let mut l3 = self.l3.write().await;
+        *l3 = Some(repo);
+    }
+
+    /// Get current cache metrics snapshot.
     pub fn metrics(&self) -> CacheMetricsSnapshot {
         self.metrics.snapshot()
     }

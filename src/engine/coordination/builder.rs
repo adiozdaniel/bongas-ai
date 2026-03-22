@@ -1,6 +1,6 @@
 use std::sync::Arc;
 use tokio::sync::{broadcast, RwLock};
-use anyhow::Result;
+use anyhow::{Result, Context};
 use tracing::{info, warn};
 use std::collections::HashMap;
 use arc_swap::ArcSwap;
@@ -82,8 +82,11 @@ impl DiscoverySymphony {
         let resilience_metrics_config = ResilienceMetricsConfig::default();
         let resilience_metrics = Arc::new(ResilienceMetricsCollector::new(Arc::new(MetricsRegistry::new(resilience_metrics_config))));
         let system_health = Arc::new(crate::resilience::collector::SystemHealthCollector::new());
+        let is_ready = Arc::new(RwLock::new(false));
 
-        // ─── 1. CORE DATABASE PILLAR ─────────────────────────────────────────
+        // ─── 1. CONCURRENT INFRASTRUCTURE BOOTSTRAP ──────────────────────────
+        // Execute critical service connections in parallel to avoid sequential blocking.
+        
         let pool_config = ResilientPoolConfig {
             url: self.config.database.url.clone().unwrap_or_default(),
             max_connections: self.config.database.max_connections,
@@ -98,7 +101,27 @@ impl DiscoverySymphony {
             slow_call_duration: std::time::Duration::from_secs(5),
         };
 
-        let resilient_pool = Arc::new(ResilientPool::new(pool_config, circuit_breaker_registry.clone()).await?);
+        info!("🚀 Connecting to infrastructure (Postgres, Redis, Search)...");
+        
+        let (resilient_pool_res, cache_manager_res) = tokio::join!(
+            ResilientPool::new(pool_config, circuit_breaker_registry.clone()),
+            CacheManager::new(
+                self.config.redis.clone(),
+                self.config.cache.clone(),
+                None, // CacheRepo added after pool is ready
+            )
+        );
+
+        let search_manager_res = EmbeddedSearchManager::new(self.config.search.clone());
+
+        let resilient_pool = Arc::new(resilient_pool_res
+            .context("DATABASE_OFF: Failed to create database pool. Please ensure PostgreSQL is running and reachable.")?);
+
+        let cache_manager = Arc::new(cache_manager_res
+            .context("REDIS_OFF: Failed to initialize cache manager. Please ensure Redis is running and reachable.")?);
+
+        let search_manager = Arc::new(search_manager_res
+            .context("SEARCH_INIT_FAILED: Failed to initialize embedded search index. Please check disk permissions or index integrity.")?);
 
         let model_repo = Arc::new(ModelRepository::new(resilient_pool.clone(), resilience_metrics.clone()));
         let feature_repo = Arc::new(FeatureRepository::new(resilient_pool.clone(), resilience_metrics.clone()));
@@ -107,12 +130,8 @@ impl DiscoverySymphony {
         let layout_repo = Arc::new(PageLayoutRepository::new(resilient_pool.clone(), resilience_metrics.clone()));
         let discovery_repo = Arc::new(DiscoveryConfigRepository::new(resilient_pool.clone(), resilience_metrics.clone()));
 
-        // ─── 2. CACHING PILLAR ───────────────────────────────────────────────
-        let cache_manager = Arc::new(CacheManager::new(
-            self.config.redis.clone(),
-            self.config.cache.clone(),
-            Some(cache_repo.clone()),
-        ).await?);
+        // Update cache manager with repo now that pool is active
+        cache_manager.set_repository(cache_repo.clone()).await;
 
         let hot_registry = Arc::new(HotRegistry::new());
 
@@ -159,16 +178,8 @@ impl DiscoverySymphony {
             feature_store.clone(),
         ));
 
-        let _security_manager = Arc::new(crate::security::SecurityManager::new(
-            self.config.security.clone(),
-            &self.config.server.environment,
-            circuit_breaker_registry.clone(),
-            resilience_metrics.clone(),
-            None,
-        ).await?);
-
         // ─── 4. SEARCH PILLAR (Embedded Tantivy) ────────────────────────────
-        let search_manager = Arc::new(EmbeddedSearchManager::new(self.config.search.clone())?);
+        // search_manager already initialized at bootstrap
 
         let clickhouse_client = clickhouse::Client::default()
             .with_url(self.config.clickhouse.url.clone())
@@ -424,6 +435,7 @@ impl DiscoverySymphony {
             shutdown_tx,
             resilience_metrics,
             system_health,
+            is_ready: is_ready.clone(),
         }).await?;
 
         let engine_arc = Arc::new(engine);

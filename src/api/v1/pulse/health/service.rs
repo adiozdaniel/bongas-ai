@@ -33,10 +33,23 @@ pub async fn readiness_check(
 ) -> Json<StandardResponse<HealthResponse>> {
     let request_id = extract_request_id_from_headers(&headers);
     
-    // Check if Postgres is reachable via the pool
-    let is_db_ready = engine.execution.manager.item_feature_service.pool().check_health().await;
+    // 1. Check if bootstrap is complete
+    let is_bootstrapped = *engine.is_ready.read().await;
     
-    let status = if is_db_ready { "ready" } else { "not_ready" };
+    // 2. Check if Postgres is reachable via the pool (only if bootstrapped)
+    let is_db_ready = if is_bootstrapped {
+        engine.execution.manager.item_feature_service.pool().check_health().await
+    } else {
+        false
+    };
+    
+    let status = if is_bootstrapped && is_db_ready { 
+        "ready" 
+    } else if !is_bootstrapped {
+        "bootstrapping"
+    } else {
+        "waiting_for_dependencies"
+    };
 
     let data = HealthResponse {
         status: status.to_string(),
