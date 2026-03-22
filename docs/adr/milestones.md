@@ -354,7 +354,8 @@ graph LR
 | **Search Schema v1** | Discovery | Define multi-modal schema (Keyword + DNA + Spoken Text). | ✅ **Done** | **Section 3.1:** Hybrid understanding of content. |
 | **Indestructible WAL** | Infrastructure | Write-Ahead Log & Atomic commits for zero-loss recovery. | ✅ **Done** | **Section 1.0:** "Blackbox" reliability. |
 | **Auto-Repair Mode** | Infrastructure | Background full re-indexing from Postgres/ClickHouse. | ✅ **Done** | **Section 5.2:** Zero-lag data synchronization. |
-| **Sound Listener** | Intelligence | ML worker for audio-to-text extraction into Tantivy. | ✅ **Done** | **Section 6.0:** Localized understanding via spoken word. |
+| **The Polyglot Ear** | Intelligence | Native Rust STT (Whisper) for raw audio-to-text generation (Stage 1). | ✅ **Done** | **Section 6.0:** High-throughput raw data generation. |
+| **Linguistic Bridge** | Intelligence | Multi-dialect mapping (Stage 2) with internet-augmented translation. | ✅ **Done** | **Section 1.0:** Cultural semantic bridge for local and global discovery. |
 | **Sheng-Native Search** | Intelligence | Specialized tokenizers for Swahili/Sheng dialects. | ✅ **Done** | **Section 6.1:** Cultural relevance at the search bar. |
 | **Relevance Fusion** | Discovery | Hybrid Ranking: BM25 + DNA Proximity + History. | ✅ **Done** | **Section 3.2:** High-precision precision matching. |
 | **Ghost Search** | Orchestration | Pre-warm search results during active keystrokes. | ✅ **Done** | **Section 4.0:** Perceived zero-latency search. |

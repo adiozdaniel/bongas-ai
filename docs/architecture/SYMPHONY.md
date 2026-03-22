@@ -60,7 +60,8 @@ graph TD
             Ghost["👻 Ghost Exec (Look-Ahead)"]
             Pulse["🌍 Regional Pulse (Hive Mind)"]
             SearchSync["🔄 Search Sync (Tantivy)"]
-            Sound["👂 Sound Listener"]
+            Ear["👂 The Ear (Native STT)"]
+            Linguist["🗣️ The Linguist (Polyglot Bridge)"]
             Decay["📉 Signal Decay"]
             Fatigue["🥱 Fatigue Sync"]
             Reasoning["🧠 Reasoning"]
@@ -93,6 +94,11 @@ graph TD
     Ghost -- "Look-Ahead Data" --> RD
     Pulse -- "Semantic Vectors" --> RD
     Tribe -- "Cluster IDs" --> RD
+    
+    Ear -- "Raw Transcripts" --> CH
+    Linguist -- "Reads Transcripts" --> CH
+    Linguist -- "Mapped Context" --> Search
+    Linguist -- "Dialect DNA" --> RD
     
     %% 4. The Sovereign Learning Loop (Secure Ingestion)
     %% a) Data Collection via Secure Gateway
