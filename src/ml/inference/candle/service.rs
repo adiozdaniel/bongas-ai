@@ -205,8 +205,8 @@ impl CandleInferenceEngine {
     /// Run two-tower inference using pure Candle.
     pub async fn predict_two_tower(
         self: Arc<Self>,
-        _user_features: Vec<f32>,
-        _item_features: Vec<f32>,
+        user_features: Vec<f32>,
+        item_features: Vec<f32>,
     ) -> Result<Vec<f32>, ModelError> {
         let start = Instant::now();
         let metric_key = format!("ml.inference.{}", self.model_name);
@@ -219,15 +219,30 @@ impl CandleInferenceEngine {
 
         let engine = self.clone();
         let result = self.breaker.call(|| async move {
-            // In a true Candle implementation, we'd initialize the architecture
-            // from weights and run the forward pass. For now, we simulate the output
-            // based on the presence of weights.
             if engine.weights.is_empty() {
                 return Err(ModelError::InferenceFailed("No weights loaded for base model".to_string()));
             }
 
-            // Simulated forward pass result
-            Ok(vec![0.75])
+            // 1. Initialize Two-Tower Architecture with base weights
+            let weights = (*engine.weights).clone();
+            let vb = candle_nn::VarBuilder::from_tensors(weights, DType::F32, &engine.device);
+            let model = crate::ml::training::candle::architectures::two_tower::TwoTowerModel::new(vb)
+                .map_err(|e| ModelError::InferenceFailed(format!("two-tower init: {e}")))?;
+
+            // 2. Convert Inputs to Tensors
+            let u_tensor = Tensor::from_vec(user_features, (1, 128), &engine.device)
+                .map_err(|e| ModelError::InferenceFailed(format!("user tensor: {e}")))?;
+            let i_tensor = Tensor::from_vec(item_features, (1, 128), &engine.device)
+                .map_err(|e| ModelError::InferenceFailed(format!("item tensor: {e}")))?;
+
+            // 3. Execute Forward Pass
+            let prediction = model.forward(&u_tensor, &i_tensor)
+                .map_err(|e| ModelError::InferenceFailed(format!("forward pass: {e}")))?;
+            
+            let score = prediction.to_vec2::<f32>()
+                .map_err(|e| ModelError::InferenceFailed(format!("extract result: {e}")))? [0][0];
+
+            Ok(vec![score])
         }).await.map_err(|e| match e {
             crate::circuit_breaker::CircuitBreakerError::ExecutionFailed { source, .. } => source,
             crate::circuit_breaker::CircuitBreakerError::Rejected { .. } => ModelError::CircuitOpen(self.model_name.clone()),
@@ -245,8 +260,8 @@ impl CandleInferenceEngine {
     /// Run multi-action inference (multi-head output).
     pub async fn predict_multi_action(
         self: Arc<Self>,
-        _user_features: Vec<f32>,
-        _item_features: Vec<f32>,
+        user_features: Vec<f32>,
+        item_features: Vec<f32>,
     ) -> Result<Vec<Vec<f32>>, ModelError> {
         let start = Instant::now();
         let metric_key = format!("ml.inference.multi.{}", self.model_name);
@@ -263,8 +278,26 @@ impl CandleInferenceEngine {
                 return Err(ModelError::InferenceFailed("No weights loaded for multi-action model".to_string()));
             }
 
-            // Simulated multi-action results (e.g., [click_prob, watch_prob, like_prob])
-            Ok(vec![vec![0.8, 0.6, 0.1]])
+            // 1. Initialize Multi-Head Architecture
+            let weights = (*engine.weights).clone();
+            let vb = candle_nn::VarBuilder::from_tensors(weights, DType::F32, &engine.device);
+            let model = crate::ml::training::candle::architectures::ranking::MultiHeadRankingHead::new(vb)
+                .map_err(|e| ModelError::InferenceFailed(format!("multi-head init: {e}")))?;
+
+            // 2. Convert Inputs (Using 64 for tribe, 1024 for DNA as per ranking schema)
+            let tribe_tensor = Tensor::from_vec(user_features, (1, 64), &engine.device)
+                .map_err(|e| ModelError::InferenceFailed(format!("tribe tensor: {e}")))?;
+            let item_tensor = Tensor::from_vec(item_features, (1, 1024), &engine.device)
+                .map_err(|e| ModelError::InferenceFailed(format!("item tensor: {e}")))?;
+
+            // 3. Execute Forward Pass
+            let prediction = model.forward(&tribe_tensor, &item_tensor)
+                .map_err(|e| ModelError::InferenceFailed(format!("forward pass: {e}")))?;
+            
+            let scores = prediction.to_vec2::<f32>()
+                .map_err(|e| ModelError::InferenceFailed(format!("extract result: {e}")))?;
+
+            Ok(scores)
         }).await.map_err(|e| match e {
             crate::circuit_breaker::CircuitBreakerError::ExecutionFailed { source, .. } => source,
             crate::circuit_breaker::CircuitBreakerError::Rejected { .. } => ModelError::CircuitOpen(self.model_name.clone()),
