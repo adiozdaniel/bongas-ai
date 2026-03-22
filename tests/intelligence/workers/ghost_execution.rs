@@ -3,7 +3,7 @@ use tokio::sync::broadcast;
 use tokio::time::{sleep, Duration};
 use bongas_ai::engine::intelligence::workers::ghost_execution::service::GhostExecutionWorker;
 use bongas_ai::cache::{CacheManager, CacheConfig};
-use bongas_ai::ml::inference::onnx::service::OnnxInferenceEngine;
+use bongas_ai::ml::inference::candle::service::CandleInferenceEngine;
 use bongas_ai::ingestion::UserActivity;
 use bongas_ai::config::RedisConfig;
 use bongas_ai::circuit_breaker::observer::CircuitBreakerId;
@@ -21,13 +21,13 @@ async fn test_ghost_execution_flow() {
 
     let cache_manager = Arc::new(CacheManager::new(redis_config, cache_config, None).await.unwrap());
 
-    // 2. Setup Mock ONNX Engine
-    let onnx_engine = Arc::new(OnnxInferenceEngine::with_defaults(
+    // 2. Setup Mock Candle Engine
+    let candle_engine = Arc::new(CandleInferenceEngine::with_defaults(
         CircuitBreakerId::new("ml.inference.flow_head")
     ));
 
     // 3. Setup Worker
-    let worker = GhostExecutionWorker::new(cache_manager.clone(), onnx_engine);
+    let worker = GhostExecutionWorker::new(cache_manager.clone(), candle_engine);
     let notifier = worker.get_notifier();
     let (shutdown_tx, shutdown_rx) = broadcast::channel(1);
 
@@ -88,8 +88,8 @@ async fn test_ghost_execution_flow() {
 async fn test_ghost_execution_anonymous_skip() {
     let cache_config = CacheConfig { l1_enabled: true, l2_enabled: false, ..Default::default() };
     let cache_manager = Arc::new(CacheManager::new(RedisConfig::default(), cache_config, None).await.unwrap());
-    let onnx_engine = Arc::new(OnnxInferenceEngine::with_defaults(CircuitBreakerId::new("test")));
-    let worker = GhostExecutionWorker::new(cache_manager.clone(), onnx_engine);
+    let candle_engine = Arc::new(CandleInferenceEngine::with_defaults(CircuitBreakerId::new("test")));
+    let worker = GhostExecutionWorker::new(cache_manager.clone(), candle_engine);
     let notifier = worker.get_notifier();
     let (shutdown_tx, shutdown_rx) = broadcast::channel(1);
 
@@ -127,8 +127,8 @@ async fn test_ghost_execution_anonymous_skip() {
 async fn test_ghost_execution_short_history_skip() {
     let cache_config = CacheConfig { l1_enabled: true, l2_enabled: false, ..Default::default() };
     let cache_manager = Arc::new(CacheManager::new(RedisConfig::default(), cache_config, None).await.unwrap());
-    let onnx_engine = Arc::new(OnnxInferenceEngine::with_defaults(CircuitBreakerId::new("test")));
-    let worker = GhostExecutionWorker::new(cache_manager.clone(), onnx_engine);
+    let candle_engine = Arc::new(CandleInferenceEngine::with_defaults(CircuitBreakerId::new("test")));
+    let worker = GhostExecutionWorker::new(cache_manager.clone(), candle_engine);
     let notifier = worker.get_notifier();
     let (shutdown_tx, shutdown_rx) = broadcast::channel(1);
 

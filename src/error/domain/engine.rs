@@ -111,6 +111,12 @@ impl ErrorClassifier for ModelError {
     }
 }
 
+impl From<candle_core::Error> for ModelError {
+    fn from(err: candle_core::Error) -> Self {
+        ModelError::InferenceFailed(err.to_string())
+    }
+}
+
 #[derive(Debug, Error)]
 pub enum ScenarioError {
     #[error("scenario not found: {0}")]

@@ -18,7 +18,7 @@ echo "[2/3] Assembling package..."
 mkdir -p "dist/${PACKAGE_NAME}/models"
 
 cp target/release/bongas-ai "dist/${PACKAGE_NAME}/"
-cp -r models/*.onnx "dist/${PACKAGE_NAME}/models/" 2>/dev/null || echo "  No .onnx models found, skipping"
+cp -r models/*.safetensors "dist/${PACKAGE_NAME}/models/" 2>/dev/null || echo "  No .safetensors models found, skipping"
 cp .env.example "dist/${PACKAGE_NAME}/" 2>/dev/null || true
 cp config/default.toml "dist/${PACKAGE_NAME}/" 2>/dev/null || true
 

@@ -260,7 +260,7 @@ Test Type: $TEST_TYPE
 - Pipeline Stage Tests: ✓
 - Cache & Staging Manager Tests: ✓
 - ML Component Tests: ✓
-- ONNX Runtime Tests: ✓
+- Candle Runtime Tests: ✓
 
 ### Integration Tests  
 - Engine Integration: ✓
@@ -302,7 +302,7 @@ Test Type: $TEST_TYPE
 ## Next Steps
 1. Run load tests in production-like environment
 2. Monitor performance metrics in staging
-3. Validate ONNX model accuracy with real data
+3. Validate Candle model accuracy with real data
 4. Test disaster recovery scenarios
 5. Performance tuning based on benchmark results
 

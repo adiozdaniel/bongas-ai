@@ -8,7 +8,7 @@
 //! - **Telemetry**: Observability and distributed tracing
 //! - **Security**: License validation and hardware binding
 //! - **Caching**: Multi-layer caching with Redis and PostgreSQL
-//! - **ML**: Machine learning model management and ONNX runtime
+//! - **ML**: Machine learning model management and Candle runtime
 //! - **Pipeline**: Recommendation pipeline with dynamic scenarios
 //! - **Kafka**: Event streaming with circuit breaker protection
 //! - **Database**: PostgreSQL and ClickHouse integration
