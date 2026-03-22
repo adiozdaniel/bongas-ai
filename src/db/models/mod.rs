@@ -177,7 +177,7 @@ pub struct RecommendationCacheL2 {
 }
 
 // ============================================================================
-// 6. ModelRegistry (ML Model Versioning with ONNX support)
+// 6. ModelRegistry (ML Model Versioning with Safetensors support)
 // ============================================================================
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
@@ -187,14 +187,14 @@ pub struct ModelRegistry {
     pub version: String,
     pub model_format: String,
     pub file_path: Option<String>,
-    pub onnx_model_path: Option<String>,
+    pub safetensors_path: Option<String>,
     pub s3_location: Option<String>,
     pub architecture_config: Option<JsonValue>,
     pub training_metrics: Option<JsonValue>,
-    pub onnx_opset_version: Option<i32>,
-    pub onnx_input_shapes: Option<JsonValue>,
-    pub onnx_output_names: Option<JsonValue>,
-    pub onnx_runtime_provider: String,
+    pub candle_opset_version: Option<i32>,
+    pub input_shapes: Option<JsonValue>,
+    pub output_names: Option<JsonValue>,
+    pub runtime_provider: String,
     pub status: String,
     pub deployed_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,

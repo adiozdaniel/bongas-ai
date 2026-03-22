@@ -39,7 +39,7 @@ VALUES
         "stages": [
             {"type": "hot_items", "params": {"limit": 100}},
             {"type": "vector_search", "params": {"limit": 50}},
-            {"type": "onnx_ranker", "params": {"model": "ranker_v1", "batch_size": 16}}
+            {"type": "candle_inference", "params": {"model": "ranker_v1", "batch_size": 16}}
         ]
     }'::jsonb,
     0.4,

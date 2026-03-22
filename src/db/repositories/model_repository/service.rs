@@ -30,10 +30,10 @@ impl ModelRepository {
         }
     }
 
-    /// Get all deployed ONNX models.
+    /// Get all deployed Candle models.
     ///
     /// Executes through circuit breaker with bulkhead protection.
-    pub async fn get_deployed_onnx_models(&self) -> AppResult<Vec<ModelRegistry>> {
+    pub async fn get_deployed_candle_models(&self) -> AppResult<Vec<ModelRegistry>> {
         let start_time = std::time::Instant::now();
         
         let result = self.pool
@@ -42,7 +42,7 @@ impl ModelRepository {
                     r#"
                     SELECT * FROM bongas.model_registry
                     WHERE status = 'deployed'
-                    AND model_format = 'onnx'
+                    AND model_format IN ('candle', 'safetensors')
                     ORDER BY created_at DESC
                     "#,
                 )
@@ -68,14 +68,14 @@ impl ModelRepository {
                 metrics.failures.increment();
                 
                 Err(AppError::Postgres(PostgresError::Query {
-                    message: format!("Failed to fetch deployed ONNX models: {}", e),
+                    message: format!("Failed to fetch deployed Candle models: {}", e),
                     source: None,
                 }))
             }
         }
     }
 
-    pub async fn get_onnx_model(
+    pub async fn get_candle_model(
         &self,
         model_name: &str,
         version: &str,
@@ -91,7 +91,7 @@ impl ModelRepository {
                     SELECT * FROM bongas.model_registry
                     WHERE model_name = $1
                     AND version = $2
-                    AND model_format = 'onnx'
+                    AND model_format IN ('candle', 'safetensors')
                     "#,
                 )
                 .bind(&model_name)
@@ -104,7 +104,7 @@ impl ModelRepository {
         result.map_err(|e| {
             AppError::Postgres(PostgresError::Query {
                 message: format!(
-                    "Failed to fetch ONNX model {}@{}: {}",
+                    "Failed to fetch Candle model {}@{}: {}",
                     model_name_err, version_err, e
                 ),
                 source: None,

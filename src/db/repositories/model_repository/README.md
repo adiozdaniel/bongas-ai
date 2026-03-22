@@ -1,6 +1,6 @@
 # 🧠 Database Repository: Model
 
-> **Persistence and metadata management for ONNX machine learning models.**
+> **Persistence and metadata management for Candle machine learning models.**
 
 The `model_repository` handles the storage and retrieval of model metadata, versioning, and deployment status. It ensures the engine can always find and load the correct weights for inference.
 
