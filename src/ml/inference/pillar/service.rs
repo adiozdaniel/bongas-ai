@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use crate::ml::inference::onnx::service::OnnxInferenceEngine;
+use crate::ml::inference::candle::service::CandleInferenceEngine;
 use crate::ml::inference::embeddings::service::EmbeddingManager;
 use crate::ml::inference::features::service::FeatureStore;
 
@@ -7,19 +7,19 @@ use crate::ml::inference::features::service::FeatureStore;
 /// 
 /// Consolidates all latency-sensitive ML operations into a single functional pillar.
 pub struct InferencePillar {
-    pub onnx: Arc<OnnxInferenceEngine>,
+    pub candle: Arc<CandleInferenceEngine>,
     pub embeddings: Arc<EmbeddingManager>,
     pub features: Arc<FeatureStore>,
 }
 
 impl InferencePillar {
     pub fn new(
-        onnx: Arc<OnnxInferenceEngine>,
+        candle: Arc<CandleInferenceEngine>,
         embeddings: Arc<EmbeddingManager>,
         features: Arc<FeatureStore>,
     ) -> Self {
         Self {
-            onnx,
+            candle,
             embeddings,
             features,
         }
