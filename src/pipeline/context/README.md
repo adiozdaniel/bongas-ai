@@ -1,6 +1,6 @@
 # 🧬 Pipeline: Execution Context
 
-A thread-safe state container that follows a request through the entire pipeline. It provides access to shared resources (Redis, ClickHouse, ONNX Runtime) and records granular stage-level performance metrics.
+A thread-safe state container that follows a request through the entire pipeline. It provides access to shared resources (Redis, ClickHouse, Candle Runtime) and records granular stage-level performance metrics.
 
 ---
 

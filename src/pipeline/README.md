@@ -38,7 +38,7 @@ The engine is strictly organized into three functional domains, ensuring high ob
 | :--- | :--- | :--- |
 | [**📥 RECOVERY**](./recovery/README.md) | **The Stage** | Candidate retrieval from high-performance data sources (ClickHouse, Redis). |
 | [**🎭 PROCESSING**](./processing/README.md) | **The Backstage** | Constraint enforcement, metadata hydration, and deduplication. |
-| [**🥇 RANKING**](./ranking/README.md) | **The Pulse** | Intelligence layer using ML (ONNX) and sophisticated re-ranking algorithms. |
+| [**🥇 RANKING**](./ranking/README.md) | **The Pulse** | Intelligence layer using ML (Candle) and sophisticated re-ranking algorithms. |
 
 ---
 

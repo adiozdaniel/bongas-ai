@@ -27,12 +27,12 @@ use crate::pipeline::processing::deduplicate::service::DeduplicateStage;
 use crate::pipeline::ranking::sort_by_score::service::SortByScoreStage;
 use crate::pipeline::ranking::diversify_genres::service::DiversifyGenresStage;
 use crate::pipeline::ranking::limit::service::LimitStage;
-use crate::pipeline::ranking::onnx_inference::service::ONNXInferenceStage;
+use crate::pipeline::ranking::candle_inference::service::CandleInferenceStage;
 use crate::pipeline::ranking::ml_inference_similarity::service::MLInferenceSimilarityStage;
 use crate::pipeline::ranking::multi_action_ranker::service::MultiActionRankerStage;
 use crate::pipeline::ranking::ml_inference_two_tower::service::MLInferenceTwoTowerStage;
 use crate::pipeline::ranking::ml_inference_bert4rec::service::MLInferenceBERT4RecStage;
-use crate::pipeline::ranking::onnx_inference_similarity::service::ONNXInferenceSimilarityStage;
+use crate::pipeline::ranking::candle_inference_similarity::service::CandleInferenceSimilarityStage;
 use crate::pipeline::ranking::boost_by_popularity::service::BoostByPopularityStage;
 use crate::pipeline::ranking::boost_by_recency::service::BoostByRecencyStage;
 use crate::pipeline::ranking::boost_trending::service::BoostTrendingStage;
@@ -146,12 +146,12 @@ fn register_static_stages(registry: &mut HashMap<String, Arc<dyn PipelineStage>>
     registry.insert("diversify_genres".into(), Arc::new(DiversifyGenresStage));
     registry.insert("limit".into(), Arc::new(LimitStage));
     registry.insert("top_k_selector".into(), Arc::new(LimitStage)); // Alias
-    registry.insert("onnx_inference".into(), Arc::new(ONNXInferenceStage));
+    registry.insert("candle_inference".into(), Arc::new(CandleInferenceStage));
     registry.insert("ml_inference_similarity".into(), Arc::new(MLInferenceSimilarityStage));
     registry.insert("multi_action_ranker".into(), Arc::new(MultiActionRankerStage));
     registry.insert("ml_inference_two_tower".into(), Arc::new(MLInferenceTwoTowerStage));
     registry.insert("ml_inference_bert4rec".into(), Arc::new(MLInferenceBERT4RecStage));
-    registry.insert("onnx_inference_similarity".into(), Arc::new(ONNXInferenceSimilarityStage));
+    registry.insert("candle_inference_similarity".into(), Arc::new(CandleInferenceSimilarityStage));
     registry.insert("boost_by_popularity".into(), Arc::new(BoostByPopularityStage));
     registry.insert("boost_by_recency".into(), Arc::new(BoostByRecencyStage));
     registry.insert("boost_trending".into(), Arc::new(BoostTrendingStage));
@@ -181,5 +181,5 @@ fn register_dynamic_stages(registry: &mut HashMap<String, Arc<dyn PipelineStage>
     registry.insert("dynamic_filters".into(), Arc::new(dynamic_stages::filters::service::DynamicFiltersStage));
     registry.insert("dynamic_boosters".into(), Arc::new(dynamic_stages::boosters::service::DynamicBoostersStage));
     registry.insert("dynamic_diversifiers".into(), Arc::new(dynamic_stages::diversifiers::service::DynamicDiversifiersStage));
-    registry.insert("onnx_dynamic".into(), Arc::new(dynamic_stages::onnx_stages::service::ONNXDynamicStage));
+    registry.insert("candle_dynamic".into(), Arc::new(dynamic_stages::candle_stages::service::CandleDynamicStage));
 }

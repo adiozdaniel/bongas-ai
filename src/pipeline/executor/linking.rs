@@ -45,7 +45,7 @@ impl PipelineExecutor {
     pub(super) fn timeout_for_stage(name: &str, config: &PipelineConfig) -> Duration {
         match name {
             n if n.starts_with("fetch_") => config.stage_timeout_default, // Correct field name
-            n if n.starts_with("ml_") || n.contains("onnx") => config.ml_stage_timeout,
+            n if n.starts_with("ml_") || n.contains("candle") => config.ml_stage_timeout,
             _ => config.stage_timeout_default,
         }
     }
