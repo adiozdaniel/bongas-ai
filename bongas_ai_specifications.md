@@ -27,7 +27,7 @@ Eliminates client-side loading states by automatically anticipating a user's nex
 We eliminate the "Monolithic Contention" bottleneck by isolating the engine's primary functions into two distinct planes:
 
 * **The Stage (Runtime Plane):** A read-optimized, highly concurrent environment dedicated exclusively to sub-millisecond recommendation delivery and event ingestion.
-* **The Backstage (Control Plane):** Where the engine's intelligence is born. This plane handles asynchronous model training (ONNX), behavioral clustering (K-Means), and administrative strategy definition without consuming runtime resources.
+* **The Backstage (Control Plane):** Where the engine's intelligence is born. This plane handles asynchronous model training (Candle), behavioral clustering (K-Means), and administrative strategy definition without consuming runtime resources.
 
 ---
 
@@ -71,10 +71,10 @@ To balance **Data Sovereignty** with **IP Protection**, Bongas-AI utilizes a bif
 
 * **Mechanism:** An obfuscated, compiled Python worker runs locally on the client's infrastructure. It accesses the client's private ClickHouse ledgers and uses the Frozen Base Models to asynchronously train three lightweight "Student Heads":
 
-* **`vision_head.onnx` (The Auditor):** Maps raw visual DNA to specific safety ceilings (18+, Kids) and semantic vibes.
-* **`slm_head.onnx` (The Librarian):** Generates natural language summaries and taxonomy tags.
-* **`ranking.onnx` (The Conductor):** Learns aggregate Tribe-level content affinities.
-* **Execution:** These specialized ONNX models are hot-reloaded into the Rust *Stage* for sub-millisecond real-time execution, ensuring the core ranking path never blocks on heavy ML training.
+* **`vision_head.safetensors` (The Auditor):** Maps raw visual DNA to specific safety ceilings (18+, Kids) and semantic vibes.
+* **`slm_head.safetensors` (The Librarian):** Generates natural language summaries and taxonomy tags.
+* **`ranking.safetensors` (The Conductor):** Learns aggregate Tribe-level content affinities.
+* **Execution:** These specialized Candle models are hot-reloaded into the Rust *Stage* for sub-millisecond real-time execution, ensuring the core ranking path never blocks on heavy ML training.
 
 ---
 
@@ -124,4 +124,4 @@ Built entirely in **Rust** for uncompromising safety and speed.
 | **Hot State** | Redis | Sub-millisecond pipeline lookups and ghost caching. |
 | **System of Record** | PostgreSQL (`sqlx`) | Transactional data and scenario configurations. |
 | **Analytical Ledger** | ClickHouse | High-throughput telemetry and interaction aggregation. |
-| **Intelligence** | ONNX / HiveMind | Local model inference and agentic reasoning. |
+| **Intelligence** | Candle / HiveMind | Local model inference and agentic reasoning. |

@@ -47,7 +47,7 @@ graph LR
         Resolver["Symphony Resolver"]
 
         subgraph RuntimePlane ["Runtime (Read Path)"]
-            InferenceEngine["⚡ ONNX Inference Engine<br/>(Hybrid Inference)"]
+            InferenceEngine["⚡ Candle Inference Engine<br/>(Hybrid Inference)"]
             TantivyIndex["🔍 Embedded Index<br/>(Tantivy)"]
             GhostCache["Ghost Cache<br/>(L1/L2 Redis)"]
         end

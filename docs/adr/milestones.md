@@ -18,7 +18,7 @@ This document tracks the technical execution and strategic alignment of the Bong
 | **M8: Explainability Eng.** | Intelligence | ✅ **Done** | "Semantic Why" engine providing human-readable logic. | **Section 9.0:** Builds trust through logic-based justifications for recommendations. |
 | **M9: Engagement Hub** | Engagement | ✅ **Done** | Centralized Notification Dispatcher (Kafka/Adaptors). | **Section 10.0:** Implements "Neural Digests" to engineer user comeback. |
 | **M10: Search Frontier** | Discovery | ✅ **Done** | Tantivy-native keyword indexing re-ranked by semantic DNA. | **Section 1.0:** Algolia-grade matching re-ranked by hybrid understanding. |
-| **M11: Training Plane** | Backstage | ✅ **Done** | Python-Bridge for offline training and ONNX hot-reloads. | **Section 5.2:** Ends the "Resource Drain" by moving heavy training to its own plane. |
+| **M11: Training Plane** | Backstage | ✅ **Done** | Python-Bridge for offline training and Candle hot-reloads. | **Section 5.2:** Ends the "Resource Drain" by moving heavy training to its own plane. |
 | **M12: QA & Verification** | QA | ⏳ **Pending** | High-concurrency request simulation and regression. | **Section 11.0:** Validates fixed infrastructure ROI under massive spikes. |
 | **M13: Sovereign Security** | Security | ⏳ **Pending** | Distributed binary hardening (Anti-RE/Anti-Debug). | **Section 8.2:** Ensures the "Strategic Moat" remains untamperable at client sites. |
 | **M14: Control Plane** | Operations | ⏳ **Pending** | Remote fleet orchestration and atomic updates. | **Section 7.3:** Provides the "Executive Command Center" for real-time ROI tracking. |
@@ -50,7 +50,7 @@ This document tracks the technical execution and strategic alignment of the Bong
 | **Parquet Exporter** | Rust-native `ParquetExporter` using Arrow for high-efficiency data dumping. | ✅ **Done** | **Section 5.2:** Enables "Surgical Training" off the request path. |
 | **Signal Decay** | Background `SignalDecayWorker` for automated stale data pruning in ClickHouse. | ✅ **Done** | **Section 2.2:** Linear cost scaling via irrelevant data pruning. |
 | **Metric Recon** | Feedback loop for logging model accuracy and ROI back to ClickHouse. | ✅ **Done** | **Section 7.0:** Real-time ROI tracking for the Command Center. |
-| **ONNX Flow** | Standardized binary artifact flow from Python training to Rust serving. | ✅ **Done** | **Section 5.2:** Eliminates "Model Deployment Lag." |
+| **Candle Flow** | Standardized binary artifact flow from Python training to Rust serving. | ✅ **Done** | **Section 5.2:** Eliminates "Model Deployment Lag." |
 
 ---
 

@@ -96,7 +96,7 @@ Navigation Simplification: Complexity is stripped away, leaving only core catego
 
 ## 5.0 TECHNICAL ARCHITECTURE: THE RUST INTELLIGENCE PILLAR
 
-The bedrock of Bongas-AI is a high-performance engine written in Rust. We chose Rust to eliminate the catastrophic overhead of traditional Python-heavy ML stacks, which are notoriously resource-intensive and prone to latency spikes.
+The bedrock of Bongas-AI is a high-performance engine written in Rust. We chose Rust to eliminate the catastrophic overhead of traditional external ML runtimes, which are notoriously resource-intensive and prone to latency spikes. By utilizing the **Candle** framework, we achieve a 100% Rust-native ML stack.
 
 ### 5.1 The Symphony Resolver & Server-Sent Events (SSE)
 

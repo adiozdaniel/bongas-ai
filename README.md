@@ -47,7 +47,7 @@ We eliminate the "Algolia-Cost Trap" by integrating a high-performance, Rust-nat
 We implement a high-performance bridge between Rust's speed and Python's ML ecosystem.
 
 * **Parquet Exporter:** A native `ParquetExporter` dumps ClickHouse telemetry into compressed Apache Parquet files for "Surgical Training."
-* **Artifact Flow:** Models are trained in Python (scikit-learn, PyTorch), exported to **ONNX**, and hot-reloaded into Rust memory without engine restarts.
+* **Artifact Flow:** Models are trained in Python (scikit-learn, PyTorch), exported to **Safetensors**, and hot-reloaded into Rust memory via **Candle** without engine restarts.
 * **Signal Decay:** A background `SignalDecayWorker` automatically prunes stale behavioral data, ensuring infrastructure costs remain flat as the system scales.
 
 ---
@@ -158,7 +158,7 @@ Optimized for safety, concurrency, and extreme throughput.
 | **System of Record** | PostgreSQL (`sqlx`) | Transactional data, user profiles, and scenario configurations. |
 | **Analytical Ledger** | ClickHouse | High-throughput telemetry, interaction aggregation, and worker polling. |
 | **Event Streaming** | Kafka (`rdkafka`) | (Optional) High-scale telemetry ingestion and notification dispatch. |
-| **Intelligence** | ONNX / HiveMind | Local model inference and global LLM semantic classification. |
+| **Intelligence** | Candle / HiveMind | Local model inference and global LLM semantic classification. |
 
 ---
 
@@ -205,7 +205,7 @@ Breaking the discovery barrier with full-text keyword matching at sub-10ms speed
 Strict physical separation of "Learning" and "Execution" logic.
 
 * **Parquet Analytics Export:** High-speed data dump from ClickHouse to Parquet files for Python-based ML training.
-* **Training Suite:** A dedicated Python environment for deep clustering and ranking model refinement, exporting results to **ONNX** for hot-reloading into the Rust core.
+* **Training Suite:** A dedicated Python environment for deep clustering and ranking model refinement, exporting results to **Safetensors** for hot-reloading into the Rust core via **Candle**.
 
 ### 7.4 ⚖️ Governance & Explainability Audit
 
@@ -218,7 +218,7 @@ Providing administrators with a "Deep Trace" of recommendation logic.
 
 A natural-language "Executive Assistant" that understands the engine's internal math.
 
-* **Sovereign SLM:** A local ONNX-based Small Language Model capable of reasoning, simulating impacts, and proposing configuration changes.
+* **Sovereign SLM:** A local Candle-based Small Language Model capable of reasoning, simulating impacts, and proposing configuration changes.
 * **Swahili/Sheng Dialect:** Fine-tuned to understand regional technical code-switching and local content metadata natively.
 * **Agentic Simulations:** The Conductor doesn't just "chat"—it executes "Ghost Scenarios" to show admins the real-world impact of a setting change before it is applied.
 

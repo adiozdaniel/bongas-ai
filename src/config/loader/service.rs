@@ -192,11 +192,7 @@ impl ConfigLoader {
         let ml = MlConfig {
             model_path: PathBuf::from(get_val("ml.model_path", "./models")),
             batch_size: parse_u32("ml.batch_size", 64)? as usize,
-            onnx_enabled: parse_bool("onnx.enabled", true)?,
-            onnx_execution_provider: get_val("onnx.execution_provider", "cpu"),
-            onnx_graph_optimization: parse_bool("onnx.graph_optimization", true)?,
-            onnx_memory_map: parse_bool("onnx.memory_map", true)?,
-            onnx_intra_threads: parse_u32("onnx.intra_threads", 4)? as usize,
+            candle_enabled: parse_bool("ml.candle_enabled", true)?,
             feature_store_enabled: parse_bool("ml.feature_store_enabled", true)?,
             feature_cache_ttl: Duration::from_secs(parse_u64("ml.feature_cache_ttl_secs", 300)?),
             feature_fetch_timeout: Duration::from_millis(parse_u64("ml.feature_fetch_timeout_ms", 500)?),

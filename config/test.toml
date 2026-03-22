@@ -35,7 +35,10 @@ l2_ttl = 3600
 [ml]
 model_path = "models"
 batch_size = 32
-onnx_intra_threads = 1
+
+[candle]
+enabled = true
+model_path = "models"
 
 [pipeline]
 stage_breaker_enabled = false

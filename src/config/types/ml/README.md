@@ -1,6 +1,6 @@
 # 🧠 Config Type: ML
 
-Settings for machine learning model management and inference. Controls model loading paths, ONNX runtime parameters, and training orchestrator behavior.
+Settings for machine learning model management and inference. Controls model loading paths, Candle settings, and training orchestrator behavior.
 
 ---
 

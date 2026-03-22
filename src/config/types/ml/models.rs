@@ -1,7 +1,7 @@
 //! ML configuration for the Composite Configuration Pattern.
 //!
 //! Provides configuration for machine learning model paths, batch sizes,
-//! ONNX runtime settings, and Netflix-grade resilience parameters for
+//! Candle runtime settings, and Netflix-grade resilience parameters for
 //! circuit breaker, bulkhead, retry, fallback, and analytics integration.
 
 use std::path::PathBuf;
@@ -10,17 +10,13 @@ use std::time::Duration;
 /// ML configuration.
 ///
 /// Configuration for machine learning model paths, batch sizes,
-/// ONNX runtime settings, and resilience parameters.
+/// Candle runtime settings, and resilience parameters.
 #[derive(Debug, Clone)]
 pub struct MlConfig {
     // ── Model Runtime ────────────────────────────────────────────────────────
     pub model_path: PathBuf,
     pub batch_size: usize,
-    pub onnx_enabled: bool,
-    pub onnx_execution_provider: String,
-    pub onnx_graph_optimization: bool,
-    pub onnx_memory_map: bool,
-    pub onnx_intra_threads: usize,
+    pub candle_enabled: bool,
 
     // ── Feature Store ────────────────────────────────────────────────────────
     pub feature_store_enabled: bool,
@@ -105,11 +101,7 @@ impl Default for MlConfig {
             // Model Runtime
             model_path: PathBuf::from("./models"),
             batch_size: 64,
-            onnx_enabled: true,
-            onnx_execution_provider: "cpu".to_string(),
-            onnx_graph_optimization: true,
-            onnx_memory_map: true,
-            onnx_intra_threads: 4,
+            candle_enabled: true,
 
             // Feature Store
             feature_store_enabled: true,
@@ -180,7 +172,6 @@ impl MlConfig {
     /// Create a production-grade ML configuration.
     pub fn production() -> Self {
         Self {
-            onnx_intra_threads: 8, // 2x threads
             feature_cache_ttl: Duration::from_secs(600), // Longer cache for production
             inference_max_concurrent: 64, // 4x workers
             feature_fetch_max_concurrent: 128, // 4x fetch concurrency

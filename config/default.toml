@@ -46,11 +46,9 @@ profile = "production"
 model_path = "./models"
 batch_size = 32
 
-[onnx]
+[candle]
 enabled = true
 model_path = "./models"
-execution_provider = "cpu"
-graph_optimization = true
 
 [cache]
 l1_ttl_seconds = 300

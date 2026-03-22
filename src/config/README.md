@@ -35,7 +35,7 @@ The root `AppConfig` struct is a composite of specialized module configurations:
 | **ClickHouse** | OLAP connection parameters. | Analytics Sink |
 | **Ingestion** | Kafka topics & source configs. | Data Retrieval |
 | **Security** | API keys, Licenses, Anti-Debug. | System Protection |
-| **ML** | ONNX threads, Feature store. | Inference Engine |
+| **ML** | Candle settings, Feature store. | Inference Engine |
 | **Pipeline** | Concurrency & Sample rates. | Execution Logic |
 | **Cache** | Multi-tier TTLs & Warming. | Performance |
 | **Resilience** | CB thresholds & Retry logic. | Fault Tolerance |

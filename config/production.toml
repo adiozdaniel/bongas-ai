@@ -84,17 +84,12 @@ batch_size = 128
 inference_max_concurrent = 64
 # 4x queue depth (1024 -> 4096)
 worker_queue_depth = 4096
-# 2x thread count
-onnx_intra_threads = 8
 # Enable canary deployments in production
 canary_enabled = true
 
-[onnx]
+[candle]
 enabled = true
 model_path = "/var/lib/bongas-ai/models"
-# DevOps can configure GPU: execution_provider = "cuda"
-execution_provider = "cpu"
-graph_optimization = true
 
 [pipeline]
 # 4x concurrency increases
@@ -156,4 +151,3 @@ per_endpoint = true
 # - Deploy multiple instances behind load balancer
 # - Use Redis Cluster
 # - Add database read replicas
-# - Consider GPU for ONNX inference
