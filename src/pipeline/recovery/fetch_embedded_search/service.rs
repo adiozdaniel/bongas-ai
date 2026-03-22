@@ -63,7 +63,7 @@ impl PipelineStage for EmbeddedSearchStage {
 
         let query_parser = QueryParser::for_index(
             search_manager.index(),
-            vec![schema.title, schema.description, schema.spoken_content]
+            vec![schema.title, schema.description, schema.spoken_native]
         );
         let query = query_parser.parse_query(query_str)?;
         let top_docs = searcher.search(&query, &TopDocs::with_limit(params.limit))?;

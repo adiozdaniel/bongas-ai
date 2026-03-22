@@ -25,7 +25,7 @@ async fn test_embedded_search_integration() {
         schema.id => 1i64,
         schema.title => "Friday High Energy Mix",
         schema.description => "Best dance music for your weekend.",
-        schema.spoken_content => "This is a high-energy cinematic sequence.",
+        schema.spoken_native => "This is a high-energy cinematic sequence.",
         schema.vision_dna => vec![0u8; 128],
         schema.metadata => json!({"type": "music"}).to_string()
     );
@@ -34,7 +34,7 @@ async fn test_embedded_search_integration() {
         schema.id => 2i64,
         schema.title => "Gospel Local Flow",
         schema.description => "Songs for the soul.",
-        schema.spoken_content => "Hio ngoma inabamba sana, maze naipenda.",
+        schema.spoken_native => "Hio ngoma inabamba sana, maze naipenda.",
         schema.vision_dna => vec![1u8; 128],
         schema.metadata => json!({"type": "gospel"}).to_string()
     );
@@ -81,7 +81,7 @@ async fn test_search_concurrency_stress() {
             schema.id => i as i64,
             schema.title => format!("Video Content Item {}", i),
             schema.description => "Stress test item",
-            schema.spoken_content => "constant audio pattern",
+            schema.spoken_native => "constant audio pattern",
             schema.vision_dna => vec![0u8; 128],
             schema.metadata => "{}".to_string()
         );
@@ -111,7 +111,7 @@ async fn test_search_concurrency_stress() {
                 sm_indexing.schema().id => i as i64,
                 sm_indexing.schema().title => format!("New Video {}", i),
                 sm_indexing.schema().description => "New item",
-                sm_indexing.schema().spoken_content => "new words",
+                sm_indexing.schema().spoken_native => "new words",
                 sm_indexing.schema().vision_dna => vec![0u8; 128],
                 sm_indexing.schema().metadata => "{}".to_string()
             );
@@ -144,7 +144,7 @@ async fn test_sheng_linguistic_depth() {
         schema.id => 42i64,
         schema.title => "Hio risto inabamba sana",
         schema.description => "Mazee hii ndio lifestyle ya mtaa.",
-        schema.spoken_content => "Tunasonga mbele bila uoga, ni gospel flow.",
+        schema.spoken_native => "Tunasonga mbele bila uoga, ni gospel flow.",
         schema.vision_dna => vec![0u8; 128],
         schema.metadata => "{}".to_string()
     );
@@ -185,7 +185,7 @@ async fn test_fusion_no_keyword_match_strong_dna() {
         schema.id => 99i64,
         schema.title => "Abstract Concept",
         schema.description => "No matching keywords here.",
-        schema.spoken_content => "Silence.",
+        schema.spoken_native => "Silence.",
         schema.vision_dna => vec![1u8; 128],
         schema.metadata => "{}".to_string()
     );
