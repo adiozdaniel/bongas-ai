@@ -43,9 +43,9 @@ pub struct RecommendationItem {
 #[derive(Debug, Clone, Serialize)]
 pub struct ScenarioExecutionStats {
     pub scenario_slug: String,
-    pub uses_onnx_inference: bool,
+    pub uses_candle_inference: bool,
     pub pipeline_stage_count: usize,
-    pub onnx_stage_count: usize,
+    pub candle_stage_count: usize,
     pub execution_time_ms: u64,
     pub cached_result: bool,
 }

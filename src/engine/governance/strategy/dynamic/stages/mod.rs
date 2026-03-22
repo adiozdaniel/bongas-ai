@@ -6,4 +6,4 @@ pub mod hybrid;
 pub mod filters;
 pub mod boosters;
 pub mod diversifiers;
-pub mod onnx_stages;
+pub mod candle_stages;

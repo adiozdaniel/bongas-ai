@@ -131,15 +131,15 @@ impl ExecutionManager {
             }
         }
 
-        let uses_onnx = scenario.pipeline.stages.iter()
-            .any(|stage| stage.r#type.starts_with("onnx_"));
+        let uses_candle = scenario.pipeline.stages.iter()
+            .any(|stage| stage.r#type.starts_with("candle_") || stage.r#type.starts_with("ml_inference_"));
 
         let mut stats = ScenarioExecutionStats {
             scenario_slug: ctx.scenario_slug.clone(),
-            uses_onnx_inference: uses_onnx,
+            uses_candle_inference: uses_candle,
             pipeline_stage_count: scenario.pipeline.stages.len(),
-            onnx_stage_count: scenario.pipeline.stages.iter()
-                .filter(|stage| stage.r#type.starts_with("onnx_"))
+            candle_stage_count: scenario.pipeline.stages.iter()
+                .filter(|stage| stage.r#type.starts_with("candle_") || stage.r#type.starts_with("ml_inference_"))
                 .count(),
             execution_time_ms: 0,
             cached_result: false,

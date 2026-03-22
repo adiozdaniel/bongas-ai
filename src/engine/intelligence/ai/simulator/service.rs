@@ -75,7 +75,7 @@ impl SafetySimulator {
         }
 
         for item in items {
-            // Check for NaN or Infinite scores which often indicate FFI/ONNX instability
+            // Check for NaN or Infinite scores which often indicate model instability
             if item.score.is_nan() || item.score.is_infinite() {
                 return Ok(false);
             }

@@ -23,7 +23,7 @@ use crate::ml::assets::registry::service::VersionedModelRegistry;
 use crate::ml::assets::pillar::service::AssetsPillar;
 use crate::ml::inference::pillar::service::InferencePillar;
 use crate::ml::inference::embeddings::service::EmbeddingManager;
-use crate::ml::inference::onnx::service::OnnxInferenceEngine;
+use crate::ml::inference::candle::service::CandleInferenceEngine;
 use crate::ml::training::pillar::service::TrainingPillar;
 use crate::ml::training::online::service::OnlineLearningManager;
 use crate::ml::coordination::service::MlPillar;
@@ -134,7 +134,7 @@ impl DiscoverySymphony {
 
         let assets = Arc::new(AssetsPillar::new(model_registry, model_loader.clone()));
 
-        let dummy_engine = Arc::new(OnnxInferenceEngine::with_defaults(
+        let dummy_engine = Arc::new(CandleInferenceEngine::with_defaults(
             crate::circuit_breaker::observer::CircuitBreakerId::new("dummy")
         ));
 
@@ -321,7 +321,7 @@ impl DiscoverySymphony {
 
         let ghost_execution_worker = Arc::new(GhostExecutionWorker::new(
             cache_manager.clone(),
-            inference.onnx.clone(),
+            inference.candle.clone(),
         ));
 
         let sound_listener_worker = Arc::new(SoundListenerWorker::new(

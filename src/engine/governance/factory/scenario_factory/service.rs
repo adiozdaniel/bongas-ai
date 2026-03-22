@@ -81,19 +81,19 @@ impl ScenarioFactory {
         let configs = self.repo.find_all_active().await?;
 
         let mut scenarios = HashMap::new();
-        let mut onnx_count = 0;
+        let mut candle_count = 0;
 
         for config in configs {
             match self.parse_scenario(&config) {
                 Ok(scenario) => {
-                    let uses_onnx = scenario.pipeline.stages.iter()
-                        .any(|stage| stage.r#type.starts_with("onnx_"));
+                    let uses_candle = scenario.pipeline.stages.iter()
+                        .any(|stage| stage.r#type.starts_with("candle_") || stage.r#type.starts_with("onnx_"));
 
-                    if uses_onnx {
-                        onnx_count += 1;
+                    if uses_candle {
+                        candle_count += 1;
                     }
 
-                    info!(slug = %scenario.slug, uses_onnx = uses_onnx, "Loaded scenario");
+                    info!(slug = %scenario.slug, uses_candle = uses_candle, "Loaded scenario");
                     scenarios.insert(scenario.slug.clone(), scenario);
                 }
                 Err(e) => {
@@ -104,7 +104,7 @@ impl ScenarioFactory {
 
         info!(
             total = scenarios.len(),
-            onnx_enabled = onnx_count,
+            candle_enabled = candle_count,
             "Scenarios loaded"
         );
 

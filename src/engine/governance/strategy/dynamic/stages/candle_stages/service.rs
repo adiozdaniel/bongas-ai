@@ -3,13 +3,13 @@ use anyhow::Result;
 use serde_json::Value as JsonValue;
 use crate::pipeline::{PipelineStage, ScoredItem, StageDataKind};
 use crate::pipeline::context::service::ExecutionContext;
-use crate::pipeline::ranking::onnx_inference::service::ONNXInferenceStage;
+use crate::pipeline::ranking::candle_inference::service::CandleInferenceStage;
 
-pub struct ONNXDynamicStage;
+pub struct CandleDynamicStage;
 
 #[async_trait]
-impl PipelineStage for ONNXDynamicStage {
-    fn name(&self) -> &str { "onnx_dynamic" }
+impl PipelineStage for CandleDynamicStage {
+    fn name(&self) -> &str { "candle_dynamic" }
 
     fn input_type(&self) -> StageDataKind { StageDataKind::ScoredItems }
     fn output_type(&self) -> StageDataKind { StageDataKind::ScoredItems }
@@ -20,8 +20,8 @@ impl PipelineStage for ONNXDynamicStage {
         params: &JsonValue,
         input: Vec<ScoredItem>,
     ) -> Result<Vec<ScoredItem>> {
-        // Dynamic wrapper for ONNX inference
-        let inner = ONNXInferenceStage;
+        // Dynamic wrapper for Candle inference
+        let inner = CandleInferenceStage;
         inner.execute(context, params, input).await
     }
 }

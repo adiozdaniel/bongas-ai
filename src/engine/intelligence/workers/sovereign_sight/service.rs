@@ -129,6 +129,7 @@ impl SovereignSightWorker {
             if self.should_pause() { break; }
 
             // 1. Extract DNA using the "Giant" (The Frozen Base Model)
+            // In a real production scenario, we'd call the Candle Inference Engine.
             let dna_vector = vec![0.5; 1024]; // Simulated 1024-dim Visual DNA
 
             let mut forensic_rating = "GE".to_string();

@@ -14,7 +14,7 @@ The Dynamic Stages module provides a library of standardized recommendation comp
 - **`Filters`**: Hard constraints (age, availability, safety).
 - **`Boosters`**: Dynamic scoring adjustments for relevance and business goals.
 - **`Diversifiers`**: Re-ranking to ensure variety and prevent filter bubbles.
-- **`ONNX Stages`**: High-performance neural inference using ONNX models.
+- **`Candle Stages`**: High-performance neural inference using pure-Rust model weights.
 
 ---
 
@@ -28,7 +28,7 @@ The Dynamic Stages module provides a library of standardized recommendation comp
 | [**🛡️ Filters**](./filters/README.md) | Enforcing safety, licensing, and availability constraints. |
 | [**🚀 Boosters**](./boosters/README.md) | Adjusting scores based on freshness, popularity, and affinity. |
 | [**🌈 Diversifiers**](./diversifiers/README.md) | Ensuring variety across genres and creators. |
-| [**🧠 ONNX Stages**](./onnx_stages/README.md) | Neural ranking and scoring using ONNX-based models. |
+| [**🕯️ Candle Stages**](./candle_stages/README.md) | Neural ranking and scoring using pure-Rust model weights. |
 
 ---
 

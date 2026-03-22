@@ -9,7 +9,7 @@ use anyhow::Result;
 use std::time::Duration;
 
 use crate::cache::CacheManager;
-use crate::ml::inference::onnx::service::OnnxInferenceEngine;
+use crate::ml::inference::candle::service::CandleInferenceEngine;
 use crate::ingestion::UserActivity;
 
 const ACTIVITY_CHANNEL_SIZE: usize = 1000;
@@ -20,7 +20,7 @@ const GHOST_CACHE_TTL: Duration = Duration::from_secs(300); // 5 minutes
 #[derive(Clone)]
 pub struct GhostExecutionWorker {
     cache_manager: Arc<CacheManager>,
-    onnx_engine: Arc<OnnxInferenceEngine>,
+    candle_engine: Arc<CandleInferenceEngine>,
     activity_rx: Arc<tokio::sync::Mutex<mpsc::Receiver<UserActivity>>>,
     activity_tx: mpsc::Sender<UserActivity>,
 }
@@ -28,12 +28,12 @@ pub struct GhostExecutionWorker {
 impl GhostExecutionWorker {
     pub fn new(
         cache_manager: Arc<CacheManager>,
-        onnx_engine: Arc<OnnxInferenceEngine>,
+        candle_engine: Arc<CandleInferenceEngine>,
     ) -> Self {
         let (tx, rx) = mpsc::channel(ACTIVITY_CHANNEL_SIZE);
         Self {
             cache_manager,
-            onnx_engine,
+            candle_engine,
             activity_rx: Arc::new(tokio::sync::Mutex::new(rx)),
             activity_tx: tx,
         }
@@ -121,7 +121,7 @@ impl GhostExecutionWorker {
 
     async fn predict_next_sequence(&self, history: &[String]) -> Result<Vec<i32>> {
         // Use the engine name to simulate model-specific logic
-        let _model = self.onnx_engine.model_name();
+        let _model = self.candle_engine.model_name();
 
         // Let's simulate some "intelligence" by grabbing the last item and suggesting related ones
         if let Some(last_id_str) = history.first() {
