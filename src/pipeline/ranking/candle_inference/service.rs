@@ -5,7 +5,7 @@ use serde::Deserialize;
 use std::sync::Arc;
 use crate::pipeline::{PipelineStage, ScoredItem};
 use crate::pipeline::context::service::ExecutionContext;
-use crate::ml::inference::onnx::service::OnnxInferenceEngine;
+use crate::ml::inference::candle::service::CandleInferenceEngine;
 use tracing::info;
 
 #[derive(Deserialize)]
@@ -29,12 +29,12 @@ fn default_batch_size() -> usize { 64 }
 fn default_user_dim() -> usize { 128 }
 fn default_item_dim() -> usize { 128 }
 
-pub struct ONNXInferenceStage;
+pub struct CandleInferenceStage;
 
 #[async_trait]
-impl PipelineStage for ONNXInferenceStage {
+impl PipelineStage for CandleInferenceStage {
     fn name(&self) -> &str {
-        "onnx_inference"
+        "candle_inference"
     }
 
     async fn execute(
@@ -44,7 +44,7 @@ impl PipelineStage for ONNXInferenceStage {
         input: Vec<ScoredItem>,
     ) -> Result<Vec<ScoredItem>> {
         let params: Params = serde_json::from_value(params.clone())
-            .context("Failed to parse onnx_inference params")?;
+            .context("Failed to parse candle_inference params")?;
 
         if input.is_empty() {
             return Ok(Vec::new());
@@ -55,11 +55,11 @@ impl PipelineStage for ONNXInferenceStage {
             model = %params.model_name,
             version = ?params.version,
             item_count = input.len(),
-            "Running ONNX batch inference"
+            "Running Candle batch inference"
         );
 
         // 1. Get Model
-        let model: Arc<OnnxInferenceEngine> = match &params.version {
+        let model: Arc<CandleInferenceEngine> = match &params.version {
             Some(version) => {
                 context.model_loader
                     .get_model_version(&params.model_name, version)
@@ -87,21 +87,16 @@ impl PipelineStage for ONNXInferenceStage {
             // Resolve Item Features
             let item_features_map = context.feature_store.get_item_features(&item_ids, params.item_dim).await?;
 
-            let mut user_batch = Vec::with_capacity(chunk.len());
-            let mut item_batch = Vec::with_capacity(chunk.len());
-
             for id in &item_ids {
-                user_batch.push(user_features.clone());
-                item_batch.push(item_features_map.get(id).cloned().unwrap_or_else(|| vec![0.0; params.item_dim]));
-            }
+                let user_batch = user_features.clone();
+                let item_batch = item_features_map.get(id).cloned().unwrap_or_else(|| vec![0.0; params.item_dim]);
 
-            // Execute Inference
-            let chunk_scores: Vec<f32> = model.clone().predict_batch(user_batch, item_batch).await
-                .context("Batch inference failed in onnx_inference stage")?;
+                // Execute Inference
+                let score = model.clone().predict_batch(user_batch, item_batch).await
+                    .context("Batch inference failed in candle_inference stage")? [0];
 
-            // Update scores
-            for (i, score) in chunk_scores.into_iter().enumerate() {
-                if let Some(res_item) = results.iter_mut().find(|r| r.item_id == item_ids[i]) {
+                // Update scores
+                if let Some(res_item) = results.iter_mut().find(|r| r.item_id == *id) {
                     res_item.score = score;
                     res_item.metadata["inference_score"] = json!(score);
                 }
@@ -111,7 +106,7 @@ impl PipelineStage for ONNXInferenceStage {
         info!(
             request_id = %context.request_id,
             duration_ms = start.elapsed().as_millis(),
-            "ONNX batch inference completed"
+            "Candle batch inference completed"
         );
 
         Ok(results)

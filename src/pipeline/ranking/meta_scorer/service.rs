@@ -5,7 +5,7 @@ use serde::Deserialize;
 use std::sync::Arc;
 use crate::pipeline::{PipelineStage, ScoredItem};
 use crate::pipeline::context::service::ExecutionContext;
-use crate::ml::inference::onnx::service::OnnxInferenceEngine;
+use crate::ml::inference::candle::service::CandleInferenceEngine;
 use tracing::info;
 
 #[derive(Deserialize)]
@@ -47,7 +47,7 @@ impl PipelineStage for MetaScorerStage {
             "Running meta-scorer inference"
         );
 
-        let model: Arc<OnnxInferenceEngine> = context.model_loader
+        let model: Arc<CandleInferenceEngine> = context.model_loader
             .get_model(&params.model_name)
             .await?;
 
@@ -62,24 +62,18 @@ impl PipelineStage for MetaScorerStage {
             // Get features for this batch
             let item_ids: Vec<i32> = chunk.iter().map(|i| i.item_id).collect();
             let item_features = context.feature_store.get_item_features(&item_ids, 128).await?;
-        let profile_id = context.profile_id.as_deref().unwrap_or("adult_default");
-        let user_features = context.feature_store.get_profile_features(profile_id, 128).await?;
+            let profile_id = context.profile_id.as_deref().unwrap_or("adult_default");
+            let user_features = context.feature_store.get_profile_features(profile_id, 128).await?;
 
-            // Prepare tensors
-            let mut user_batch = Vec::with_capacity(chunk.len());
-            let mut item_batch = Vec::with_capacity(chunk.len());
+            for (i, id) in item_ids.iter().enumerate() {
+                let user_batch = user_features.clone();
+                let item_batch = item_features.get(id).cloned().unwrap_or_else(|| vec![0.0; 128]);
 
-            for id in item_ids {
-                user_batch.push(user_features.clone());
-                item_batch.push(item_features.get(&id).cloned().unwrap_or_else(|| vec![0.0; 128]));
-            }
+                // Inference
+                let score = model.clone().predict_batch(user_batch, item_batch).await
+                    .context("Batch inference failed in meta_scorer")? [0];
 
-            // Inference
-            let chunk_scores: Vec<f32> = model.clone().predict_batch(user_batch, item_batch).await
-                .context("Batch inference failed in meta_scorer")?;
-
-            // Update scores in result set
-            for (i, score) in chunk_scores.into_iter().enumerate() {
+                // Update scores in result set
                 let global_idx = results.iter().position(|r| r.item_id == chunk[i].item_id).unwrap();
                 results[global_idx].score = score;
                 results[global_idx].metadata["meta_score"] = json!(score);

@@ -2,7 +2,7 @@
 
 > **The intelligence domain — ML scoring, re-ranking, and diversification.**
 
-Ranking stages represent the "Pulse" of the pipeline, where mathematical models and heuristic algorithms determine the final ordering of results. This domain is the "Heart" of Bongas-AI, utilizing advanced ONNX inference and complex re-ranking logic to ensure maximum user engagement and serendipity.
+Ranking stages represent the "Pulse" of the pipeline, where mathematical models and heuristic algorithms determine the final ordering of results. This domain is the "Heart" of Bongas-AI, utilizing advanced Candle inference and complex re-ranking logic to ensure maximum user engagement and serendipity.
 
 [🏠 Hub](../../../docs/HUB.md) | [🏗️ Architecture](../../../docs/architecture/SYMPHONY.md) | [📖 Pipeline Main](../README.md)
 
@@ -12,7 +12,7 @@ Ranking stages represent the "Pulse" of the pipeline, where mathematical models 
 
 - **Intelligence-First**: Heavy utilization of Machine Learning (BERT4Rec, Two-Tower) for precise item-user alignment.
 - **Dynamic Re-ranking**: Heuristic boosters (Recency, Popularity) and diversification (MMR) provide the final behavioral "Pulse."
-- **Performance Optimized**: Native ONNX runtime integration for high-throughput, low-latency inference.
+- **Performance Optimized**: Native Candle runtime integration for high-throughput, low-latency inference.
 
 ---
 
@@ -20,7 +20,7 @@ Ranking stages represent the "Pulse" of the pipeline, where mathematical models 
 
 | Stage | Type | Description |
 | :--- | :--- | :--- |
-| [**🤖 ONNX Inference**](./onnx_inference/README.md) | ML | Executes generic ONNX models for real-time scoring. |
+| [**🕯️ Candle Inference**](./candle_inference/README.md) | ML | Executes pure-Rust model weights for real-time scoring. |
 | [**🛰️ BERT4Rec**](./ml_inference_bert4rec/README.md) | ML | Sequence-based transformer model for session-aware ranking. |
 | [**🗼 Two-Tower**](./ml_inference_two_tower/README.md) | ML | High-scale retrieval and ranking using dual-embedding models. |
 | [**📈 Boost Trending**](./boost_trending/README.md) | Heuristic | Dynamic weight adjustment for globally trending content. |

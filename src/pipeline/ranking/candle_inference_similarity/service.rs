@@ -38,12 +38,12 @@ fn default_max_results() -> usize { 50 }
 fn default_embedding_dim() -> usize { 128 }
 fn default_candidate_limit() -> usize { 1000 }
 
-pub struct ONNXInferenceSimilarityStage;
+pub struct CandleInferenceSimilarityStage;
 
 #[async_trait]
-impl PipelineStage for ONNXInferenceSimilarityStage {
+impl PipelineStage for CandleInferenceSimilarityStage {
     fn name(&self) -> &str {
-        "onnx_inference_similarity"
+        "candle_inference_similarity"
     }
 
     async fn execute(
@@ -53,12 +53,12 @@ impl PipelineStage for ONNXInferenceSimilarityStage {
         input: Vec<ScoredItem>,
     ) -> Result<Vec<ScoredItem>> {
         let params: Params = serde_json::from_value(params.clone())
-            .context("Failed to parse onnx_inference_similarity params")?;
+            .context("Failed to parse candle_inference_similarity params")?;
 
         if input.is_empty() {
             debug!(
                 request_id = %context.request_id,
-                "ONNX similarity skipped: no seed items"
+                "Candle similarity skipped: no seed items"
             );
             return Ok(Vec::new());
         }
@@ -68,7 +68,7 @@ impl PipelineStage for ONNXInferenceSimilarityStage {
             seed_count = input.len(),
             method = %params.method,
             model = ?params.model_name,
-            "Running ONNX similarity inference"
+            "Running Candle similarity inference"
         );
 
         let start = std::time::Instant::now();
@@ -120,7 +120,7 @@ impl PipelineStage for ONNXInferenceSimilarityStage {
                         json!({
                             "seed_item_id": seed_id,
                             "similarity_method": params.method,
-                            "inference_engine": "onnx_similarity"
+                            "inference_engine": "candle_similarity"
                         }),
                     )
                 })
@@ -165,7 +165,7 @@ impl PipelineStage for ONNXInferenceSimilarityStage {
             candidate_count = candidate_ids.len(),
             output_count = deduped.len(),
             inference_ms = inference_time.as_millis() as u64,
-            "ONNX similarity inference complete"
+            "Candle similarity inference complete"
         );
 
         Ok(deduped)

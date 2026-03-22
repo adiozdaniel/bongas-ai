@@ -5,7 +5,7 @@ use serde::Deserialize;
 use std::sync::Arc;
 use crate::pipeline::{PipelineStage, ScoredItem};
 use crate::pipeline::context::service::ExecutionContext;
-use crate::ml::inference::onnx::service::OnnxInferenceEngine;
+use crate::ml::inference::candle::service::CandleInferenceEngine;
 use tracing::info;
 
 #[derive(Deserialize)]
@@ -51,7 +51,7 @@ impl PipelineStage for MultiActionRankerStage {
             "Running multi-action inference"
         );
 
-        let model: Arc<OnnxInferenceEngine> = context.model_loader
+        let model: Arc<CandleInferenceEngine> = context.model_loader
             .get_model(&params.model_name)
             .await?;
 
@@ -63,8 +63,8 @@ impl PipelineStage for MultiActionRankerStage {
             let _item_ids: Vec<i32> = chunk.iter().map(|i| i.item_id).collect();
             
             // Mock fetching features - in real impl use context.feature_store
-            let user_features = ndarray::Array2::<f32>::zeros((1, 128));
-            let item_features = ndarray::Array2::<f32>::zeros((chunk.len(), 128));
+            let user_features = vec![0.0; 128];
+            let item_features = vec![0.0; 128];
 
             // Inference
             let chunk_probs: Vec<Vec<f32>> = model.clone().predict_multi_action(user_features, item_features).await
@@ -79,9 +79,12 @@ impl PipelineStage for MultiActionRankerStage {
                     expected_value += prob * 1.0; // Placeholder weight
                 }
 
-                let global_idx = results.iter().position(|r| r.item_id == chunk[i].item_id).unwrap();
-                results[global_idx].score = expected_value;
-                results[global_idx].metadata["multi_action_probs"] = json!(probs);
+                if let Some(chunk_item) = chunk.get(i) {
+                    if let Some(global_idx) = results.iter().position(|r| r.item_id == chunk_item.item_id) {
+                        results[global_idx].score = expected_value;
+                        results[global_idx].metadata["multi_action_probs"] = json!(probs);
+                    }
+                }
             }
         }
 

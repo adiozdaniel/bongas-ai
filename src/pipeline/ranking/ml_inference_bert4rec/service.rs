@@ -13,7 +13,7 @@ struct Params {
     #[serde(alias = "limit")]
     top_k: usize,
 
-    use_onnx: Option<bool>,
+    use_candle: Option<bool>,
 }
 
 pub struct MLInferenceBERT4RecStage;
@@ -36,13 +36,13 @@ impl PipelineStage for MLInferenceBERT4RecStage {
     ) -> Result<Vec<ScoredItem>> {
         let params: Params = serde_json::from_value(params.clone())?;
         let user_id = context.user_id.ok_or_else(|| anyhow::anyhow!("user_id required"))?;
-        let use_onnx = params.use_onnx.unwrap_or(true);
+        let use_candle = params.use_candle.unwrap_or(true);
 
         info!(
             request_id = %context.request_id,
             user_id = user_id,
             sequence_length = params.sequence_length,
-            use_onnx = use_onnx,
+            use_candle = use_candle,
             input_count = input.len(),
             "Running BERT4Rec inference"
         );
@@ -75,31 +75,27 @@ impl PipelineStage for MLInferenceBERT4RecStage {
             return Ok(vec![]);
         }
 
-        if use_onnx {
+        if use_candle {
             if let Ok(engine) = context.model_loader.get_model("bert4rec").await {
-                // Convert item IDs to floats for ONNX input (simplified)
+                // Convert item IDs to floats for Candle input (simplified)
                 let sequence_f32: Vec<f32> = sequence.iter().map(|&id| id as f32).collect();
                 
                 // For BERT4Rec, we typically use the sequence to predict scores for all candidates
-                // For this implementation, we use predict_multi_action where actions are candidates
-                let mut candidate_matrix = Vec::with_capacity(input.len());
+                let mut candidate_ids = Vec::with_capacity(input.len());
                 for item in &input {
-                    candidate_matrix.push(item.item_id as f32);
+                    candidate_ids.push(item.item_id as f32);
                 }
 
-                // Sequence: 1 x SeqLen, Candidates: input.len() x 1
-                // This is a simplification of BERT4Rec input
-                let user_array = ndarray::Array2::from_shape_vec((1, sequence_f32.len()), sequence_f32)?;
-                let item_array = ndarray::Array2::from_shape_vec((input.len(), 1), candidate_matrix)?;
-
-                let scores: Vec<Vec<f32>> = engine.predict_multi_action(user_array, item_array).await?;
+                let scores: Vec<Vec<f32>> = engine.predict_multi_action(sequence_f32, candidate_ids).await?;
                 
                 let mut results = Vec::with_capacity(input.len());
                 for (i, mut item) in input.into_iter().enumerate() {
-                    item.score = scores[i][0];
-                    item.metadata["model"] = json!("bert4rec");
-                    item.metadata["inference_engine"] = json!("onnx");
-                    results.push(item);
+                    if let Some(score_vec) = scores.get(i) {
+                        item.score = score_vec[0];
+                        item.metadata["model"] = json!("bert4rec");
+                        item.metadata["inference_engine"] = json!("candle");
+                        results.push(item);
+                    }
                 }
                 results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
                 results.truncate(params.top_k);
@@ -133,7 +129,7 @@ impl PipelineStage for MLInferenceBERT4RecStage {
                 row.trending_score,
                 json!({
                     "model": "bert4rec",
-                    "inference_engine": if use_onnx { "onnx" } else { "fallback" },
+                    "inference_engine": if use_candle { "candle" } else { "fallback" },
                     "sequence_length": sequence.len(),
                 }),
             )
@@ -142,5 +138,3 @@ impl PipelineStage for MLInferenceBERT4RecStage {
         Ok(items)
     }
 }
-
-
