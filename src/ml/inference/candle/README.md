@@ -4,7 +4,8 @@
 
 Replaces the legacy ONNX Runtime with a native Rust implementation via the **Candle** framework. By executing models directly in the core binary, we achieve a true single-binary architecture with ZERO external C++ dependencies, simplifying deployment into air-gapped client VPCs.
 
-### 🌟 Key Features
+## 🌟 Key Features
+
 - **Pure Rust Stack**: Compiled directly into the `bongas-ai` executable.
 - **Safetensors Support**: High-performance model weight ingestion.
 - **Netflix Resilience**: Guarded by Circuit Breakers, Bulkheads, and real-time Analytics.

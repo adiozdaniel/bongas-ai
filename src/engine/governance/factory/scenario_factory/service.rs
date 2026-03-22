@@ -87,7 +87,7 @@ impl ScenarioFactory {
             match self.parse_scenario(&config) {
                 Ok(scenario) => {
                     let uses_candle = scenario.pipeline.stages.iter()
-                        .any(|stage| stage.r#type.starts_with("candle_") || stage.r#type.starts_with("onnx_"));
+                        .any(|stage| stage.r#type.starts_with("candle_") || stage.r#type.starts_with("ml_inference_"));
 
                     if uses_candle {
                         candle_count += 1;

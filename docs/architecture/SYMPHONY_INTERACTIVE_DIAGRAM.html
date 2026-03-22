@@ -175,7 +175,7 @@ graph LR
 
     %% ML / Intelligence Integration
     subgraph IntelligenceLayer ["ML Assets"]
-        ONNX["ONNX Models"]
+        Candle["pure-Rust Models"]
         HiveMind["HiveMind SLM"]
     end
 
@@ -193,7 +193,7 @@ graph LR
     Registry <--> Redis
     Registry <--> PG
     Registry <--> SearchIndex
-    Registry <--> ONNX
+    Registry <--> Candle
     Ghost <--> Redis
 
     %% --- INTELLIGENCE PATHS (BLUE) ---
