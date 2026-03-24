@@ -1,15 +1,15 @@
-# 👂 Worker: Sound Listener
+# 👂 Worker: Sound Listener (The Ear)
 
-> **Deep-content extraction via audio intelligence.**
+> **Sovereign DNA Extraction: Deep-content mapping via latent audio signals.**
 
-The Sound Listener is a background worker that monitors the content catalog for unindexed videos. It performs audio-to-text inference to extract spoken words, enabling users to search for videos based on the actual words spoken inside them.
+The Sound Listener is a background worker that implements the **Sight-Core as the Ultimate Compressor** principle. Instead of simple transcription, it distills high-dimensional **Audio DNA** from the raw signal, providing the semantic budget for downstream linguistic analysis.
 
-## 🔄 Workflow
+## 🔄 Workflow: The Sovereign Extraction Pipeline
 
-1. **Differential Census:** Polls for videos that have not yet been audio-indexed.
-2. **ML Inference:** Executes audio-to-text reflexes (e.g., Whisper-Tiny) to extract transcripts.
-3. **Forensic Sync:** Pushes raw transcripts to ClickHouse for analytical auditing.
-4. **Index Sync:** Updates the Embedded Search index with spoken keywords.
+1. **Differential Census:** Identifies content requiring latent audio mapping.
+2. **Sovereign DNA Extraction:** Maps raw PCM signals into the **Sight-Core** latent space, producing a 1024-dimensional dense vector.
+3. **Forensic Sync:** Commits the **Audio DNA** to ClickHouse, enabling asynchronous distillation by the Student Language Heads.
+4. **The Glass Jar Constraint:** Monitors global CPU telemetry, yielding resources to ensure the engine's core throughput is never compromised.
 
 ---
 

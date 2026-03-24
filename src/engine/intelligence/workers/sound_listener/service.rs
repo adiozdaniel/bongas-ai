@@ -3,30 +3,30 @@
 //! Exclusive focus on raw audio-to-text transcription using pure-Rust Whisper.
 //! Acts as the primary data generator for the downstream Linguistic Worker.
 
-use std::sync::{Arc, Weak};
-use tokio::sync::{broadcast, RwLock};
+use tokio::sync::broadcast;
 use tokio::time::{interval, Duration};
 use tracing::{info, error, debug, warn};
 use anyhow::Result;
 use clickhouse::Client as ClickHouseClient;
-use candle_core::Device;
-use std::path::PathBuf;
+use std::sync::{Arc, Weak};
 
 use crate::engine::coordination::service::BongasEngine;
 use crate::db::ResilientPool;
 use crate::engine::intelligence::workers::sound_listener::models::AudioTranscript;
-use crate::ml::inference::candle::whisper::WhisperEngine;
+// Removed Whisper specific imports to uphold The Sovereign Paradigm
 
-/// 👂 Background worker for pure-Rust audio transcription.
+/// 👂 The Ear: Sovereign DNA Extractor for Audio Intelligence.
+/// 
+/// Instead of relying on external, generalist models (like Whisper), 
+/// this worker implements the "Sight-Core as the Ultimate Compressor" principle.
+/// It extracts high-dimensional Audio DNA from the frozen foundation backbone,
+/// ensuring that all intelligence is distilled from the project's own compute budget.
 pub struct SoundListenerWorker {
     engine: std::sync::Mutex<Option<Weak<BongasEngine>>>,
     db_pool: Arc<ResilientPool>,
     clickhouse: Option<Arc<ClickHouseClient>>,
     interval: Duration,
-    model_path: PathBuf,
-    // Persistence: The "Load-Once" Strategy (Senior Engineer Fix)
-    whisper_engine: Arc<RwLock<Option<WhisperEngine>>>,
-    // Resource awareness threshold
+    // Resource awareness threshold: The Glass Jar constraint
     cpu_threshold: u64,
 }
 
@@ -41,9 +41,7 @@ impl SoundListenerWorker {
             db_pool,
             clickhouse,
             interval,
-            model_path: PathBuf::from("models/whisper_tiny.safetensors"),
-            whisper_engine: Arc::new(RwLock::new(None)),
-            cpu_threshold: 60, // Yield if CPU > 60%
+            cpu_threshold: 60, 
         }
     }
 
@@ -54,20 +52,15 @@ impl SoundListenerWorker {
 
     /// Start the sound listener loop.
     pub async fn start(self: Arc<Self>, mut shutdown_rx: broadcast::Receiver<()>) {
-        info!("👂 Sound Listener (The Ear) started (M20 Phase 3)");
+        info!("👂 Sound Listener (The Ear) active: Operating under The Sovereign Paradigm");
         
-        // 1. Warm up: Pre-load Whisper weights into memory once
-        if let Err(e) = self.ensure_engine_loaded().await {
-            error!(error = %e, "Failed to initialize Whisper engine at startup");
-        }
-
         let mut ticker = interval(self.interval);
 
         loop {
             tokio::select! {
                 _ = ticker.tick() => {
                     if self.should_yield().await {
-                        debug!("Engine load high, The Ear is yielding resources...");
+                        debug!("Sight-Core under heavy load: The Ear is yielding resources (Glass Jar Constraint)...");
                         continue;
                     }
 
@@ -83,57 +76,21 @@ impl SoundListenerWorker {
         }
     }
 
-    /// Ensures the Whisper model is loaded in memory.
-    async fn ensure_engine_loaded(&self) -> Result<()> {
-        let mut engine_guard = self.whisper_engine.write().await;
-        if engine_guard.is_none() {
-            if !self.model_path.exists() {
-                return Err(anyhow::anyhow!("Whisper weights not found at {:?}", self.model_path));
-            }
-
-            info!(path = %self.model_path.display(), "Loading Whisper weights into persistent memory...");
-            let device = Device::Cpu;
-            let weights = candle_core::safetensors::load(&self.model_path, &device)?;
-            let whisper = WhisperEngine::load(weights, &device)?;
-            *engine_guard = Some(whisper);
-            info!("Whisper engine warmed up and ready.");
-        }
-        Ok(())
-    }
-
-    async fn should_yield(&self) -> bool {
-        // M21: Active Resource Telemetry
-        // Prevents ML workers from starving the main API threads during high traffic.
-        let mut sys = sysinfo::System::new();
-        sys.refresh_cpu_usage();
-        
-        // Give sysinfo a moment to sample if it's the first run
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-        sys.refresh_cpu_usage();
-
-        let global_usage = sys.global_cpu_usage();
-        debug!(usage = %global_usage, threshold = %self.cpu_threshold, "Resource Check");
-        
-        global_usage > self.cpu_threshold as f32
-    }
-
+    /// Distillation over Memorization: Extracting semantic DNA from raw audio.
     async fn run_listening_cycle(&self) -> Result<()> {
-        // Ensure engine is loaded before starting cycle
-        self.ensure_engine_loaded().await?;
-
         let items = self.fetch_pending_audio_items().await?;
         if items.is_empty() {
             return Ok(());
         }
 
-        info!(count = items.len(), "The Ear: Extracting spoken words from audio");
+        info!(count = items.len(), "The Ear: Extracting Sovereign Audio DNA from raw signal");
 
         for item_id in items {
-            // 2. STT Inference using cached engine
-            let (transcript, language) = self.transcribe_audio(item_id).await?;
+            // 2. DNA Extraction using the Frozen Sight-Core Backbone
+            let audio_dna = self.extract_audio_dna(item_id).await?;
             
-            // 3. Save raw record to ClickHouse (processed = false)
-            self.save_raw_transcript(item_id, &transcript, &language).await?;
+            // 3. Save DNA record to ClickHouse for downstream Student Head decoding
+            self.save_audio_dna(item_id, audio_dna).await?;
         }
 
         Ok(())
@@ -156,39 +113,41 @@ impl SoundListenerWorker {
         }
     }
 
-    /// Pure-Rust STT Inference using persistent Whisper Engine
-    async fn transcribe_audio(&self, item_id: i32) -> Result<(String, String)> {
-        debug!(item_id, "The Ear: Running Candle-native Whisper inference...");
+    /// Sovereign DNA Extraction: Mapping raw PCM to the Sight-Core latent space.
+    async fn extract_audio_dna(&self, item_id: i32) -> Result<Vec<f32>> {
+        debug!(item_id, "The Ear: Running Sight-Core native DNA extraction...");
         
-        let mut engine_guard = self.whisper_engine.write().await;
-        let whisper = engine_guard.as_mut().ok_or_else(|| anyhow::anyhow!("Whisper engine not loaded"))?;
+        let engine_weak = self.engine.lock().unwrap().clone()
+            .ok_or_else(|| anyhow::anyhow!("Engine reference missing"))?;
+        let engine = engine_weak.upgrade()
+            .ok_or_else(|| anyhow::anyhow!("Engine already dropped"))?;
 
-        // 4. Real Audio Decoding (The "Physical Ear")
+        // 4. Physical Audio Decoding
         let content_path = format!("data/hooks/{}.mp4", item_id);
         let pcm = if std::path::Path::new(&content_path).exists() {
             crate::engine::intelligence::workers::sound_listener::audio::decode_to_pcm(&content_path)?
         } else {
-            // Fallback for demo/missing files
-            vec![0.0f32; 16000] 
+            // Fallback for missing files: Distillation requires signal.
+            return Err(anyhow::anyhow!("Source content missing for item {}", item_id));
         };
 
-        let mel = whisper.pcm_to_mel(&pcm)?;
-
-        // 5. Execute Forward Pass (The "Real" Inference)
-        info!(model = "whisper-tiny", item_id, "Whisper: Executing forward pass on real PCM data...");
-        let (transcript, language) = whisper.transcribe(&mel)?;
+        // 5. Execute DNA Extraction (The "Sight-Core as the Ultimate Compressor" phase)
+        // In this architecture, we treat the Sight-Core as a multi-modal encoder.
+        // We pass the PCM signal to the embeddings manager to generate the dense DNA vector.
+        let audio_dna = engine.ml_pillar.inference.embeddings.generate_audio_dna(&pcm).await?;
         
-        Ok((transcript, language))
+        Ok(audio_dna)
     }
 
-    async fn save_raw_transcript(&self, item_id: i32, text: &str, lang: &str) -> Result<()> {
+    async fn save_audio_dna(&self, item_id: i32, dna: Vec<f32>) -> Result<()> {
         if let Some(ref ch) = self.clickhouse {
-            debug!(item_id, "The Ear: Syncing raw transcript to ClickHouse");
+            debug!(item_id, "The Ear: Syncing Sovereign Audio DNA to ClickHouse");
             
             let row = AudioTranscript {
                 item_id,
-                transcript: text.to_string(),
-                detected_language: lang.to_string(),
+                transcript: "".to_string(), // Text is now distilled by the Student Language Head
+                audio_dna: Some(dna),
+                detected_language: "dna_embedded".to_string(),
                 extracted_at: chrono::Utc::now(),
                 processed: false,
             };
@@ -198,5 +157,14 @@ impl SoundListenerWorker {
             insert.end().await?;
         }
         Ok(())
+    }
+
+    async fn should_yield(&self) -> bool {
+        let mut sys = sysinfo::System::new();
+        sys.refresh_cpu_usage();
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        sys.refresh_cpu_usage();
+        let global_usage = sys.global_cpu_usage();
+        global_usage > self.cpu_threshold as f32
     }
 }

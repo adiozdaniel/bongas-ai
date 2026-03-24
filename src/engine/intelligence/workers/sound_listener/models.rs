@@ -3,12 +3,13 @@
 use serde::{Serialize, Deserialize};
 use chrono::{DateTime, Utc};
 
-/// Stage 1: Raw record of an audio transcription (The Ear).
+/// Stage 1: Raw record of an audio transcription or extracted DNA (The Ear).
 #[derive(Debug, Clone, Serialize, Deserialize, clickhouse::Row)]
 pub struct AudioTranscript {
     pub item_id: i32,
     pub transcript: String,
-    pub detected_language: String, // Whisper's best guess
+    pub audio_dna: Option<Vec<f32>>, // The 1024-dimensional dense vector from the Sight-Core
+    pub detected_language: String, 
     pub extracted_at: DateTime<Utc>,
     pub processed: bool,
 }
