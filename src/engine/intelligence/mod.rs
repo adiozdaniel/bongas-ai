@@ -5,6 +5,7 @@ pub mod monitoring;
 pub mod workers;
 pub mod identity;
 pub mod pillar;
+pub mod forensics;
 
 pub use ai::suggestions_manager::service::SuggestionsManager;
 pub use ai::hive_mind::service::HiveMindConnector;
@@ -13,3 +14,4 @@ pub use monitoring::staleness_engine::service::StalenessEngine;
 pub use workers::WorkersManager;
 pub use identity::service::IdentityStitcher;
 pub use pillar::service::IntelligencePillar;
+

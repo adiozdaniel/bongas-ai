@@ -12,7 +12,7 @@ use std::sync::{Arc, Weak};
 
 use crate::engine::coordination::service::BongasEngine;
 use crate::db::ResilientPool;
-use crate::engine::intelligence::workers::sound_listener::models::AudioTranscript;
+use crate::engine::intelligence::forensics::models::AudioTranscript;
 // Removed Whisper specific imports to uphold The Sovereign Paradigm
 
 /// 👂 The Ear: Sovereign DNA Extractor for Audio Intelligence.
@@ -24,7 +24,6 @@ use crate::engine::intelligence::workers::sound_listener::models::AudioTranscrip
 pub struct SoundListenerWorker {
     engine: std::sync::Mutex<Option<Weak<BongasEngine>>>,
     db_pool: Arc<ResilientPool>,
-    clickhouse: Option<Arc<ClickHouseClient>>,
     interval: Duration,
     // Resource awareness threshold: The Glass Jar constraint
     cpu_threshold: u64,
@@ -33,13 +32,12 @@ pub struct SoundListenerWorker {
 impl SoundListenerWorker {
     pub fn new(
         db_pool: Arc<ResilientPool>,
-        clickhouse: Option<Arc<ClickHouseClient>>,
+        _clickhouse: Option<Arc<ClickHouseClient>>,
         interval: Duration,
     ) -> Self {
         Self {
             engine: std::sync::Mutex::new(None),
             db_pool,
-            clickhouse,
             interval,
             cpu_threshold: 60, 
         }
@@ -140,22 +138,24 @@ impl SoundListenerWorker {
     }
 
     async fn save_audio_dna(&self, item_id: i32, dna: Vec<f32>) -> Result<()> {
-        if let Some(ref ch) = self.clickhouse {
-            debug!(item_id, "The Ear: Syncing Sovereign Audio DNA to ClickHouse");
-            
-            let row = AudioTranscript {
-                item_id,
-                transcript: "".to_string(), // Text is now distilled by the Student Language Head
-                audio_dna: Some(dna),
-                detected_language: "dna_embedded".to_string(),
-                extracted_at: chrono::Utc::now(),
-                processed: false,
-            };
+        let engine_weak = self.engine.lock().unwrap().clone()
+            .ok_or_else(|| anyhow::anyhow!("Engine reference missing"))?;
+        let engine = engine_weak.upgrade()
+            .ok_or_else(|| anyhow::anyhow!("Engine already dropped"))?;
 
-            let mut insert = ch.insert::<AudioTranscript>("audio_transcripts").await?;
-            insert.write(&row).await?;
-            insert.end().await?;
-        }
+        debug!(item_id, "The Ear: Syncing Sovereign Audio DNA via ForensicPillar");
+        
+        let row = AudioTranscript {
+            item_id,
+            transcript: "".to_string(), // Text is now distilled by the Student Language Head
+            audio_dna: Some(dna),
+            detected_language: "dna_embedded".to_string(),
+            extracted_at: chrono::Utc::now(),
+            processed: false,
+        };
+
+        engine.intelligence.forensics.record_audio_transcript(row).await?;
+        
         Ok(())
     }
 

@@ -9,9 +9,22 @@ use crate::engine::intelligence::workers::WorkersManager;
 use crate::engine::intelligence::workers::fatigue_sync::service::FatigueSynchronizer;
 use crate::engine::intelligence::ai::simulator::service::SafetySimulator;
 use crate::engine::intelligence::identity::service::IdentityStitcher;
+use crate::engine::intelligence::forensics::pillar::ForensicPillar;
 use crate::search::EmbeddedSearchManager;
 
 use crate::engine::intelligence::monitoring::analytics_sidecar::service::UserEvent;
+
+/// Components required to initialize the IntelligencePillar.
+pub struct IntelligenceComponents {
+    pub suggestions: Arc<SuggestionsManager>,
+    pub hive_mind: Arc<HiveMindConnector>,
+    pub monitoring: Arc<AnalyticsSidecar>,
+    pub staleness: Arc<StalenessEngine>,
+    pub workers: Arc<WorkersManager>,
+    pub fatigue_sync: Arc<FatigueSynchronizer>,
+    pub forensics: Arc<ForensicPillar>,
+    pub search_manager: Arc<EmbeddedSearchManager>,
+}
 
 pub struct IntelligencePillar {
     pub suggestions: Arc<SuggestionsManager>,
@@ -22,29 +35,23 @@ pub struct IntelligencePillar {
     pub fatigue_sync: Arc<FatigueSynchronizer>,
     pub simulator: Arc<SafetySimulator>,
     pub identity: Arc<IdentityStitcher>,
+    pub forensics: Arc<ForensicPillar>,
     pub search_manager: Arc<EmbeddedSearchManager>,
 }
 
 impl IntelligencePillar {
-    pub fn new(
-        suggestions: Arc<SuggestionsManager>,
-        hive_mind: Arc<HiveMindConnector>,
-        monitoring: Arc<AnalyticsSidecar>,
-        staleness: Arc<StalenessEngine>,
-        workers: Arc<WorkersManager>,
-        fatigue_sync: Arc<FatigueSynchronizer>,
-        search_manager: Arc<EmbeddedSearchManager>,
-    ) -> Self {
+    pub fn new(components: IntelligenceComponents) -> Self {
         Self {
-            suggestions,
-            hive_mind,
-            monitoring,
-            staleness,
-            workers,
-            fatigue_sync,
+            suggestions: components.suggestions,
+            hive_mind: components.hive_mind,
+            monitoring: components.monitoring,
+            staleness: components.staleness,
+            workers: components.workers,
+            fatigue_sync: components.fatigue_sync,
             simulator: Arc::new(SafetySimulator::new()),
             identity: Arc::new(IdentityStitcher::new()),
-            search_manager,
+            forensics: components.forensics,
+            search_manager: components.search_manager,
         }
     }
 

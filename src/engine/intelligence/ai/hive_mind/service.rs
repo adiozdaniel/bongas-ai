@@ -174,6 +174,11 @@ impl HiveMindConnector {
     pub async fn process_admin_query(&self, query: AdminQuery) -> Result<AdminResponse> {
         let text = query.text.to_lowercase();
         
+        let engine_arc: Option<Arc<BongasEngine>> = {
+            let guard = self.engine.lock().unwrap_or_else(|e| e.into_inner());
+            guard.as_ref().and_then(|w: &Weak<BongasEngine>| w.upgrade())
+        };
+
         // 1. Instant Forensic Interpretations (Pillar 3, Point 11)
         if text.contains("rated as") || text.contains("rating ya") {
             // Mock: Pull from ClickHouse in production
@@ -195,14 +200,19 @@ impl HiveMindConnector {
         }
 
         // 3. Forensic Reconciliation & Skepticism (Pillar 3, Point 9)
-        if (text.contains("it is ge") || text.contains("ni ge"))
-            && query.context.get("forensic_flag").and_then(|v| v.as_str()) == Some("17+")
-        {
-            return Ok(AdminResponse {
-                text: "uko sure wewe? forensics inasema hii ni 17+".to_string(),
-                action: Some(serde_json::json!({"requires_confirmation": true})),
-                confidence: 0.99,
-            });
+        // Extract item_id if provided in context for dynamic forensic check
+        let item_id = query.context.get("item_id").and_then(|v| v.as_i64()).map(|v| v as i32);
+        
+        if text.contains("it is ge") || text.contains("ni ge") {
+            if let (Some(engine), Some(id)) = (&engine_arc, item_id) {
+                if engine.intelligence.forensics.is_skeptical_of_override(id, "GE").await.unwrap_or(false) {
+                    return Ok(AdminResponse {
+                        text: "uko sure wewe? forensics inasema hii ni 17+".to_string(),
+                        action: Some(serde_json::json!({"requires_confirmation": true})),
+                        confidence: 0.99,
+                    });
+                }
+            }
         }
 
         if (text.contains("yes") || text.contains("ndio") || text.contains("i am sure"))

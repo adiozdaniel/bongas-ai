@@ -15,6 +15,7 @@ use crate::engine::intelligence::workers::signal_decay::service::SignalDecayWork
 use crate::engine::intelligence::workers::sovereign_sight::service::SovereignSightWorker;
 use crate::engine::intelligence::workers::ghost_execution::service::GhostExecutionWorker;
 use crate::engine::intelligence::workers::sound_listener::service::SoundListenerWorker;
+use crate::engine::intelligence::forensics::auditor::ForensicAuditor;
 
 /// 💓 Workers: Background maintenance and task orchestration.
 pub struct WorkersManager {
@@ -29,6 +30,7 @@ pub struct WorkersManager {
     ghost_execution: Option<Arc<GhostExecutionWorker>>,
     sound_listener: Option<Arc<SoundListenerWorker>>,
     linguistic: Option<Arc<LinguisticWorker>>,
+    forensic_auditor: Option<Arc<ForensicAuditor>>,
 }
 
 impl Default for WorkersManager {
@@ -51,6 +53,7 @@ impl WorkersManager {
             ghost_execution: None,
             sound_listener: None,
             linguistic: None,
+            forensic_auditor: None,
         }
     }
 
@@ -106,6 +109,11 @@ impl WorkersManager {
 
     pub fn with_linguistic(mut self, worker: Arc<LinguisticWorker>) -> Self {
         self.linguistic = Some(worker);
+        self
+    }
+
+    pub fn with_forensic_auditor(mut self, auditor: Arc<ForensicAuditor>) -> Self {
+        self.forensic_auditor = Some(auditor);
         self
     }
 
@@ -230,6 +238,15 @@ impl WorkersManager {
             let shutdown_rx = shutdown_tx.subscribe();
             tokio::spawn(async move {
                 worker.start(shutdown_rx).await;
+            });
+        }
+
+        // 12. Start Forensic Auditor (The Audit Path)
+        if let Some(ref auditor) = self.forensic_auditor {
+            let auditor = auditor.clone();
+            let shutdown_rx = shutdown_tx.subscribe();
+            tokio::spawn(async move {
+                auditor.start(shutdown_rx).await;
             });
         }
     }

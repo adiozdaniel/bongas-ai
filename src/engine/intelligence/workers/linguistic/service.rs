@@ -15,7 +15,7 @@ use tantivy::doc;
 use crate::db::ResilientPool;
 use crate::search::EmbeddedSearchManager;
 use crate::engine::intelligence::ai::hive_mind::service::HiveMindConnector;
-use crate::engine::intelligence::workers::sound_listener::models::{AudioTranscript, ProcessedAudioIntelligence};
+use crate::engine::intelligence::forensics::models::{AudioTranscript, ProcessedAudioIntelligence};
 
 /// 🗣️ The Linguist: Sovereign Mapping & Dialect Distillation.
 /// 
