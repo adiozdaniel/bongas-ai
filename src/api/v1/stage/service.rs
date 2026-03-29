@@ -85,7 +85,7 @@ pub async fn execute_and_map(
         })
         .collect();
 
-    // ─── Impression Tracking (Baze-Style) ──────────────────────────────
+    // ─── Impression Tracking ──────────────────────────────
     if let Some(uid) = req.user_id {
         let vid = visitor_id.clone();
         let dhash = device_hash.clone();
