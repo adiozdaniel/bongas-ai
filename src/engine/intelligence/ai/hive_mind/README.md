@@ -17,7 +17,7 @@ graph LR
 
 ## 🔑 Key Features
 
-- **Global Intelligence**: Leverages patterns learned across the entire Baze ecosystem.
+- **Global Intelligence**: Leverages patterns learned across the entire ecosystem.
 - **Auto-Approval**: Can automatically activate "Safe" rules designated by the Hive Mind.
 - **Air-Gap Support**: Gracefully falls back to local strategies if the network is unavailable.
 
