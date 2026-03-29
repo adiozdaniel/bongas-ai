@@ -16,6 +16,12 @@ We decouple the **Read-Path (The Stage)** from the **Write-Path (The Backstage)*
 
 -----
 
+## 🏭 Training Factory: [Bongas-ML](https://github.com/adiozdaniel/bongas-ml)
+
+The backbone of the "Backstage" write-path. **Bongas-ML** handles heavy-lift model distillation, feature engineering, and `.safetensors` quantization, ensuring that only optimized, production-ready weights reach the Symphony runtime.
+
+-----
+
 ## 🧠 Core Intelligence Domains
 
 | Domain | Mechanism | Impact |
@@ -39,7 +45,7 @@ We decouple the **Read-Path (The Stage)** from the **Write-Path (The Backstage)*
 
 * **Engine:** `Rust` (`tokio`, `axum`)
 * **State:** `Redis` (Hot) / `PostgreSQL` (Record) / `ClickHouse` (Telemetry)
-* **AI:** `Candle` & `HiveMind` (Native Inference)
+* **AI:** `Candle` & `HiveMind` (Inference) / [**Bongas-ML**](https://github.com/adiozdaniel/bongas-ml) (Training)
 
 -----
 
