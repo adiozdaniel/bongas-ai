@@ -363,14 +363,22 @@ impl DiscoverySymphony {
             .with_sound_listener(sound_listener_worker)
             .with_linguistic(linguistic_worker));
 
+        let forensics = Arc::new(crate::engine::intelligence::forensics::pillar::ForensicPillar::new(
+            clickhouse_client.clone(),
+            resilient_pool.clone(),
+        ));
+
         let intelligence = Arc::new(IntelligencePillar::new(
-            Arc::new(SuggestionsManager::new()),
-            hive_mind,
-            monitoring,
-            staleness_engine,
-            workers,
-            fatigue_sync,
-            search_manager,
+            crate::engine::intelligence::pillar::service::IntelligenceComponents {
+                suggestions: Arc::new(SuggestionsManager::new()),
+                hive_mind,
+                monitoring,
+                staleness: staleness_engine,
+                workers,
+                fatigue_sync,
+                forensics,
+                search_manager,
+            }
         ));
 
         // ─── 7. NOTIFICATIONS & SIDE-EFFECTS ──────────────────────────────────
