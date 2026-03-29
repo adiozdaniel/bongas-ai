@@ -49,6 +49,6 @@ The backbone of the "Backstage" write-path. **Bongas-ML** handles heavy-lift mod
 
 -----
 
-### 📖 [**Visit the Documentation Hub**](https://www.google.com/search?q=./docs/HUB.md)
+### 📖 [**Visit the Documentation Hub**](docs/HUB.md)
 
 *Built with 🦀 for uncompromising speed and safety.*
