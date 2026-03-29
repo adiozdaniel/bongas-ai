@@ -1,139 +1,48 @@
 # ![Bongas-AI Logo](./docs/logo.svg) Bongas-AI Symphony 2.0: Content Intelligence Platform
 
-## Overview
+## *Unified Content Intelligence & Sovereign Discovery*
 
-Bongas-AI Symphony 2.0 is a next-generation, unified AI-powered search, recommendation, and personalization engine designed for high-scale digital platforms. Built entirely in Rust, it delivers zero perceived latency and Netflix-grade resilience while orchestrating complex, mixed-media content discovery experiences.
+**Bongas-AI Symphony 2.0** is a high-scale, AI-powered engine for search and personalization. Built natively in **Rust** 🦀, it delivers zero-latency discovery while replacing fragmented SaaS tools with a single, sovereign intelligence pillar.
 
-By unifying discovery, behavioral tracking, and proactive engagement into a single "Intelligence Pillar," Bongas-AI eliminates the need for fragmented, third-party SaaS solutions (e.g., Algolia, Recombee), drastically reducing operational costs and ensuring complete data ownership.
+-----
 
-The platform is designed around a **Bifurcated Control Plane**, strictly decoupling the high-performance **Read-Path (The Stage)** from the intelligence-heavy **Write-Path (The Backstage)**. This architectural split ensures that large-scale model training, behavioral clustering, and administrative strategy updates never impact the sub-millisecond response times required for user discovery.
+## 🏗️ The Velocity Architecture
 
----
+We decouple the **Read-Path (The Stage)** from the **Write-Path (The Backstage)** to ensure ML training never throttles user experience.
 
-## 1. The Symphony 2.0 Architecture
+* **⚡ Concurrent Fan-Out:** Streams "Hero" and "Trending" rows via **SSE** for instant rendering.
+* **👻 Ghost Execution:** Predictive background caching in Redis eliminates loading spinners.
+* **🎭 Dual-Plane Control:** Runtime delivery is isolated from heavy **Candle** model training.
 
-The platform operates on a "Velocity Engine" paradigm, ensuring that complex machine learning pipelines never block the user experience.
+-----
 
-### a. Concurrent Fan-Out (Live Streaming)
+## 🧠 Core Intelligence Domains
 
-The engine executes multiple recommendation scenarios (e.g., "Hero Banner", "Trending", "Because you watched") simultaneously using highly parallelized Rust futures. Results are streamed to the client via Server-Sent Events (SSE) in strict layout order, ensuring the fastest components render immediately.
-
-### b. Ghost Execution (Predictive Pre-Warming)
-
-Eliminates client-side loading states by automatically anticipating a user's next action (e.g., scrolling to the next page of a carousel). The engine silently executes the next batch of recommendations in the background and caches them in Redis for zero-latency retrieval.
-
-### c. Dual-Plane Orchestration (Stage vs. Backstage)
-
-We eliminate the "Monolithic Contention" bottleneck by isolating the engine's primary functions into two distinct planes:
-
-* **The Stage (Runtime Plane):** A read-optimized, highly concurrent environment dedicated exclusively to sub-millisecond recommendation delivery and event ingestion.
-* **The Backstage (Control Plane):** Where the engine's intelligence is born. This plane handles asynchronous model training (Candle), behavioral clustering (K-Means), and administrative strategy definition without consuming runtime resources.
-
----
-
-## 2. Core Intelligence Capabilities
-
-Bongas-AI uses a highly modular `PipelineRegistry` that allows administrators to dynamically construct discovery scenarios using distinct algorithmic stages.
-
-### Domain A: Content Discovery (Recovery & Ranking)
-
-#### **1. Behavioral Tribes (Geometric Persona Clustering)**
-
-* **Mechanism:** A background `TribeOrchestrator` uses K-Means clustering on user embeddings to group profiles into behavioral "tribes" (e.g., "Hard Sci-Fi Enthusiasts").
-* **Execution:** The pipeline dynamically surfaces content currently trending among a user's behavioral lookalikes, providing highly relevant discovery even for users with sparse recent history.
-
-#### **2. Hyper-Local Semantic Pulse (Contextual Boosting)**
-
-* **Mechanism:** A `RegionalPulseWorker` scrapes real-time news and events for specific geographic regions, using the LLM-powered `HiveMindConnector` to classify events (e.g., "Natural Disaster", "Cultural Festival") and generate semantic vectors.
-* **Execution:** The ranking engine applies a real-time semantic boost (e.g., 1.3x) to content that contextually matches the user's current regional environment, filtered through strict maturity guardrails to prevent sensitive mismatching.
-
-### Domain B: Content Refinement (Processing)
-
-#### **3. Content Fatigue Synchronization**
-
-* **Mechanism:** A pluggable `FatigueSynchronizer` maintains an eventually-consistent ledger of item exposures across the platform, resetting immediately upon user engagement.
-* **Execution:** The pipeline batch-fetches exposure states via Redis `MGET` and applies exponential penalties to over-exposed items, ensuring the discovery feed remains fresh and prevents cognitive burnout.
-
-#### **4. Semantic Why (Explainability Engine)**
-
-* **Mechanism:** A background `ReasoningWorker` proactively identifies high-probability profile/item matches and uses the HiveMind LLM to generate human-readable explanations.
-* **Execution:** Surfaces trust-building reasons (e.g., "Because you enjoy cyberpunk documentaries") to build user trust. It falls back to high-speed heuristic matching of profile affinities to item tags if a pre-computed reason isn't available.
-
-### Domain C: Sovereign Intelligence (Native Rust)
-
-Bongas-AI delivers true "Sovereign Intelligence" by executing all model evolution and security logic natively within the Rust binary.
-
-#### **5. Frozen Base Models (The Senses)**
-
-* **Mechanism:** Massive pre-trained models (e.g., `sight-core` for visual DNA, `slm-base` for natural language) are shipped to the client's environment as read-only, optimized `.safetensors` assets. They perform heavy feature extraction without data exfiltration.
-
-#### **6. Sovereign Training Pillar (Native Rust)**
-
-* **Mechanism:** Utilizing the **Candle** framework, the engine performs on-premise training and fine-tuning directly against the client's private ClickHouse ledgers. This eliminates all external Python dependencies and `trainer.so` sidecars.
-* **Architecture:** Asynchronously trains lightweight "Student Heads" to adapt the global foundation models to local context:
-* **`vision_head.safetensors` (The Auditor):** Maps raw visual DNA to specific safety ceilings (18+, Kids) and semantic vibes.
-* **`slm_head.safetensors` (The Librarian):** Generates natural language summaries and taxonomy tags.
-* **`ranking.safetensors` (The Conductor):** Learns aggregate Tribe-level content affinities.
-* **Execution:** Newly trained weights are hot-swapped via an **Atomic Weight Registry**, ensuring the core discovery path never blocks on heavy [ML training](https://github.com/adiozdaniel/bongas-ml).
-
----
-
-## 3. User Engagement & Side-Effects
-
-Discovery extends beyond the application session. Bongas-AI includes a centralized, environment-agnostic `NotificationDispatcher` to drive retention.
-
-### a. Omnichannel Delivery
-
-The dispatcher uses a pluggable adaptor pattern to support various infrastructures:
-
-* **ResendAdaptor:** High-deliverability production email with Handlebars-driven dynamic templating.
-* **KafkaStreamAdaptor:** Pushes high-priority alerts to distributed topics for real-time mobile/web push delivery.
-* **PollingAdaptor:** Ensures records are securely indexed for legacy or pull-based API delivery (`GET /notifications/inbox`).
-
-### b. Scheduled Intelligence (Digest Workers)
-
-Automated workers continuously scan user arrival patterns to identify dormant profiles. Upon triggering, they execute personalized scenarios (e.g., "email_digest") in the background and hand off the highly curated payload to the Dispatcher to re-engage the user.
-
----
-
-## 4. Current Milestone Achievement: Symphony 3.0
-
-The platform has achieved its primary "Sovereign Singularity" goals:
-
-### 4.1 🔍 Embedded Hybrid Search
-
-Breaking the discovery barrier with full-text keyword matching at sub-10ms speeds using **Tantivy** embedded directly in the binary. Results are dynamically re-ranked via our existing **Semantic Vector Similarity** pipelines.
-
-### 4.2 🧠 The Symphony Conductor (Agentic Reasoning)
-
-A natural-language "Executive Assistant" powered by a local, quantized Small Language Model (SLM) running natively via **Candle**. It can reason about system performance, simulate impact of setting changes, and propose safe configuration updates.
-
-### 4.3 🌍 The Swahili Brain (Golden Bootstrap)
-
-Ensuring cultural intelligence by pre-training the Conductor on technical and conversational East African dialects. Continuous fine-tuning (LoRA) happens locally within the client VPC using native Rust training loops.
-
----
-
-## 5. Resilience & Technology Stack
-
-Built entirely in **Rust** for uncompromising safety and speed.
-
-| Component | Technology | Role |
+| Domain | Mechanism | Impact |
 | :--- | :--- | :--- |
-| **Core Engine** | Rust (`tokio`, `axum`) | High-performance API and async orchestration. |
-| **Hot State** | Redis | Sub-millisecond pipeline lookups and ghost caching. |
-| **System of Record** | PostgreSQL (`sqlx`) | Transactional data and scenario configurations. |
-| **Analytical Ledger** | ClickHouse | High-throughput telemetry and interaction aggregation. |
-| **Intelligence** | Candle / HiveMind | Local model inference and agentic reasoning. |
+| **Discovery** | `TribeOrchestrator` | K-Means clustering for "Lookalike" behavioral targeting. |
+| **Refinement** | `FatigueSync` | Exponential penalties for over-exposed content via Redis. |
+| **Sovereignty** | `Candle` / `Rust` | Local training & inference via `.safetensors`—no data exfiltration. |
+| **Explanation** | `Semantic Why` | LLM-powered reasoning to build user trust (e.g., *"Because you like..."*). |
 
----
+-----
 
-## 📖 Dive into the Symphony
+## 🚀 Strengths
 
-For technical deep-dives, architectural blueprints, and API contracts, please visit our central documentation hub:
+* **🔍 Embedded Hybrid Search:** Sub-10ms full-text matching using **Tantivy**.
+* **🧠 The Conductor:** Agentic reasoning for system config via local **SLMs**.
+* **🌍 Linguistic Brain:** Culturally aware fine-tuning for regional contexts.
 
-## 👉 [**Visit the Documentation Hub**](./docs/HUB.md)
+-----
 
----
+## 🛠️ The Stack
 
-*Built by with 🦀 for uncompromising speed and safety.*
+* **Engine:** `Rust` (`tokio`, `axum`)
+* **State:** `Redis` (Hot) / `PostgreSQL` (Record) / `ClickHouse` (Telemetry)
+* **AI:** `Candle` & `HiveMind` (Native Inference)
+
+-----
+
+### 📖 [**Visit the Documentation Hub**](https://www.google.com/search?q=./docs/HUB.md)
+
+*Built with 🦀 for uncompromising speed and safety.*
