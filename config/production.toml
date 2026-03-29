@@ -15,7 +15,7 @@ environment = "production"
 
 [database]
 # Primary database connection
-url = "postgresql://postgres:password@db-primary.example.com:5432/baze_catalog"
+url = "postgresql://postgres:password@db-primary.example.com:5432/_catalog"
 # Production database connection limits
 max_connections = 100
 min_connections = 20
@@ -27,9 +27,9 @@ statement_timeout = 300
 # Read replicas for load distribution (DevOps configures these)
 # use_read_replicas = true
 # read_replicas = [
-#     "postgresql://postgres:password@db-replica-1.example.com:5432/baze_catalog",
-#     "postgresql://postgres:password@db-replica-2.example.com:5432/baze_catalog",
-#     "postgresql://postgres:password@db-replica-3.example.com:5432/baze_catalog"
+#     "postgresql://postgres:password@db-replica-1.example.com:5432/_catalog",
+#     "postgresql://postgres:password@db-replica-2.example.com:5432/_catalog",
+#     "postgresql://postgres:password@db-replica-3.example.com:5432/_catalog"
 # ]
 
 [redis]
@@ -54,7 +54,7 @@ retry_backoff = 100
 url = "http://${CLICKHOUSE_HOST}:8123/?socket_timeout=60000&connection_timeout=30000&max_execution_time=60&retry_on_failure=2&failover=3"
 user = "default"
 password = "${CLICKHOUSE_PASSWORD}"
-database = "baze_reports"
+database = "_reports"
 
 [kafka]
 enabled = false
