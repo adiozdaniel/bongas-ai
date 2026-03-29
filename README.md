@@ -1,263 +1,130 @@
 # ![Bongas-AI Logo](./docs/logo.svg) Bongas-AI Symphony 2.0: Content Intelligence Platform
 
-## 📋 Executive Summary
+## Overview
 
-Bongas-AI Symphony 2.0 is a next-generation, **Unified Content Intelligence Orchestrator** designed for high-scale digital platforms. Built entirely in Rust 🦀, it delivers zero perceived latency and Netflix-grade resilience while collapsing fragmented third-party SaaS dependencies into a single, sovereign "Intelligence Pillar."
+Bongas-AI Symphony 2.0 is a next-generation, unified AI-powered search, recommendation, and personalization engine designed for high-scale digital platforms. Built entirely in Rust, it delivers zero perceived latency and Netflix-grade resilience while orchestrating complex, mixed-media content discovery experiences.
 
-The platform is designed around a **Bifurcated Control Plane**, strictly decoupling the high-performance **Read-Path (The Stage)** from the intelligence-heavy **Write-Path (The Backstage)**. This ensures that heavy **Behavioral Clustering**, regional scraping, and administrative strategy updates never impact the sub-millisecond response times required for user discovery.
+By unifying discovery, behavioral tracking, and proactive engagement into a single "Intelligence Pillar," Bongas-AI eliminates the need for fragmented, third-party SaaS solutions (e.g., Algolia, Recombee), drastically reducing operational costs and ensuring complete data ownership.
+
+The platform is designed around a **Bifurcated Control Plane**, strictly decoupling the high-performance **Read-Path (The Stage)** from the intelligence-heavy **Write-Path (The Backstage)**. This architectural split ensures that large-scale model training, behavioral clustering, and administrative strategy updates never impact the sub-millisecond response times required for user discovery.
 
 ---
 
-## 1.0 🏗️ The Symphony 2.0 Architecture
+## 1. The Symphony 2.0 Architecture
 
 The platform operates on a "Velocity Engine" paradigm, ensuring that complex machine learning pipelines never block the user experience.
 
-### 1.1 ⚡ Server-Driven UI (The Symphony Resolver)
+### a. Concurrent Fan-Out (Live Streaming)
 
-A full SDUI orchestration platform. The **Symphony Resolver** dynamically assembles page compositions based on device context and algorithmic scores, transforming the server into an orchestrator and the client (Web, Mobile, or TV) into a high-performance canvas.
+The engine executes multiple recommendation scenarios (e.g., "Hero Banner", "Trending", "Because you watched") simultaneously using highly parallelized Rust futures. Results are streamed to the client via Server-Sent Events (SSE) in strict layout order, ensuring the fastest components render immediately.
 
-### 1.2 🧬 Elastic Discovery Stages
+### b. Ghost Execution (Predictive Pre-Warming)
 
-Delivering high-precision relevance via a modular **Pipeline Registry**. It combines sub-millisecond content recovery with vector-based ranking to serve mixed-media catalogs (Video, Music, Podcasts, Live Stream) instantly across unlimited discovery scenarios.
+Eliminates client-side loading states by automatically anticipating a user's next action (e.g., scrolling to the next page of a carousel). The engine silently executes the next batch of recommendations in the background and caches them in Redis for zero-latency retrieval.
 
-### 1.3 📡 Concurrent Fan-Out (Live Streaming)
+### c. Dual-Plane Orchestration (Stage vs. Backstage)
 
-The engine executes multiple recommendation scenarios simultaneously using highly parallelized Rust futures. Results are streamed via Server-Sent Events (SSE) in strict layout order, ensuring the fastest components render immediately.
+We eliminate the "Monolithic Contention" bottleneck by isolating the engine's primary functions into two distinct planes:
 
-### 1.4 👻 Ghost Execution (Predictive Pre-Warming)
-
-Eliminates loading states by anticipating a user's next action. The engine silently executes the next batch of recommendations in the background and caches them in Redis for zero-latency retrieval.
-
-### 1.5 🎭 Dual-Plane Orchestration (Stage vs. Backstage)
-
-We eliminate the "Monolithic Contention" bottleneck by strictly isolating the engine's functions into two distinct planes:
-
-* **The Stage (Runtime Plane):** A read-optimized environment dedicated to sub-millisecond recommendation delivery and real-time event ingestion.
-* **The Backstage (Control Plane):** Managed by the `WorkersManager`, this plane handles heavy intelligence tasks—**Behavioral Clustering**, **Regional Scraping**, and **Semantic Reasoning**. This plane is currently evolving into a **Python-Bridge Architecture** to separate heavy model training from the Rust core.
-
-### 1.6 🔍 Elastic Hybrid Search (Meilisearch)
-
-We eliminate the "Algolia-Cost Trap" by integrating a high-performance, Rust-native search pillar.
-
-* **Mechanism:** A background `SearchSyncWorker` maintains a real-time, typo-tolerant mirror of the PostgreSQL catalog in **Meilisearch**.
-* **Execution:** The `FetchSearchResultsStage` combines exact keyword matches with **Semantic Re-ranking** (via Vector Similarity), ensuring that search results are not just accurate, but personalized to the user's Behavioral Tribe.
-
-### 1.7 🐍 Python-Bridge Intelligence (The Training Plane)
-
-We implement a high-performance bridge between Rust's speed and Python's ML ecosystem.
-
-* **Parquet Exporter:** A native `ParquetExporter` dumps ClickHouse telemetry into compressed Apache Parquet files for "Surgical Training."
-* **Artifact Flow:** Models are trained in Python (scikit-learn, PyTorch), exported to **Safetensors**, and hot-reloaded into Rust memory via **Candle** without engine restarts.
-* **Signal Decay:** A background `SignalDecayWorker` automatically prunes stale behavioral data, ensuring infrastructure costs remain flat as the system scales.
+* **The Stage (Runtime Plane):** A read-optimized, highly concurrent environment dedicated exclusively to sub-millisecond recommendation delivery and event ingestion.
+* **The Backstage (Control Plane):** Where the engine's intelligence is born. This plane handles asynchronous model training (Candle), behavioral clustering (K-Means), and administrative strategy definition without consuming runtime resources.
 
 ---
 
-## 2.0 🎨 Smart Pages & Zero-Code Orchestration
-
-Bongas-AI transforms application layouts into "Living Blueprints" managed entirely by administrators, eliminating the need for developer-led deployments for UI or logic changes.
-
-### 2.1 🪄 Dynamic App Metamorphosis (The Resolver in Action)
-
-Bongas-AI enables an instant transformation of the entire user interface, navigation, and behavior based on the active profile.
-
-* **The Kids' Case:** Switching to a Kids' Profile triggers a **physical rebuild of the frontend identity**. The layout, color schemes, and simplified navigation are swapped in milliseconds, enforcing strict **Maturity Safety Ceilings (KFCB Compliance)** without a single line of new code.
-* **Themed Takeovers:** Leadership can pivot the entire platform for a "Live Sports Takeover" or a "Cinema Premiere Mode" in seconds by updating a centralized configuration.
-
-### 2.2 🚀 Zero-Touch Deployments
-
-Administrators can spin up new pages, reorder rows, and inject complex scenarios globally. Changes propagate via the SSE stream immediately, providing a UI that adapts to market trends in seconds.
-
----
-
-## 3.0 🧠 Core Intelligence Capabilities
+## 2. Core Intelligence Capabilities
 
 Bongas-AI uses a highly modular `PipelineRegistry` that allows administrators to dynamically construct discovery scenarios using distinct algorithmic stages.
 
-### 3.1 🔍 Domain A: Content Discovery (Recovery & Ranking)
+### Domain A: Content Discovery (Recovery & Ranking)
 
-#### 3.1.1 🧬 Persona-Based Discovery (Behavioral Clustering)
+#### **1. Behavioral Tribes (Geometric Persona Clustering)**
 
-* **The Technical Debt Trap (Sculley et al., 2015):** We solve the "1-Terabyte Model Trap" by abandoning brittle individual-centric models.
-* **Geometric Clustering:** By using the background `TribeOrchestrator` to map users into high-value **Persona Tribes** (via K-Means on embeddings), we reduce data weight by 90% and ensure infrastructure costs stay flat as the user base explodes.
+* **Mechanism:** A background `TribeOrchestrator` uses K-Means clustering on user embeddings to group profiles into behavioral "tribes" (e.g., "Hard Sci-Fi Enthusiasts").
+* **Execution:** The pipeline dynamically surfaces content currently trending among a user's behavioral lookalikes, providing highly relevant discovery even for users with sparse recent history.
 
-#### 3.1.2 ✨ The Psychology of Discovery (Dopaminergic Reward Loop)
+#### **2. Hyper-Local Semantic Pulse (Contextual Boosting)**
 
-* **The Novelty Bonus (Gruber et al., 2014):** We align platform logic with the evolutionary chemistry of the brain. By identifying the exact threshold of novelty for a specific Tribe, we trigger consistent dopaminergic rewards, turning casual browsers into high-retention consumers.
-* **The Goldilocks Effect (Kidd et al., 2012):** We sequence experiences from **Low-Context Mastery** (digestion) to **High-Context Depth** (flow state), maximizing the ROI of your long-tail library.
+* **Mechanism:** A `RegionalPulseWorker` scrapes real-time news and events for specific geographic regions, using the LLM-powered `HiveMindConnector` to classify events (e.g., "Natural Disaster", "Cultural Festival") and generate semantic vectors.
+* **Execution:** The ranking engine applies a real-time semantic boost (e.g., 1.3x) to content that contextually matches the user's current regional environment, filtered through strict maturity guardrails to prevent sensitive mismatching.
 
-#### 3.1.3 🌍 Active World-State Alignment (The Zeitgeist Pulse)
+### Domain B: Content Refinement (Processing)
 
-* **Mechanism:** A `RegionalPulseWorker` proactively ingests global trends and regional events via autonomous internet-crawling.
-* **Execution:** Beyond simple location data, the engine performs **Temporal Semantic Alignment**, ensuring your platform is synchronized with the cultural "Now."
-
-### 3.2 👤 Domain B: Identity & Context (Zero-Touch)
-
-#### 3.2.1 🪡 Passive Identity Stitching
-
-* **Mechanism:** Utilizes **Zero-Touch Identity** for device fingerprinting (Device Hash) and transparent visitor tracking (Cookie-Lite).
-* **Execution:** Anonymous behavioral patterns are automatically stitched into authenticated profiles upon login, ensuring a continuous intelligence trail without friction.
-
-### 3.3 ⚙️ Domain C: Content Refinement (Processing)
-
-#### 3.3.1 💤 Content Fatigue Synchronization
+#### **3. Content Fatigue Synchronization**
 
 * **Mechanism:** A pluggable `FatigueSynchronizer` maintains an eventually-consistent ledger of item exposures across the platform, resetting immediately upon user engagement.
 * **Execution:** The pipeline batch-fetches exposure states via Redis `MGET` and applies exponential penalties to over-exposed items, ensuring the discovery feed remains fresh and prevents cognitive burnout.
 
-#### 3.3.2 💬 Semantic Why (Explainability Engine)
+#### **4. Semantic Why (Explainability Engine)**
 
 * **Mechanism:** A background `ReasoningWorker` proactively identifies high-probability profile/item matches and uses the HiveMind LLM to generate human-readable explanations.
-* **Execution:** Surfaces trust-building reasons (e.g., "Because you enjoy cyberpunk") or falls back to high-speed heuristic matching of profile affinities to item tags.
+* **Execution:** Surfaces trust-building reasons (e.g., "Because you enjoy cyberpunk documentaries") to build user trust. It falls back to high-speed heuristic matching of profile affinities to item tags if a pre-computed reason isn't available.
+
+### Domain C: Sovereign Intelligence (Native Rust)
+
+Bongas-AI delivers true "Sovereign Intelligence" by executing all model evolution and security logic natively within the Rust binary.
+
+#### **5. Frozen Base Models (The Senses)**
+
+* **Mechanism:** Massive pre-trained models (e.g., `sight-core` for visual DNA, `slm-base` for natural language) are shipped to the client's environment as read-only, optimized `.safetensors` assets. They perform heavy feature extraction without data exfiltration.
+
+#### **6. Sovereign Training Pillar (Native Rust)**
+
+* **Mechanism:** Utilizing the **Candle** framework, the engine performs on-premise training and fine-tuning directly against the client's private ClickHouse ledgers. This eliminates all external Python dependencies and `trainer.so` sidecars.
+* **Architecture:** Asynchronously trains lightweight "Student Heads" to adapt the global foundation models to local context:
+* **`vision_head.safetensors` (The Auditor):** Maps raw visual DNA to specific safety ceilings (18+, Kids) and semantic vibes.
+* **`slm_head.safetensors` (The Librarian):** Generates natural language summaries and taxonomy tags.
+* **`ranking.safetensors` (The Conductor):** Learns aggregate Tribe-level content affinities.
+* **Execution:** Newly trained weights are hot-swapped via an **Atomic Weight Registry**, ensuring the core discovery path never blocks on heavy [ML training](https://github.com/adiozdaniel/bongas-ml).
 
 ---
 
-## 4.0 🔔 Reactive & Predictive Engagement (The Engagement Pulse)
+## 3. User Engagement & Side-Effects
 
-Discovery extends beyond the application session via a centralized, environment-agnostic **NotificationDispatcher** to drive retention through "Intelligence-First" engagement.
+Discovery extends beyond the application session. Bongas-AI includes a centralized, environment-agnostic `NotificationDispatcher` to drive retention.
 
-### 4.1 ✉️ Neural Email Digests (Outbound Discovery)
+### a. Omnichannel Delivery
 
-Automated `DigestWorkers` identify dormant profiles, execute personalized scenarios, and dispatch hyper-personalized reports.
+The dispatcher uses a pluggable adaptor pattern to support various infrastructures:
 
-* **Mechanism:** The `ReasoningWorker` proactively identifies high-probability matches and generates human-readable explanations (e.g., *"Because you enjoy Afro-Fusion content"*).
-* **Execution:** These "Neural Digests" provide a personalized discovery path that reaches users directly in their inbox via the **Kafka** or **Polling** adaptors.
+* **ResendAdaptor:** High-deliverability production email with Handlebars-driven dynamic templating.
+* **KafkaStreamAdaptor:** Pushes high-priority alerts to distributed topics for real-time mobile/web push delivery.
+* **PollingAdaptor:** Ensures records are securely indexed for legacy or pull-based API delivery (`GET /notifications/inbox`).
 
-### 4.2 📥 The Smart Inbox (In-App Discovery)
+### b. Scheduled Intelligence (Digest Workers)
 
-The system maintains a high-performance **"Smart Inbox"** for real-time engagement, backed by mandatory persistence in PostgreSQL (System of Record) and ClickHouse (Analytical Ledger).
-
-* **Mechanism:** Every notification is prioritized and categorized based on the user's current tribe and engagement score.
-* **Execution:** Through the **Polling Endpoints** (`GET /notifications/inbox`), the client retrieves curated payloads, transforming the notification center into a secondary discovery feed.
+Automated workers continuously scan user arrival patterns to identify dormant profiles. Upon triggering, they execute personalized scenarios (e.g., "email_digest") in the background and hand off the highly curated payload to the Dispatcher to re-engage the user.
 
 ---
 
-## 5.0 🛡️ Resilience & Performance Engineering
+## 4. Current Milestone Achievement: Symphony 3.0
 
-Built to withstand massive traffic spikes and cascading infrastructure failures.
+The platform has achieved its primary "Sovereign Singularity" goals:
 
-### 5.1 📡 The OTLP Shield
+### 4.1 🔍 Embedded Hybrid Search
 
-A high-performance observability layer that follows requests from headers through parallel fan-out to the data layer, ensuring Netflix-scale telemetry with zero throughput impact.
+Breaking the discovery barrier with full-text keyword matching at sub-10ms speeds using **Tantivy** embedded directly in the binary. Results are dynamically re-ranked via our existing **Semantic Vector Similarity** pipelines.
 
-### 5.2 🔌 Global Circuit Breakers
+### 4.2 🧠 The Symphony Conductor (Agentic Reasoning)
 
-Every external call (Postgres, ClickHouse, Redis, LLM) is protected by Hystrix-inspired circuit breakers that fail-open to ensure graceful degradation.
+A natural-language "Executive Assistant" powered by a local, quantized Small Language Model (SLM) running natively via **Candle**. It can reason about system performance, simulate impact of setting changes, and propose safe configuration updates.
 
-### 5.3 🧊 Multi-Tier Caching Strategy
+### 4.3 🌍 The Swahili Brain (Golden Bootstrap)
 
-An L1/L2 TTL strategy combined with background warming for critical scenarios, ensuring sub-millisecond retrieval and cache freshness via the Intelligence Pulse.
+Ensuring cultural intelligence by pre-training the Conductor on technical and conversational East African dialects. Continuous fine-tuning (LoRA) happens locally within the client VPC using native Rust training loops.
 
-### 5.4 🛠️ Sovereign Technology Stack
+---
 
-Optimized for safety, concurrency, and extreme throughput.
+## 5. Resilience & Technology Stack
+
+Built entirely in **Rust** for uncompromising safety and speed.
 
 | Component | Technology | Role |
 | :--- | :--- | :--- |
-| **Core Engine** | Rust (`tokio`, `axum`) | High-performance API, async orchestration, and pipeline execution. |
-| **Hot State & Sync** | Redis | Sub-millisecond lookups, fatigue tracking, and ghost caching. |
-| **System of Record** | PostgreSQL (`sqlx`) | Transactional data, user profiles, and scenario configurations. |
-| **Analytical Ledger** | ClickHouse | High-throughput telemetry, interaction aggregation, and worker polling. |
-| **Event Streaming** | Kafka (`rdkafka`) | (Optional) High-scale telemetry ingestion and notification dispatch. |
-| **Intelligence** | Candle / HiveMind | Local model inference and global LLM semantic classification. |
-
----
-
-## 6.0 📈 Commercial Advantages & Economic Sovereignty
-
-Bongas-AI Symphony 2.0 is a primary driver of platform profitability and market differentiation.
-
-### 6.1 💰 Fixed Infrastructure ROI (Zero Scaling Tax)
-
-Eliminates the "Growth Tax" of SaaS vendors (Algolia, Recombee, Braze). We replace unpredictable, usage-based fees with a **Predictable Monthly Flat Rate**. Whether you have 1 million or 50 million users, your investment goes toward a competitive advantage rather than "paying for clicks."
-
-### 6.2 ⛓️ Strategic Moat: VPC Sovereignty
-
-The entire engine is deployed within your **Private Cloud**. Your user behavioral data—your most valuable asset—never leaves your perimeter. You own the intelligence, you own the profit, and you are immune to third-party data breach risks.
-
-### 6.3 🏛️ Business Intelligence Ledger
-
-The **Analytical Ledger (ClickHouse)** tracks KPIs in real-time: **Consumption Velocity**, **Discovery Success Rate**, and **Catalog Utilization**, providing a foundation for data-driven executive decisions.
-
----
-
-## 🗺️ Future Horizons: The Roadmap to 3.0
-
-The Symphony architecture is designed for continuous evolution. Phase 3 focuses on production-grade engagement, Algolia-scale search, and deep intelligence training.
-
-👉 **[View the Complete Strategic Roadmap & Milestones](./docs/adr/milestones.md)**
-
-### 7.1 📧 Production Outbound: Resend Integration
-
-Transitioning from local polling to a high-deliverability production flow.
-
-* **Adaptor Architecture:** Implementation of the `ResendNotifyAdaptor` for direct, high-speed transactional email delivery.
-* **Contextual Rendering:** Moving HTML rendering to the edge, allowing Bongas-AI to send pure JSON context to Resend templates.
-
-### 7.2 🔍 Elastic Hybrid Search (Algolia-Scale / Low Resource)
-
-Breaking the discovery barrier with full-text keyword matching at sub-10ms speeds.
-
-* **Meilisearch Integration:** Utilizing a Rust-native indexer to provide prefix-matching and typo-tolerance without the resource bloat of JVM-based clusters.
-* **Hybrid Re-Ranking:** Search results from the indexer will be dynamically re-ranked via our existing **Semantic Vector Similarity** pipelines.
-
-### 7.3 🧠 Python-Bridge Intelligence (Training Plane)
-
-Strict physical separation of "Learning" and "Execution" logic.
-
-* **Parquet Analytics Export:** High-speed data dump from ClickHouse to Parquet files for Python-based ML training.
-* **Training Suite:** A dedicated Python environment for deep clustering and ranking model refinement, exporting results to **Safetensors** for hot-reloading into the Rust core via **Candle**.
-
-### 7.4 ⚖️ Governance & Explainability Audit
-
-Providing administrators with a "Deep Trace" of recommendation logic.
-
-* **Recommendation Audit Ledger:** Detailed JSON logging of every stage's score and reasoning to ClickHouse.
-* **Explainability API:** A new administrative endpoint `GET /admin/explain/{request_id}` to visualize the "Journey of an Item" from recovery to final ranking.
-
-### 7.5 🧠 The Symphony Conductor (Agentic Reasoning)
-
-A natural-language "Executive Assistant" that understands the engine's internal math.
-
-* **Sovereign SLM:** A local Candle-based Small Language Model capable of reasoning, simulating impacts, and proposing configuration changes.
-* **Swahili/Sheng Dialect:** Fine-tuned to understand regional technical code-switching and local content metadata natively.
-* **Agentic Simulations:** The Conductor doesn't just "chat"—it executes "Ghost Scenarios" to show admins the real-world impact of a setting change before it is applied.
-
-### 7.6 🌍 The Swahili Brain (Golden Bootstrap)
-
-Ensuring "Elite Intelligence" from the very first second of deployment.
-
-* **Supervised Fine-Tuning (SFT):** The model is pre-trained on a massive "Golden Dataset" of East African technical and conversational data before shipping.
-* **Adaptive Learning Loop:** A weekly "Pulse" where the engine learns the specific artist slang and trending terms from the client's local ClickHouse logs.
-
-### 7.7 🧪 Quality Assurance & Mathematical Verification
-
-Establishing a rigorous verification suite for the entire intelligence stack.
-
-* **Bifurcated Testing:** Rust-native unit tests for the core and PyTest for the training suite.
-* **Pipeline Simulation:** Automated tests simulating high-concurrency request patterns.
-
-### 7.8 🔒 Sovereign Binary Security & Anti-Tamper
-
-Hardening the distributed binary for secure deployment on client infrastructure.
-
-* **Binary Protection:** Implementation of anti-debugging, anti-RE, and hardware-bound licensing.
-* **Secure Environment Validation:** Ensuring the binary only executes within a verified VPC.
-
-### 7.9 📡 Remote Orchestration & Update Strategy
-
-Centralized command-and-control for a globally distributed engine fleet.
-
-* **Management Control Plane:** Centralized server for remote heartbeat monitoring and config overrides.
-* **Atomic Updates:** Automated secure binary delivery and instant rollback capabilities.
-
----
-
-## 📚 Bibliography & Research Foundation
-
-* **Gruber, M. J., et al. (2014).** *States of curiosity modulate hippocampus-dependent learning via the dopaminergic circuit.* Neuron.
-* **Kidd, C., et al. (2012).** *The Goldilocks effect.* PloS ONE.
-* **Sculley, D., et al. (2015).** *Hidden Technical Debt in Machine Learning Systems.* NeurIPS.
-* **Wang, J. X., et al. (2021).** *Prefrontal cortex as a meta-reinforcement learning system.* Nature Neuroscience.
+| **Core Engine** | Rust (`tokio`, `axum`) | High-performance API and async orchestration. |
+| **Hot State** | Redis | Sub-millisecond pipeline lookups and ghost caching. |
+| **System of Record** | PostgreSQL (`sqlx`) | Transactional data and scenario configurations. |
+| **Analytical Ledger** | ClickHouse | High-throughput telemetry and interaction aggregation. |
+| **Intelligence** | Candle / HiveMind | Local model inference and agentic reasoning. |
 
 ---
 
@@ -269,4 +136,4 @@ For technical deep-dives, architectural blueprints, and API contracts, please vi
 
 ---
 
-*Built by*![BBR Logo](./docs/bbr_logo.svg)*with 🦀 for uncompromising speed and safety.*
+*Built by with 🦀 for uncompromising speed and safety.*
