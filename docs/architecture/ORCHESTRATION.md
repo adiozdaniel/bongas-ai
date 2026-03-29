@@ -53,12 +53,14 @@ graph TD
 We eliminate client-side complex pre-warming logic. The engine automatically anticipates the user's next scroll or search intent.
 
 ### 1. Paginated Look-Ahead
+
 - **Trigger:** Every `genesis` or paginated request triggers a background task for the *next* batch.
 - **The "Ghost Cache":** Results are stored in Redis with a key format: `ghost:user_{id}:page_{slug}:offset_{offset}`.
 - **TTL:** 5 minutes (300s).
 - **Concurrency:** Uses `buffer_unordered` to maximize pre-warming speed without blocking the main request thread.
 
 ### 2. Ghost Search (Predictive Querying)
+
 - **Trigger:** Active keystroke events from the client.
 - **Logic:** The engine performs a low-latency "Reflex Search" against the **Embedded Tantivy Index** before the user even hits Enter.
 - **Impact:** Populates the UI search context with "zero-wait" relevant items.
@@ -80,6 +82,7 @@ All background workers respond to the global engine shutdown signal and run in d
 ### 2. Synchronization Strategy
 
 Workers primarily communicate with the request path via **Redis** or the **Embedded Search Index**. This creates a clean separation of concerns:
+
 - **Write-Path (Workers):** Perform heavy computation or I/O-intensive scraping and write the refined intelligence to Redis or Tantivy.
 - **Read-Path (Pipeline):** Perform sub-millisecond lookups from Redis or memory-resident index files to apply intelligence to recommendations.
 
@@ -89,12 +92,12 @@ Every request passes through a coordinated stack of global middlewares before re
 
 ### 1. The Global Pipeline Stack
 
-1.  **Identity Shield**: passive fingerprinting and context extraction.
-2.  **Adaptive Rate Limiter**: Multi-tier (L1/L2) protection against scrapers.
-3.  **Platform Security**: Signature and key validation for trusted clients.
-4.  **Bulkhead (Global)**: Enforces hard concurrency limits on the entire API surface.
-5.  **Circuit Breaker (Global)**: Trips on high error rates to protect downstream pools.
-6.  **OTLP Instrumented**: End-to-end tracing injection.
+1. **Identity Shield**: passive fingerprinting and context extraction.
+2. **Adaptive Rate Limiter**: Multi-tier (L1/L2) protection against scrapers.
+3. **Platform Security**: Signature and key validation for trusted clients.
+4. **Bulkhead (Global)**: Enforces hard concurrency limits on the entire API surface.
+5. **Circuit Breaker (Global)**: Trips on high error rates to protect downstream pools.
+6. **OTLP Instrumented**: End-to-end tracing injection.
 
 ## 🛡️ Resilience & Scale
 
